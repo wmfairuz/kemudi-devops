@@ -27,6 +27,9 @@ interface SidebarState extends Persisted {
   select(serverId: string, appId: string | null): void;
   /** Expand, select and scroll to an app (palette). */
   reveal(serverId: string, appId: string): void;
+  /** Select what the tab in front belongs to (its app, else its server),
+   *  opening the server so the row shows. Keeps the filter. */
+  follow(serverId: string, appId: string | null): void;
 }
 
 export const useSidebar = create<SidebarState>((set, get) => {
@@ -52,6 +55,13 @@ export const useSidebar = create<SidebarState>((set, get) => {
       requestAnimationFrame(() =>
         document.getElementById(`app-${serverId}-${appId}`)?.scrollIntoView({ block: "nearest" }),
       );
+    },
+    follow(serverId, appId) {
+      const cur = get().selected;
+      if (cur && cur.serverId === serverId && cur.appId === appId) return;
+      set((s) => ({ selected: { serverId, appId }, expanded: appId ? { ...s.expanded, [serverId]: true } : s.expanded }));
+      save();
+      if (appId) requestAnimationFrame(() => document.getElementById(`app-${serverId}-${appId}`)?.scrollIntoView({ block: "nearest" }));
     },
     select(serverId, appId) {
       set({ selected: { serverId, appId } });

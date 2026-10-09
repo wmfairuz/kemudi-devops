@@ -29,7 +29,8 @@ import { Sidebar } from "@/components/sidebar/Sidebar";
 import { TabStrip } from "@/components/terminal/TabStrip";
 import { TerminalPane } from "@/components/terminal/TerminalPane";
 import { installShortcuts, runCommand } from "@/lib/keys";
-import { useConfig } from "@/stores/config";
+import { findServer, useConfig } from "@/stores/config";
+import { useSidebar } from "@/stores/sidebar";
 import { initSession } from "@/stores/session";
 import { useDiskAlerts } from "@/stores/diskAlerts";
 import { useSslAlerts } from "@/stores/sslAlerts";
@@ -52,6 +53,21 @@ export default function App() {
   // Restores tabs once and saves them for the app's lifetime.
   useEffect(() => void initSession(), []);
   useEffect(() => installShortcuts(), []);
+  // The Actions panel and the sidebar follow the tab in front: an action,
+  // logs or ssh tab of an app shows that app's actions.
+  useEffect(
+    () =>
+      useTabs.subscribe((s, prev) => {
+        if (s.activeId === prev.activeId) return;
+        const tab = s.tabs.find((t) => t.id === s.activeId);
+        if (!tab?.serverId) return;
+        const server = findServer(tab.serverId);
+        if (!server) return;
+        const appId = tab.appId && server.apps.some((a) => a.id === tab.appId) ? tab.appId : null;
+        useSidebar.getState().follow(server.id, appId);
+      }),
+    [],
+  );
   // Settings ▸ Terminal applies to open tabs too.
   useEffect(
     () =>

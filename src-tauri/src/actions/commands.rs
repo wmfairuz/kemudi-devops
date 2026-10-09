@@ -35,7 +35,7 @@ pub struct RenderedAction {
     pub app_id: Option<String>,
     pub action_id: String,
     pub label: String,
-    /// Tab title, e.g. `stg-svr03 · pull`.
+    /// Tab title, e.g. `akaun · pull` (an app's), `stg-svr03 · nginx`.
     pub title: String,
     /// The command that will run (rendered, or the user's edit).
     pub command: String,
@@ -309,10 +309,18 @@ pub fn render_action(
         app_id: app.map(|a| a.id.clone()),
         action_id: action.id.clone(),
         label: action.label.clone(),
-        title: if built.is_some() {
-            format!("{} · {}", server.id, action.label.to_lowercase())
-        } else {
-            format!("{} · {}", server.id, action.id)
+        // Named after what it acts on: the app (like Logs and Queues tabs),
+        // or the server for server actions and server-wide built-ins.
+        title: {
+            let who = match app {
+                Some(a) if !server_wide => &a.id,
+                _ => &server.id,
+            };
+            if built.is_some() {
+                format!("{who} · {}", action.label.to_lowercase())
+            } else {
+                format!("{who} · {}", action.id)
+            }
         },
         command,
         rendered,
@@ -568,7 +576,7 @@ actions:
         let c = config();
         let a = render_action(&c, &r(Some("akaun"), "pull"), None).expect("render");
         assert_eq!(a.command, "cd /var/www/akaun && git pull origin develop");
-        assert_eq!(a.title, "stg · pull");
+        assert_eq!(a.title, "akaun · pull", "named after the app");
         assert_eq!(a.kind, ActionKind::Ssh);
         assert_eq!(a.host, "stg-alias");
         let d = render_action(&c, &r(Some("akaun"), "deploy"), None).expect("render");
@@ -578,6 +586,7 @@ actions:
         );
         let n = render_action(&c, &r(None, "nginx"), None).expect("render");
         assert!(n.danger && n.app_id.is_none());
+        assert_eq!(n.title, "stg · nginx", "server actions: the server");
     }
 
     #[test]

@@ -152,7 +152,7 @@ async function rerunInTab(tab: Tab, a: RenderedAction, override: string | null):
   if (ptyId === null) return;
   const tabs = useTabs.getState();
   tabs.activate(tab.id);
-  tabs.update(tab.id, { state: "running", exitCode: undefined, finishedAt: undefined });
+  tabs.update(tab.id, { state: "running", exitCode: undefined, finishedAt: undefined, ...(tab.renamed ? {} : { title: a.title }) });
   // Clear anything half-typed at the prompt first (Ctrl+U).
   tab.session.send("\x15");
   const finished = tab.session.blocks.nextFinish();
