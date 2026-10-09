@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Kemudi "Prompt K": a stem and a caret, with a gap like a cursor. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b1b1f"/>
+      <stop offset="1" stop-color="#0b0b0c"/>
+    </linearGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+  <rect x="101" y="101" width="822" height="822" rx="184" fill="none" stroke="rgba(255,255,255,0.10)" stroke-width="2"/>
+  <rect x="290.8" y="336.0" width="88" height="352" fill="#ededed"/><polygon points="592.8,336.0 717.2,336.0 541.2,512.0 717.2,688.0 592.8,688.0 416.8,512.0" fill="#ededed"/>
+</svg>

@@ -1,0 +1,300 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Light UI with the Dracula terminal: the window chrome (sidebar, panels,
+   dialogs) is a neutral macOS-style light theme accented with Dracula's
+   purple (as in its light "Alucard" variant); the terminal area, and the
+   tab sitting on it, use the Dracula tokens under `.dracula`. Layout and
+   metrics follow the Claude Design handoff in design/. `.light-ui` brings
+   the light tokens back inside the terminal area (the Files tab). */
+:root,
+.light-ui {
+  color-scheme: light;
+  --background: #ffffff;
+  --foreground: #1f2328;
+  --card: #ffffff;
+  --card-foreground: #1f2328;
+  --popover: #ffffff;
+  --popover-foreground: #1f2328;
+  --primary: #6b4fd8; /* Dracula purple, darkened for light (Alucard) */
+  --primary-foreground: #ffffff;
+  --primary-hover: #5a3ec8;
+  --secondary: #f1f1f4;
+  --secondary-foreground: #1f2328;
+  --muted: #f0f0f3;
+  --muted-foreground: #565b69;
+  --accent: #e8e2fb; /* selection */
+  --accent-foreground: #1f2328;
+  --destructive: #cf222e;
+  --border: #e1e2e8;
+  --input: #d4d6de;
+  --ring: #6b4fd8;
+  --radius: 0.375rem;
+
+  --sidebar: #f5f5f7;
+  --sidebar-foreground: #2b2f36;
+  --sidebar-accent: #e8e2fb;
+  --sidebar-border: #dcdde3;
+  --titlebar: #ececef;
+  --soft-foreground: #33373f;
+  --dim-foreground: #6b7080;
+  --subtle-foreground: #7a7f8e;
+  --faint-foreground: #a2a6b2;
+  --dialog-footer: #f7f7f9;
+  --hover: #ebebf0;
+  --hover-strong: #e2e2e9;
+  --selected: #e8e2fb;
+  --panel: #f7f7f9;
+  --divider: #e5e6eb;
+  --control-border: #cdd0d8;
+  --syntax-key: #036a96;
+
+  --env-prod: #d1242f;
+  --env-prod-fg: #b42318;
+  --env-prod-btn-fg: #a3151d;
+  --env-prod-note: #b42318;
+  --env-prod-hover: #b91c26;
+  --env-prod-tint: rgb(209 36 47 / 0.08);
+  --env-prod-line: rgb(209 36 47 / 0.35);
+  --env-staging: #c2620a;
+  --env-staging-fg: #9a4a0b;
+  --env-staging-btn-fg: #8a4210;
+  --env-staging-tint: rgb(194 98 10 / 0.08);
+  --env-staging-line: rgb(194 98 10 / 0.35);
+  --env-qa: #0a7ea4;
+  --env-qa-fg: #0b6a8a;
+  --env-dev-fg: #565b69;
+  --vpn: #036a96;
+  --vpn-fg: #036a96;
+
+  --status-up: #1f9d3a;
+  --status-down: #d1242f;
+  --status-checking: #6b4fd8;
+  --status-unknown: #a2a6b2;
+
+  --terminal-bg: #282a36; /* the terminal stays Dracula */
+  --term-green: #1f9d3a;
+  --term-red: #d1242f;
+  --overlay: rgb(30 32 40 / 0.28);
+}
+
+/* Dracula (draculatheme.com), same as the terminal and the user's Warp
+   setup: for the terminal area and the active tab on it. */
+.dracula {
+  color-scheme: dark;
+  color: var(--foreground);
+  --background: #282a36; /* Dracula background: terminal, main area */
+  --foreground: #f8f8f2;
+  --card: #21222c;
+  --card-foreground: #f8f8f2;
+  --popover: #21222c;
+  --popover-foreground: #f8f8f2;
+  --primary: #bd93f9; /* Dracula purple */
+  --primary-foreground: #282a36;
+  --primary-hover: #cfaefc;
+  --secondary: #343746;
+  --secondary-foreground: #f8f8f2;
+  --muted: #191a21;
+  --muted-foreground: #b6b8c8;
+  --accent: #44475a; /* Dracula current line / selection */
+  --accent-foreground: #f8f8f2;
+  --destructive: #ff5555;
+  --border: #343746;
+  --input: #44475a;
+  --ring: #bd93f9;
+  --radius: 0.375rem;
+
+  --sidebar: #21222c;
+  --sidebar-foreground: #e6e6e0;
+  --sidebar-accent: #44475a;
+  --sidebar-border: #191a21;
+  --titlebar: #191a21;
+  --soft-foreground: #e2e2dc;
+  --dim-foreground: #9ea1b8;
+  --subtle-foreground: #6272a4; /* Dracula comment */
+  --faint-foreground: #565b77;
+  --dialog-footer: #1d1e26;
+  --hover: #2c2e3b;
+  --hover-strong: #3b3e51;
+  --selected: #44475a;
+  --panel: #262835;
+  --divider: #2b2d3a;
+  --control-border: #4a4d63;
+  --syntax-key: #8be9fd;
+
+  --env-prod: #ff5555;
+  --env-prod-fg: #ff8a8a;
+  --env-prod-btn-fg: #ffb3b3;
+  --env-prod-note: #ff8a8a;
+  --env-prod-hover: #ff6e6e;
+  --env-prod-tint: rgb(255 85 85 / 0.12);
+  --env-prod-line: rgb(255 85 85 / 0.38);
+  --env-staging: #ffb86c; /* Dracula orange */
+  --env-staging-fg: #ffc98f;
+  --env-staging-btn-fg: #ffd3a6;
+  --env-staging-tint: rgb(255 184 108 / 0.1);
+  --env-staging-line: rgb(255 184 108 / 0.35);
+  --env-qa: #8be9fd; /* Dracula cyan */
+  --env-qa-fg: #a6eefe;
+  --env-dev-fg: #b6b8c8;
+  --vpn: #8be9fd; /* Dracula cyan */
+  --vpn-fg: #8be9fd;
+
+  --status-up: #50fa7b;
+  --status-down: #ff5555;
+  --status-checking: #bd93f9;
+  --status-unknown: #6272a4;
+
+  --terminal-bg: #282a36;
+  --term-green: #50fa7b;
+  --term-red: #ff5555;
+  --overlay: rgb(0 0 0 / 0.55);
+}
+
+@theme inline {
+  /* Menlo everywhere, same as the terminal (and Warp). */
+  --font-sans: Menlo, "SF Mono", ui-monospace, monospace;
+  --font-heading: var(--font-sans);
+  --font-mono: Menlo, "SF Mono", ui-monospace, monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-titlebar: var(--titlebar);
+  --color-primary-hover: var(--primary-hover);
+  --color-soft-foreground: var(--soft-foreground);
+  --color-dim-foreground: var(--dim-foreground);
+  --color-hover-strong: var(--hover-strong);
+  --color-selected: var(--selected);
+  --color-panel: var(--panel);
+  --color-control-border: var(--control-border);
+  --color-syntax-key: var(--syntax-key);
+  --color-env-prod-note: var(--env-prod-note);
+  --color-env-prod-hover: var(--env-prod-hover);
+  --color-subtle-foreground: var(--subtle-foreground);
+  --color-faint-foreground: var(--faint-foreground);
+  --color-dialog-footer: var(--dialog-footer);
+  --color-hover: var(--hover);
+  --color-divider: var(--divider);
+
+  --color-env-prod: var(--env-prod);
+  --color-env-prod-fg: var(--env-prod-fg);
+  --color-env-prod-btn-fg: var(--env-prod-btn-fg);
+  --color-env-prod-tint: var(--env-prod-tint);
+  --color-env-prod-line: var(--env-prod-line);
+  --color-env-staging: var(--env-staging);
+  --color-env-staging-fg: var(--env-staging-fg);
+  --color-env-staging-btn-fg: var(--env-staging-btn-fg);
+  --color-env-staging-tint: var(--env-staging-tint);
+  --color-env-staging-line: var(--env-staging-line);
+  --color-env-qa: var(--env-qa);
+  --color-env-qa-fg: var(--env-qa-fg);
+  --color-env-dev-fg: var(--env-dev-fg);
+  --color-vpn: var(--vpn);
+  --color-vpn-fg: var(--vpn-fg);
+  --color-status-up: var(--status-up);
+  --color-status-down: var(--status-down);
+  --color-status-checking: var(--status-checking);
+  --color-status-unknown: var(--status-unknown);
+  --color-terminal: var(--terminal-bg);
+  --color-term-green: var(--term-green);
+  --color-term-red: var(--term-red);
+  --color-overlay: var(--overlay);
+
+  /* Type scale (use arbitrary sizes so `cn` merges them as font sizes):
+     ui 13 · row 12.5 · control 11.5 · meta 10.5 · tag 9.5 */
+
+  --radius-sm: 4px;
+  --radius-md: 5px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+  --radius-2xl: 12px;
+}
+
+@keyframes kspin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes status-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.3;
+    transform: scale(0.75);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* App shell: a desktop window, not a document. */
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+}
+
+input,
+textarea,
+.selectable {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* xterm draws its own selection; native (WebKit) selection would paint the
+   whole terminal blue on a right-click. */
+.xterm,
+.xterm * {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+button {
+  cursor: default;
+}

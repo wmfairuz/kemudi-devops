@@ -1,0 +1,7 @@
+# `cargo run` (what `pnpm tauri dev` uses) goes through this script, which
+# signs the dev build so Keychain access survives rebuilds. Tests run as is.
+[target.aarch64-apple-darwin]
+runner = "scripts/dev-sign-run.sh"
+
+[target.x86_64-apple-darwin]
+runner = "scripts/dev-sign-run.sh"

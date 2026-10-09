@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Kemudi "Prompt K" in Jalur Gemilang colours. -->
+  <defs>
+    <clipPath id="sq"><rect x="100" y="100" width="824" height="824" rx="185"/></clipPath>
+    <linearGradient id="navy" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b1a7a"/><stop offset="1" stop-color="#010046"/></linearGradient>
+    
+  </defs>
+  <g clip-path="url(#sq)"><rect x="100" y="100.00" width="824" height="59.46" fill="#cc0001"/><rect x="100" y="158.86" width="824" height="59.46" fill="#ffffff"/><rect x="100" y="217.71" width="824" height="59.46" fill="#cc0001"/><rect x="100" y="276.57" width="824" height="59.46" fill="#ffffff"/><rect x="100" y="335.43" width="824" height="59.46" fill="#cc0001"/><rect x="100" y="394.29" width="824" height="59.46" fill="#ffffff"/><rect x="100" y="453.14" width="824" height="59.46" fill="#cc0001"/><rect x="100" y="512.00" width="824" height="59.46" fill="#ffffff"/><rect x="100" y="570.86" width="824" height="59.46" fill="#cc0001"/><rect x="100" y="629.71" width="824" height="59.46" fill="#ffffff"/><rect x="100" y="688.57" width="824" height="59.46" fill="#cc0001"/><rect x="100" y="747.43" width="824" height="59.46" fill="#ffffff"/><rect x="100" y="806.29" width="824" height="59.46" fill="#cc0001"/><rect x="100" y="865.14" width="824" height="59.46" fill="#ffffff"/><rect x="100" y="100" width="560" height="560" fill="url(#navy)"/><g transform="translate(242.8,270.9) scale(0.62)"><rect x="0.0" y="0.0" width="88" height="352" fill="#ffffff"/><polygon points="302.0,0.0 426.5,0.0 250.5,176.0 426.5,352.0 302.0,352.0 126.0,176.0" fill="#ffcc00"/></g></g>
+  <rect x="101" y="101" width="822" height="822" rx="184" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="2"/>
+</svg>

@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;background:#1c1c1f}
+a{color:#ededef}
+a:hover{color:#ffffff}
+@keyframes kspin{to{transform:rotate(360deg)}}
+@keyframes kpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.75)}}
+</style>
+</helmet>
+<div style="padding:80px;width:max-content;min-width:100%;box-sizing:border-box;background:#1c1c1f;display:flex;flex-direction:column;gap:96px;font-family:'Geist',system-ui,sans-serif;color:#ededef;-webkit-font-smoothing:antialiased">
+  <div style="display:flex;flex-direction:column;gap:8px;max-width:900px">
+    <div style="font-size:32px;font-weight:600;letter-spacing:-0.02em">Kemudi</div>
+    <div style="font-size:16px;line-height:24px;color:#a1a1a8">Personal ops console · 6 servers, 45 Laravel apps. macOS, dark. shadcn/ui + Tailwind, Geist + Geist Mono. Windows are 1440 × 900 and interactive: expand servers, select apps, click actions, switch tabs, drag the sidebar edge.</div>
+  </div>
+
+  <section style="display:flex;flex-direction:column;gap:28px">
+    <div style="font-size:13px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#8b8b92">Main window</div>
+    <div style="display:flex;flex-wrap:wrap;gap:64px">
+      <div id="1a" style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;gap:10px"><span style="font-family:'Geist Mono',monospace;font-size:12px;padding:2px 7px;border-radius:5px;background:#ededef;color:#0a0a0a">1a</span><span style="font-size:15px;font-weight:500">Busy · prod deploy running</span><span style="font-size:13px;color:#8b8b92">client-prod-01 / akaun selected, active prod tab</span></div>
+        <dc-import name="KemudiWindow" view="busy" overlay="none" select="prod" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+      </div>
+      <div id="1b" style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;gap:10px"><span style="font-family:'Geist Mono',monospace;font-size:12px;padding:2px 7px;border-radius:5px;background:#ededef;color:#0a0a0a">1b</span><span style="font-size:15px;font-weight:500">Empty · first run</span><span style="font-size:13px;color:#8b8b92">no servers.yaml yet</span></div>
+        <dc-import name="KemudiWindow" view="empty" overlay="none" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+      </div>
+      <div id="1c" style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;gap:10px"><span style="font-family:'Geist Mono',monospace;font-size:12px;padding:2px 7px;border-radius:5px;background:#ededef;color:#0a0a0a">1c</span><span style="font-size:15px;font-weight:500">Config error · stale tree</span><span style="font-size:13px;color:#8b8b92">staging app selected, finished-ok tab</span></div>
+        <dc-import name="KemudiWindow" view="error" overlay="none" select="stg" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+      </div>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:28px">
+    <div style="font-size:13px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#8b8b92">Dialogs</div>
+    <div style="display:flex;flex-wrap:wrap;gap:64px">
+      <div id="1d" style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;gap:10px"><span style="font-family:'Geist Mono',monospace;font-size:12px;padding:2px 7px;border-radius:5px;background:#ededef;color:#0a0a0a">1d</span><span style="font-size:15px;font-weight:500">Command preview</span><span style="font-size:13px;color:#8b8b92">editable; non-prod actions open here</span></div>
+        <dc-import name="KemudiWindow" view="busy" overlay="preview" select="stg" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+      </div>
+      <div id="1e" style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;gap:10px"><span style="font-family:'Geist Mono',monospace;font-size:12px;padding:2px 7px;border-radius:5px;background:#ededef;color:#0a0a0a">1e</span><span style="font-size:15px;font-weight:500">Prod confirmation</span><span style="font-size:13px;color:#8b8b92">full rendered command, red frame</span></div>
+        <dc-import name="KemudiWindow" view="busy" overlay="prodConfirm" select="prod" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+      </div>
+      <div id="1f" style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;gap:10px"><span style="font-family:'Geist Mono',monospace;font-size:12px;padding:2px 7px;border-radius:5px;background:#ededef;color:#0a0a0a">1f</span><span style="font-size:15px;font-weight:500">Prod + danger</span><span style="font-size:13px;color:#8b8b92">type the server id to enable Run (live)</span></div>
+        <dc-import name="KemudiWindow" view="busy" overlay="dangerConfirm" select="prod" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+      </div>
+      <div id="1g" style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;gap:10px"><span style="font-family:'Geist Mono',monospace;font-size:12px;padding:2px 7px;border-radius:5px;background:#ededef;color:#0a0a0a">1g</span><span style="font-size:15px;font-weight:500">VPN blocked</span><span style="font-size:13px;color:#8b8b92">server dot goes red</span></div>
+        <dc-import name="KemudiWindow" view="busy" overlay="vpn" select="prod" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+      </div>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:28px">
+    <div style="font-size:13px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#8b8b92">Navigation</div>
+    <div style="display:flex;flex-wrap:wrap;gap:64px">
+      <div id="1h" style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;gap:10px"><span style="font-family:'Geist Mono',monospace;font-size:12px;padding:2px 7px;border-radius:5px;background:#ededef;color:#0a0a0a">1h</span><span style="font-size:15px;font-weight:500">⌘K palette</span><span style="font-size:13px;color:#8b8b92">“pull akaun stg”, ranked, prod sorted last</span></div>
+        <dc-import name="KemudiWindow" view="busy" overlay="palette" select="prod" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+      </div>
+      <div id="1i" style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;gap:10px"><span style="font-family:'Geist Mono',monospace;font-size:12px;padding:2px 7px;border-radius:5px;background:#ededef;color:#0a0a0a">1i</span><span style="font-size:15px;font-weight:500">History</span><span style="font-size:13px;color:#8b8b92">opens as a pinned tab</span></div>
+        <dc-import name="KemudiWindow" view="history" overlay="none" select="prod" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+      </div>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:28px">
+    <div style="font-size:13px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#8b8b92">Tokens &amp; components</div>
+    <div id="1j" style="width:1440px;box-sizing:border-box;background:#0f0f11;border:1px solid #232326;border-radius:12px;padding:48px;display:flex;flex-direction:column;gap:56px">
+      <div style="display:flex;align-items:center;gap:10px"><span style="font-family:'Geist Mono',monospace;font-size:12px;padding:2px 7px;border-radius:5px;background:#ededef;color:#0a0a0a">1j</span><span style="font-size:20px;font-weight:600">Tokens &amp; components</span><span style="font-size:13px;color:#8b8b92">shadcn semantic names where they exist, Kemudi-specific tokens after</span></div>
+
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:32px">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="font-size:12px;font-weight:600;color:#8b8b92">Surface</div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="width:28px;height:28px;border-radius:6px;background:#0a0a0a;border:1px solid #2a2a2e;flex:none"></span><div style="display:flex;flex-direction:column"><span style="font-family:'Geist Mono',monospace;font-size:12px">--background</span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">#0a0a0a · terminal, active tab</span></div></div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="width:28px;height:28px;border-radius:6px;background:#111113;border:1px solid #2a2a2e;flex:none"></span><div style="display:flex;flex-direction:column"><span style="font-family:'Geist Mono',monospace;font-size:12px">--sidebar</span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">#111113 · sidebar, tab strip</span></div></div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="width:28px;height:28px;border-radius:6px;background:#161618;border:1px solid #2a2a2e;flex:none"></span><div style="display:flex;flex-direction:column"><span style="font-family:'Geist Mono',monospace;font-size:12px">--popover / --titlebar</span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">#161618 · dialogs, palette</span></div></div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="width:28px;height:28px;border-radius:6px;background:#18181b;border:1px solid #2a2a2e;flex:none"></span><div style="display:flex;flex-direction:column"><span style="font-family:'Geist Mono',monospace;font-size:12px">--muted</span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">#18181b · inputs</span></div></div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="width:28px;height:28px;border-radius:6px;background:#202024;border:1px solid #2a2a2e;flex:none"></span><div style="display:flex;flex-direction:column"><span style="font-family:'Geist Mono',monospace;font-size:12px">--accent</span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">#202024 · selected row</span></div></div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="width:28px;height:28px;border-radius:6px;background:#232326;flex:none"></span><div style="display:flex;flex-direction:column"><span style="font-family:'Geist Mono',monospace;font-size:12px">--border</span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">#232326 · --input #2a2a2e</span></div></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="font-size:12px;font-weight:600;color:#8b8b92">Text</div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="width:28px;height:28px;border-radius:6px;background:#ededef;flex:none"></span><div style="display:flex;flex-direction:column"><span style="font-family:'Geist Mono',monospace;font-size:12px">--foreground / --primary</span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">#ededef</span></div></div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="width:28px;height:28px;border-radius:6px;background:#a1a1a8;flex:none"></span><div style="display:flex;flex-direction:column"><span style="font-family:'Geist Mono',monospace;font-size:12px">--muted-foreground</span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">#a1a1a8</span></div></div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="width:28px;height:28px;border-radius:6px;background:#6b6b73;flex:none"></span><div style="display:flex;flex-direction:column"><span style="font-family:'Geist Mono',monospace;font-size:12px">--subtle-foreground</span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">#6b6b73 · labels, hints</span></div></div>
+          <div style="font-size:12px;font-weight:600;color:#8b8b92;margin-top:10px">Status</div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="width:28px;height:28px;border-radius:6px;background:#46a758;flex:none"></span><span style="font-family:'Geist Mono',monospace;font-size:12px">--status-up <span style="color:#6b6b73">#46a758</span></span></div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="width:28px;height:28px;border-radius:6px;background:#e5484d;flex:none"></span><span style="font-family:'Geist Mono',monospace;font-size:12px">--status-down <span style="color:#6b6b73">#e5484d</span></span></div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="width:28px;height:28px;border-radius:6px;background:#52a8ff;flex:none"></span><span style="font-family:'Geist Mono',monospace;font-size:12px">--status-checking <span style="color:#6b6b73">#52a8ff</span></span></div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="width:28px;height:28px;border-radius:6px;background:#48484f;flex:none"></span><span style="font-family:'Geist Mono',monospace;font-size:12px">--status-unknown <span style="color:#6b6b73">#48484f</span></span></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="font-size:12px;font-weight:600;color:#8b8b92">Environment</div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="width:28px;height:28px;border-radius:6px;background:#e5484d;flex:none"></span><div style="display:flex;flex-direction:column"><span style="font-family:'Geist Mono',monospace;font-size:12px">--env-prod</span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">#e5484d · bar, frame, destructive</span></div></div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="width:28px;height:28px;border-radius:6px;background:#ff9592;flex:none"></span><div style="display:flex;flex-direction:column"><span style="font-family:'Geist Mono',monospace;font-size:12px">--env-prod-fg</span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">#ff9592 · tag text</span></div></div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="width:28px;height:28px;border-radius:6px;background:rgba(229,72,77,0.09);border:1px solid rgba(229,72,77,0.28);flex:none"></span><div style="display:flex;flex-direction:column"><span style="font-family:'Geist Mono',monospace;font-size:12px">--env-prod-tint / -line</span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">229 72 77 / 9% · 28%</span></div></div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="width:28px;height:28px;border-radius:6px;background:#e5a00d;flex:none"></span><div style="display:flex;flex-direction:column"><span style="font-family:'Geist Mono',monospace;font-size:12px">--env-staging</span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">#e5a00d · fg #ffca5c</span></div></div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="width:28px;height:28px;border-radius:6px;background:rgba(229,160,13,0.07);border:1px solid rgba(229,160,13,0.26);flex:none"></span><div style="display:flex;flex-direction:column"><span style="font-family:'Geist Mono',monospace;font-size:12px">--env-staging-tint / -line</span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">229 160 13 / 7% · 26%</span></div></div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="width:28px;height:28px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.12);flex:none"></span><div style="display:flex;flex-direction:column"><span style="font-family:'Geist Mono',monospace;font-size:12px">--env-dev</span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">neutral · fg #a1a1a8, no bar</span></div></div>
+          <div style="display:flex;align-items:center;gap:10px"><span style="width:28px;height:28px;border-radius:6px;background:rgba(82,168,255,0.10);border:1px solid rgba(82,168,255,0.28);flex:none"></span><div style="display:flex;flex-direction:column"><span style="font-family:'Geist Mono',monospace;font-size:12px">--vpn</span><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">fg #8fc2ff · network = blue</span></div></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="font-size:12px;font-weight:600;color:#8b8b92">Terminal (xterm theme)</div>
+          <div style="background:#0a0a0a;border:1px solid #232326;border-radius:8px;padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;font-family:'Geist Mono',monospace;font-size:11.5px">
+            <span style="color:#d4d4d8">foreground #d4d4d8</span>
+            <span style="color:#6b6b73">brightBlack #6b6b73</span>
+            <span style="color:#7ee787">green #7ee787</span>
+            <span style="color:#ff7b72">red #ff7b72</span>
+            <span style="color:#e3b341">yellow #e3b341</span>
+            <span style="color:#58a6ff">blue #58a6ff</span>
+            <span style="color:#79c0ff">cyan #79c0ff</span>
+            <span style="color:#d2a8ff">magenta #d2a8ff</span>
+          </div>
+          <div style="font-size:12px;line-height:18px;color:#8b8b92">Background #0a0a0a, cursor #d4d4d8 block, selection rgba(255,255,255,0.14). Font Geist Mono 12.5px / 19px line height.</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:48px">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="font-size:12px;font-weight:600;color:#8b8b92">Type · Geist / Geist Mono</div>
+          <div style="display:grid;grid-template-columns:150px 1fr;row-gap:12px;align-items:baseline">
+            <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">title · 15 / 600</span><span style="font-size:15px;font-weight:600">Run on production?</span>
+            <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">ui · 13 / 400</span><span style="font-size:13px">Kemudi reads servers and apps from one YAML file.</span>
+            <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">row · 12.5 / 500</span><span style="font-size:12.5px;font-weight:500">client-prod-01</span>
+            <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">control · 11.5 / 500</span><span style="font-size:11.5px;font-weight:500">Composer install</span>
+            <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">label · 11 / 500</span><span style="font-size:11px;font-weight:500;color:#6b6b73">Servers</span>
+            <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">term · mono 12.5 / 19</span><span style="font-family:'Geist Mono',monospace;font-size:12.5px">php artisan migrate --force</span>
+            <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">tag · mono 9.5 / +4%</span><span style="font-family:'Geist Mono',monospace;font-size:9.5px;letter-spacing:0.04em">PROD STG DEV VPN</span>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="font-size:12px;font-weight:600;color:#8b8b92">Metrics</div>
+          <div style="display:grid;grid-template-columns:1fr auto;row-gap:8px;font-size:12.5px;color:#c9c9ce">
+            <span>Title bar (native, traffic lights)</span><span style="font-family:'Geist Mono',monospace;color:#8b8b92">38px</span>
+            <span>Sidebar · ResizablePanel</span><span style="font-family:'Geist Mono',monospace;color:#8b8b92">264 · min 200 · max 380</span>
+            <span>Tab strip</span><span style="font-family:'Geist Mono',monospace;color:#8b8b92">36px · tab max 232</span>
+            <span>Server row / app row</span><span style="font-family:'Geist Mono',monospace;color:#8b8b92">28 / 26 · indent 27</span>
+            <span>Action button / dialog button</span><span style="font-family:'Geist Mono',monospace;color:#8b8b92">26 / 30</span>
+            <span>Env accent bar · prod tab underline</span><span style="font-family:'Geist Mono',monospace;color:#8b8b92">2px inset · 2px</span>
+            <span>Active prod terminal top border</span><span style="font-family:'Geist Mono',monospace;color:#8b8b92">1px --env-prod</span>
+            <span>Radius tag / control / block / dialog</span><span style="font-family:'Geist Mono',monospace;color:#8b8b92">4 / 5–6 / 8 / 12</span>
+            <span>Dialog / palette width</span><span style="font-family:'Geist Mono',monospace;color:#8b8b92">600 (VPN 520) / 640</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:20px">
+        <div style="font-size:12px;font-weight:600;color:#8b8b92">Component specimens</div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px">
+          <div style="background:#111113;border:1px solid #232326;border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:14px">
+            <div style="font-family:'Geist Mono',monospace;font-size:12px;color:#a1a1a8">StatusDot · EnvTag · VpnBadge</div>
+            <div style="display:flex;gap:18px;align-items:center;font-size:12px;color:#a1a1a8">
+              <span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#46a758;box-shadow:0 0 0 2px rgba(70,167,88,0.16)"></span>up</span>
+              <span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#e5484d;box-shadow:0 0 0 2px rgba(229,72,77,0.2)"></span>down</span>
+              <span style="display:flex;align-items:center;gap:6px">{{ pulse }}checking</span>
+              <span style="display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:50%;background:#48484f"></span>unknown</span>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <span style="font-family:'Geist Mono',monospace;font-size:9.5px;letter-spacing:0.04em;width:34px;text-align:center;height:16px;line-height:14px;border-radius:4px;box-sizing:border-box;color:#ff9592;background:rgba(229,72,77,0.12);border:1px solid rgba(229,72,77,0.32)">PROD</span>
+              <span style="font-family:'Geist Mono',monospace;font-size:9.5px;letter-spacing:0.04em;width:34px;text-align:center;height:16px;line-height:14px;border-radius:4px;box-sizing:border-box;color:#ffca5c;background:rgba(229,160,13,0.12);border:1px solid rgba(229,160,13,0.30)">STG</span>
+              <span style="font-family:'Geist Mono',monospace;font-size:9.5px;letter-spacing:0.04em;width:34px;text-align:center;height:16px;line-height:14px;border-radius:4px;box-sizing:border-box;color:#a1a1a8;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.12)">DEV</span>
+              <span style="font-family:'Geist Mono',monospace;font-size:9.5px;letter-spacing:0.04em;height:16px;line-height:14px;padding:0 4px;border-radius:4px;color:#8fc2ff;background:rgba(82,168,255,0.10);border:1px solid rgba(82,168,255,0.28);box-sizing:border-box">VPN</span>
+              <span style="font-family:'Geist Mono',monospace;font-size:9.5px;letter-spacing:0.04em;height:16px;line-height:16px;padding:0 5px;border-radius:4px;color:#ffca5c;border:1px dashed rgba(229,160,13,0.45)">STALE</span>
+            </div>
+          </div>
+          <div style="background:#111113;border:1px solid #232326;border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:12px">
+            <div style="font-family:'Geist Mono',monospace;font-size:12px;color:#a1a1a8">ActionButton · env × danger</div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+              <button style="display:flex;align-items:center;gap:6px;height:26px;padding:0 8px;border-radius:5px;background:rgba(229,72,77,0.09);border:1px solid rgba(229,72,77,0.28);color:#ffb1ae;font-family:inherit;font-size:11.5px;font-weight:500"><span style="flex:1;text-align:left">Git pull</span></button>
+              <button style="display:flex;align-items:center;gap:6px;height:26px;padding:0 8px;border-radius:5px;background:rgba(229,160,13,0.07);border:1px solid rgba(229,160,13,0.26);color:#f5d48a;font-family:inherit;font-size:11.5px;font-weight:500"><span style="flex:1;text-align:left">Git pull</span></button>
+              <button style="display:flex;align-items:center;gap:6px;height:26px;padding:0 8px;border-radius:5px;background:rgba(255,255,255,0.03);border:1px solid #2a2a2e;color:#d4d4d8;font-family:inherit;font-size:11.5px;font-weight:500"><span style="flex:1;text-align:left">Git pull</span></button>
+              <button style="display:flex;align-items:center;gap:6px;height:26px;padding:0 8px;border-radius:5px;background:rgba(229,72,77,0.09);border:1px solid rgba(229,72,77,0.28);color:#ffb1ae;font-family:inherit;font-size:11.5px;font-weight:500"><span style="flex:1;text-align:left">Deploy</span><span style="width:6px;height:6px;transform:rotate(45deg);background:#e5484d"></span></button>
+              <button style="display:flex;align-items:center;gap:6px;height:26px;padding:0 8px;border-radius:5px;background:rgba(229,160,13,0.07);border:1px solid rgba(229,160,13,0.26);color:#f5d48a;font-family:inherit;font-size:11.5px;font-weight:500"><span style="flex:1;text-align:left">Deploy</span><span style="width:6px;height:6px;transform:rotate(45deg);background:#e5484d"></span></button>
+              <button style="display:flex;align-items:center;gap:6px;height:26px;padding:0 8px;border-radius:5px;background:rgba(255,255,255,0.03);border:1px solid #2a2a2e;color:#d4d4d8;font-family:inherit;font-size:11.5px;font-weight:500"><span style="flex:1;text-align:left">Deploy</span><span style="width:6px;height:6px;transform:rotate(45deg);background:#e5484d"></span></button>
+            </div>
+            <div style="font-size:11.5px;line-height:17px;color:#8b8b92">◆ marks danger (migrate, deploy). Prod: every action confirms; prod + danger also needs the typed server id.</div>
+          </div>
+          <div style="background:#111113;border:1px solid #232326;border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:12px">
+            <div style="font-family:'Geist Mono',monospace;font-size:12px;color:#a1a1a8">TerminalTab · states</div>
+            <div style="display:flex;flex-direction:column;border:1px solid #1f1f22;border-radius:6px;overflow:hidden">
+              <div style="display:flex;background:#111113">
+                <div style="display:flex;align-items:center;gap:7px;height:34px;padding:0 10px;background:#0a0a0a;box-shadow:inset 0 -2px 0 #e5484d;font-size:12px;border-right:1px solid #1f1f22">{{ spin }}prod · deploy</div>
+                <div style="display:flex;align-items:center;gap:7px;height:34px;padding:0 10px;color:#8b8b92;box-shadow:inset 0 -1px 0 #1f1f22;font-size:12px;border-right:1px solid #1f1f22"><span style="color:#7ee787">✓</span>stg · pull</div>
+                <div style="display:flex;align-items:center;gap:7px;height:34px;padding:0 10px;color:#8b8b92;box-shadow:inset 0 -1px 0 #1f1f22;font-size:12px;flex:1"><span style="color:#ff7b72">✗</span>migrate<span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#ff7b72">1</span></div>
+              </div>
+              <div style="height:26px;background:#0a0a0a;border-top:1px solid #e5484d;font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73;display:flex;align-items:center;padding:0 10px">active prod terminal: 1px red top border</div>
+            </div>
+            <div style="font-size:11.5px;line-height:17px;color:#8b8b92">running = spinner · ok = ✓ · failed = ✗ + exit code · shell = $ · prod = 2px red underline</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="font-size:12px;font-weight:600;color:#8b8b92">Component map</div>
+        <div style="display:grid;grid-template-columns:200px 260px minmax(0,1fr);border:1px solid #232326;border-radius:10px;overflow:hidden;font-size:12.5px">
+          <span style="padding:9px 14px;background:#161618;color:#6b6b73;font-size:11px;font-weight:500">Component</span><span style="padding:9px 14px;background:#161618;color:#6b6b73;font-size:11px;font-weight:500">Built from</span><span style="padding:9px 14px;background:#161618;color:#6b6b73;font-size:11px;font-weight:500">Props</span>
+          <span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:12px">AppShell</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;color:#a1a1a8">ResizablePanelGroup</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:11.5px;color:#8b8b92">sidebarSize: number (persisted)</span>
+          <span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:12px">ServerTree</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;color:#a1a1a8">ScrollArea + Collapsible</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:11.5px;color:#8b8b92">servers, selection, stale: boolean, filter: string</span>
+          <span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:12px">ServerRow</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;color:#a1a1a8">CollapsibleTrigger</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:11.5px;color:#8b8b92">id, env, status, vpn?: string, appCount, open</span>
+          <span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:12px">AppRow</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;color:#a1a1a8">button (role=treeitem)</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:11.5px;color:#8b8b92">name, branch, lastRun: running | failed | null, selected</span>
+          <span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:12px">ActionButton</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;color:#a1a1a8">Button + cva</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:11.5px;color:#8b8b92">env: prod | staging | dev, danger: boolean</span>
+          <span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:12px">StatusDot · EnvTag</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;color:#a1a1a8">span · Badge variant=outline</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:11.5px;color:#8b8b92">status: up | down | checking | unknown · env</span>
+          <span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:12px">ConfigErrorBanner</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;color:#a1a1a8">Alert variant=destructive</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:11.5px;color:#8b8b92">file, line, message, suggestion?, lastGoodAt</span>
+          <span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:12px">TerminalTabs</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;color:#a1a1a8">custom strip (not shadcn Tabs)</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:11.5px;color:#8b8b92">tabs: title, state: running | ok | failed | shell, exitCode?, prod</span>
+          <span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:12px">TerminalPane</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;color:#a1a1a8">@xterm/xterm + fit addon</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:11.5px;color:#8b8b92">sessionId, prod (adds border-t border-env-prod)</span>
+          <span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:12px">CommandPreviewDialog</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;color:#a1a1a8">Dialog + Textarea</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:11.5px;color:#8b8b92">command, target, cwd, onRun, onSendToTab, currentTab</span>
+          <span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:12px">ProdConfirmDialog</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;color:#a1a1a8">AlertDialog + Input</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:11.5px;color:#8b8b92">command, serverId, host, danger (requires typed serverId)</span>
+          <span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:12px">VpnBlockedDialog</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;color:#a1a1a8">AlertDialog</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:11.5px;color:#8b8b92">serverId, host, port, vpn, error, onConnect, onRetry</span>
+          <span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:12px">CommandPalette</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;color:#a1a1a8">CommandDialog (cmdk)</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:11.5px;color:#8b8b92">groups: Actions, Open tabs, Apps, Servers · prod ranks last on ties</span>
+          <span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:12px">HistoryTable</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;color:#a1a1a8">Table + Input + Select</span><span style="padding:8px 14px;border-top:1px solid #1c1c1f;font-family:'Geist Mono',monospace;font-size:11.5px;color:#8b8b92">runs, query, env, exit, range, onRerun</span>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="font-size:12px;font-weight:600;color:#8b8b92">globals.css · Tailwind v4 + shadcn</div>
+          <pre style="margin:0;padding:16px 18px;background:#0a0a0a;border:1px solid #232326;border-radius:10px;font-family:'Geist Mono',monospace;font-size:11.5px;line-height:18px;color:#c9c9ce;white-space:pre;overflow:auto;user-select:text">@import "tailwindcss";
+@custom-variant dark (&amp;:is(.dark *));
+
+.dark {
+  --background: #0a0a0a;
+  --foreground: #ededef;
+  --card: #161618;          --card-foreground: #ededef;
+  --popover: #161618;       --popover-foreground: #ededef;
+  --primary: #ededef;       --primary-foreground: #0a0a0a;
+  --secondary: #1f1f23;     --secondary-foreground: #ededef;
+  --muted: #18181b;         --muted-foreground: #a1a1a8;
+  --accent: #202024;        --accent-foreground: #ededef;
+  --destructive: #e5484d;
+  --border: #232326;
+  --input: #2a2a2e;
+  --ring: #52525b;
+  --radius: 0.375rem;
+
+  --sidebar: #111113;       --sidebar-foreground: #c4c4ca;
+  --sidebar-accent: #202024; --sidebar-border: #232326;
+  --titlebar: #161618;
+  --subtle-foreground: #6b6b73;
+
+  --env-prod: #e5484d;      --env-prod-fg: #ff9592;
+  --env-prod-tint: rgb(229 72 77 / 0.09);
+  --env-prod-line: rgb(229 72 77 / 0.28);
+  --env-staging: #e5a00d;   --env-staging-fg: #ffca5c;
+  --env-staging-tint: rgb(229 160 13 / 0.07);
+  --env-staging-line: rgb(229 160 13 / 0.26);
+  --env-dev-fg: #a1a1a8;
+  --vpn: #52a8ff;           --vpn-fg: #8fc2ff;
+
+  --status-up: #46a758;     --status-down: #e5484d;
+  --status-checking: #52a8ff; --status-unknown: #48484f;
+}
+
+@theme inline {
+  --font-sans: "Geist", ui-sans-serif, system-ui;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-popover: var(--popover);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
+  --color-accent: var(--accent);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-titlebar: var(--titlebar);
+  --color-env-prod: var(--env-prod);
+  --color-env-prod-fg: var(--env-prod-fg);
+  --color-env-prod-tint: var(--env-prod-tint);
+  --color-env-prod-line: var(--env-prod-line);
+  --color-env-staging: var(--env-staging);
+  --color-env-staging-fg: var(--env-staging-fg);
+  --color-env-staging-tint: var(--env-staging-tint);
+  --color-env-staging-line: var(--env-staging-line);
+  --color-vpn: var(--vpn);
+  --color-status-up: var(--status-up);
+  --color-status-down: var(--status-down);
+  --color-status-checking: var(--status-checking);
+  --color-status-unknown: var(--status-unknown);
+  --text-ui: 13px;  --text-row: 12.5px;
+  --text-control: 11.5px; --text-tag: 9.5px;
+}
+
+@keyframes status-pulse {
+  50% { opacity: .3; transform: scale(.75); }
+}</pre>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:24px">
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="font-size:12px;font-weight:600;color:#8b8b92">action-button.tsx · cva</div>
+            <pre style="margin:0;padding:16px 18px;background:#0a0a0a;border:1px solid #232326;border-radius:10px;font-family:'Geist Mono',monospace;font-size:11.5px;line-height:18px;color:#c9c9ce;white-space:pre;overflow:auto;user-select:text">export const actionButton = cva(
+  "inline-flex h-[26px] items-center gap-1.5 rounded-[5px] border px-2 " +
+  "text-control font-medium hover:brightness-125",
+  {
+    variants: {
+      env: {
+        prod: "bg-env-prod-tint border-env-prod-line text-[#ffb1ae]",
+        staging: "bg-env-staging-tint border-env-staging-line text-[#f5d48a]",
+        dev: "bg-white/[0.03] border-input text-zinc-300",
+      },
+      danger: {
+        true: "after:ml-auto after:size-1.5 after:rotate-45 after:bg-env-prod",
+        false: "",
+      },
+    },
+    defaultVariants: { env: "dev", danger: false },
+  }
+);</pre>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="font-size:12px;font-weight:600;color:#8b8b92">env-tag.tsx · cva</div>
+            <pre style="margin:0;padding:16px 18px;background:#0a0a0a;border:1px solid #232326;border-radius:10px;font-family:'Geist Mono',monospace;font-size:11.5px;line-height:18px;color:#c9c9ce;white-space:pre;overflow:auto;user-select:text">export const envTag = cva(
+  "w-[34px] h-4 rounded border text-center font-mono " +
+  "text-tag leading-[14px] tracking-[0.04em]",
+  {
+    variants: {
+      env: {
+        prod: "text-env-prod-fg bg-env-prod/12 border-env-prod/32",
+        staging: "text-env-staging-fg bg-env-staging/12 border-env-staging/30",
+        dev: "text-muted-foreground bg-white/4 border-white/12",
+      },
+    },
+  }
+);
+// Server group accent: shadow-[inset_2px_0_0_var(--env-prod)]
+// Prod tab: shadow-[inset_0_-2px_0_var(--env-prod)]</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const h = React.createElement;
+    return {
+      spin: h('span', { style:{ width:10, height:10, boxSizing:'border-box', borderRadius:'50%', border:'1.5px solid rgba(255,255,255,0.16)', borderTopColor:'#ededef', animation:'kspin .8s linear infinite', display:'inline-block' } }),
+      pulse: h('span', { style:{ width:7, height:7, borderRadius:'50%', background:'#52a8ff', display:'inline-block', animation:'kpulse 1.2s ease-in-out infinite' } }),
+    };
+  }
+}
+</script>
+</body>
+</html>

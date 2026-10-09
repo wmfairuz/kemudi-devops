@@ -1,0 +1,43 @@
+[package]
+name = "kemudi"
+version = "0.1.0"
+description = "Run dev/ops actions on remote servers from a sidebar with real terminal tabs"
+authors = ["Fairuz"]
+edition = "2021"
+rust-version = "1.85"
+
+[lib]
+# The `_lib` suffix keeps the lib name distinct from the bin name (cargo#8519).
+name = "kemudi_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+portable-pty = "0.9"
+libc = "0.2"
+dirs = "6"
+serde_norway = "0.9.42"
+minijinja = "2.24.0"
+notify-debouncer-full = "0.7.0"
+tokio = { version = "1.53.2", features = ["net", "time", "process", "sync", "rt", "macros"] }
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+tauri-plugin-notification = "2"
+tauri-plugin-window-state = "2"
+toml = "1"
+security-framework = "3"
+chacha20poly1305 = "0.10"
+sha2 = "0.10"
+base64 = "0.22"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

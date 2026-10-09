@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+@keyframes kspin{to{transform:rotate(360deg)}}
+@keyframes kpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.75)}}
+@keyframes kblink{50%{opacity:0}}
+</style>
+</helmet>
+<div style="position:relative;width:100%;height:100%;display:flex;flex-direction:column;background:#0a0a0a;color:#ededef;font-family:'Geist',system-ui,sans-serif;font-size:13px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.10);box-sizing:border-box;-webkit-font-smoothing:antialiased;user-select:none">
+  <div style="height:38px;flex:none;display:flex;align-items:center;position:relative;background:#161618;border-bottom:1px solid #232326">
+    <div style="display:flex;gap:8px;padding-left:14px;position:relative;z-index:1">
+      <span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span>
+      <span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span>
+      <span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span>
+    </div>
+    <div style="position:absolute;left:0;right:0;text-align:center;font-size:13px;font-weight:600;color:#a1a1a8;pointer-events:none">{{ windowTitle }}</div>
+  </div>
+
+  <div style="flex:1;display:flex;min-height:0">
+    <aside style="width:{{ sidebarW }}px;flex:none;display:flex;flex-direction:column;background:#111113;border-right:1px solid #232326;position:relative;min-height:0">
+      <div onMouseDown="{{ onResizeDown }}" style="position:absolute;top:0;bottom:0;right:-3px;width:6px;cursor:col-resize;z-index:2" style-hover="background:rgba(255,255,255,0.06)"></div>
+      <div style="padding:10px 10px 6px">
+        <div style="display:flex;align-items:center;gap:8px;height:28px;padding:0 6px 0 8px;background:#18181b;border:1px solid #26262a;border-radius:6px;color:#6b6b73;font-size:12.5px">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg>
+          <span style="flex:1">Filter servers &amp; apps</span>
+          <span style="font-family:'Geist Mono',monospace;font-size:10.5px;height:18px;line-height:18px;padding:0 5px;border:1px solid #2e2e33;background:#1c1c1f;border-radius:4px;color:#8b8b92">/</span>
+        </div>
+      </div>
+
+      <sc-if value="{{ isError }}" hint-placeholder-val="{{ false }}">
+        <div style="margin:4px 10px 6px;padding:10px;border-radius:7px;background:rgba(229,72,77,0.08);border:1px solid rgba(229,72,77,0.28);display:flex;flex-direction:column;gap:7px">
+          <div style="display:flex;gap:8px;align-items:flex-start">
+            <span style="width:14px;height:14px;border-radius:50%;background:#e5484d;color:#0a0a0a;font-size:10px;font-weight:700;line-height:14px;text-align:center;flex:none;margin-top:1px">!</span>
+            <div style="font-family:'Geist Mono',monospace;font-size:11.5px;line-height:16px;color:#ffb1ae">servers.yaml line 14: unknown field <span style="color:#ffffff;background:rgba(229,72,77,0.28);padding:0 3px;border-radius:3px">bracnh</span></div>
+          </div>
+          <div style="font-size:11.5px;line-height:16px;color:#a1a1a8;padding-left:22px">Showing last good config from 14:02. Did you mean <span style="font-family:'Geist Mono',monospace;color:#ededef">branch</span>?</div>
+          <div style="display:flex;gap:6px;padding-left:22px">
+            <button style="height:24px;padding:0 8px;border-radius:5px;background:#1f1f23;border:1px solid #2e2e33;color:#ededef;font-family:inherit;font-size:11.5px;font-weight:500" style-hover="background:#26262b">Open at line 14</button>
+            <button style="height:24px;padding:0 8px;border-radius:5px;background:transparent;border:1px solid transparent;color:#a1a1a8;font-family:inherit;font-size:11.5px;font-weight:500" style-hover="color:#ededef;background:#1a1a1d">Reload</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+        <div style="margin:10px;padding:14px;border:1px dashed #2a2a2e;border-radius:8px;display:flex;flex-direction:column;gap:6px">
+          <div style="font-size:12.5px;font-weight:500;color:#ededef">No servers</div>
+          <div style="font-family:'Geist Mono',monospace;font-size:11px;line-height:16px;color:#6b6b73">servers.yaml not found in ~/.config/kemudi/</div>
+          <div style="display:flex;gap:6px;margin-top:4px">
+            <button style="height:24px;padding:0 8px;border-radius:5px;background:#ededef;border:none;color:#0a0a0a;font-family:inherit;font-size:11.5px;font-weight:500">Create file</button>
+            <button style="height:24px;padding:0 8px;border-radius:5px;background:transparent;border:1px solid #2e2e33;color:#a1a1a8;font-family:inherit;font-size:11.5px;font-weight:500">Choose…</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ hasServers }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 12px 5px;font-size:11px;font-weight:500;color:#6b6b73">
+          <span>Servers</span>
+          <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#55555c">6 · 45 apps</span>
+          <span style="flex:1"></span>
+          <sc-if value="{{ isError }}" hint-placeholder-val="{{ false }}">
+            <span style="font-family:'Geist Mono',monospace;font-size:9.5px;letter-spacing:0.04em;height:16px;line-height:16px;padding:0 5px;border-radius:4px;color:#ffca5c;border:1px dashed rgba(229,160,13,0.45)">STALE</span>
+          </sc-if>
+        </div>
+        <div style="flex:1;min-height:0;overflow:auto;padding-bottom:8px;opacity:{{ treeOpacity }}">
+          <sc-for list="{{ servers }}" as="s" hint-placeholder-count="6">
+            <div style="box-shadow:inset 2px 0 0 {{ s.bar }}">
+              <div onClick="{{ s.toggle }}" style="display:flex;align-items:center;gap:7px;height:28px;padding:0 10px;cursor:default" style-hover="background:#17171a">
+                <span style="width:10px;flex:none;color:#55555c;font-size:9px;text-align:center">{{ s.chev }}</span>
+                {{ s.dotEl }}
+                <span style="font-weight:500;font-size:12.5px;color:{{ s.nameFg }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.id }}</span>
+                <sc-if value="{{ s.vpn }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-family:'Geist Mono',monospace;font-size:9.5px;letter-spacing:0.04em;height:16px;line-height:14px;padding:0 4px;border-radius:4px;color:#8fc2ff;background:rgba(82,168,255,0.10);border:1px solid rgba(82,168,255,0.28);box-sizing:border-box;flex:none">VPN</span>
+                </sc-if>
+                <span style="flex:1"></span>
+                <sc-if value="{{ s.collapsed }}" hint-placeholder-val="{{ true }}">
+                  <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#55555c">{{ s.count }}</span>
+                </sc-if>
+                <span style="font-family:'Geist Mono',monospace;font-size:9.5px;letter-spacing:0.04em;width:34px;text-align:center;height:16px;line-height:14px;border-radius:4px;box-sizing:border-box;flex:none;color:{{ s.envFg }};background:{{ s.envBg }};border:1px solid {{ s.envBd }}">{{ s.envLabel }}</span>
+              </div>
+              <sc-if value="{{ s.expanded }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;gap:4px;padding:2px 10px 6px 27px">
+                  <sc-for list="{{ s.serverActions }}" as="b" hint-placeholder-count="2">
+                    <button onClick="{{ b.onClick }}" style="height:22px;padding:0 7px;border-radius:5px;background:{{ b.bg }};border:1px solid {{ b.bd }};color:{{ b.fg }};font-family:'Geist Mono',monospace;font-size:10.5px;white-space:nowrap;cursor:default" style-hover="filter:brightness(1.3)">{{ b.label }}</button>
+                  </sc-for>
+                </div>
+                <sc-for list="{{ s.apps }}" as="a" hint-placeholder-count="6">
+                  <div onClick="{{ a.select }}" style="display:flex;align-items:center;gap:8px;height:26px;padding:0 10px 0 27px;background:{{ a.bg }};color:{{ a.fg }};font-size:12.5px;cursor:default" style-hover="background:#1c1c20">
+                    <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.name }}</span>
+                    <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#55555c;white-space:nowrap">{{ a.branch }}</span>
+                    {{ a.statusEl }}
+                  </div>
+                  <sc-if value="{{ a.selected }}" hint-placeholder-val="{{ false }}">
+                    <div style="padding:6px 10px 10px 27px;display:flex;flex-direction:column;gap:6px;background:#151518;border-bottom:1px solid #1c1c1f">
+                      <div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#6b6b73">{{ a.path }}</div>
+                      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+                        <sc-for list="{{ a.actions }}" as="b" hint-placeholder-count="6">
+                          <button onClick="{{ b.onClick }}" style="display:flex;align-items:center;gap:6px;height:26px;padding:0 8px;border-radius:5px;background:{{ b.bg }};border:1px solid {{ b.bd }};color:{{ b.fg }};font-family:inherit;font-size:11.5px;font-weight:500;text-align:left;cursor:default;min-width:0" style-hover="filter:brightness(1.3)">
+                            <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ b.label }}</span>
+                            <sc-if value="{{ b.danger }}" hint-placeholder-val="{{ false }}">
+                              <span title="Danger: always asks to confirm" style="width:6px;height:6px;flex:none;transform:rotate(45deg);background:#e5484d"></span>
+                            </sc-if>
+                          </button>
+                        </sc-for>
+                      </div>
+                      <sc-if value="{{ a.isProd }}" hint-placeholder-val="{{ false }}">
+                        <div style="font-size:10.5px;color:#d98c8a">Production · every action asks to confirm</div>
+                      </sc-if>
+                    </div>
+                  </sc-if>
+                </sc-for>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+      <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}"><div style="flex:1"></div></sc-if>
+
+      <div style="flex:none;border-top:1px solid #1f1f22;padding:6px;display:flex;flex-direction:column;gap:1px">
+        <div onClick="{{ openHistory }}" style="display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;border-radius:5px;color:#a1a1a8;font-size:12.5px;cursor:default" style-hover="background:#1a1a1d;color:#ededef">
+          <span style="flex:1">History</span>
+          <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#55555c">⌘Y</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;border-radius:5px;color:#6b6b73;font-family:'Geist Mono',monospace;font-size:11px;cursor:default" style-hover="background:#1a1a1d;color:#a1a1a8">
+          <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">~/.config/kemudi/servers.yaml</span>
+          <span style="font-family:'Geist',sans-serif;font-size:11px">Edit</span>
+        </div>
+      </div>
+    </aside>
+
+    <main style="flex:1;min-width:0;display:flex;flex-direction:column;position:relative">
+      <div style="height:36px;flex:none;display:flex;background:#111113">
+        <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="5">
+          <div onClick="{{ t.activate }}" style="display:flex;align-items:center;gap:8px;height:36px;padding:0 8px 0 12px;min-width:0;max-width:232px;flex:0 1 auto;background:{{ t.bg }};color:{{ t.fg }};border-right:1px solid #1f1f22;box-shadow:{{ t.shadow }};font-size:12.5px;cursor:default;box-sizing:border-box" style-hover="color:#ededef">
+            {{ t.iconEl }}
+            <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.title }}</span>
+            <sc-if value="{{ t.failed }}" hint-placeholder-val="{{ false }}">
+              <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#ff7b72">{{ t.code }}</span>
+            </sc-if>
+            <span style="width:16px;height:16px;line-height:15px;text-align:center;border-radius:4px;color:#55555c;font-size:14px;flex:none" style-hover="color:#ededef;background:#26262b">×</span>
+          </div>
+        </sc-for>
+        <div style="width:36px;height:36px;flex:none;display:flex;align-items:center;justify-content:center;color:#6b6b73;font-size:16px;box-shadow:inset 0 -1px 0 #1f1f22;cursor:default" style-hover="color:#ededef">+</div>
+        <div style="flex:1;box-shadow:inset 0 -1px 0 #1f1f22;display:flex;align-items:center;justify-content:flex-end;padding-right:12px;gap:6px;color:#55555c;font-size:11px">
+          <span style="font-family:'Geist Mono',monospace;font-size:10.5px;height:18px;line-height:18px;padding:0 5px;border:1px solid #26262a;border-radius:4px">⌘K</span>
+        </div>
+      </div>
+
+      <sc-if value="{{ showTerminal }}" hint-placeholder-val="{{ true }}">
+        <div style="flex:1;min-height:0;background:#0a0a0a;border-top:1px solid {{ termTop }};padding:12px 16px;overflow:auto;font-family:'Geist Mono',ui-monospace,monospace;font-size:12.5px;line-height:19px;color:#c9c9ce;user-select:text">
+          <sc-for list="{{ lines }}" as="l" hint-placeholder-count="20">
+            <div style="white-space:pre-wrap;word-break:break-word;min-height:19px"><sc-for list="{{ l.segs }}" as="g"><span style="color:{{ g.c }}">{{ g.t }}</span></sc-for><sc-if value="{{ l.cursor }}" hint-placeholder-val="{{ false }}">{{ cursorEl }}</sc-if></div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;background:#0a0a0a;padding:40px">
+          <div style="width:100%;max-width:500px;display:flex;flex-direction:column;gap:18px">
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div style="font-size:20px;font-weight:600;letter-spacing:-0.01em">No servers yet</div>
+              <div style="font-size:13px;line-height:20px;color:#a1a1a8;text-wrap:pretty">Kemudi reads servers and apps from one YAML file. Add a server, save, and the sidebar picks it up.</div>
+            </div>
+            <div style="border:1px solid #232326;border-radius:8px;background:#111113;overflow:hidden">
+              <div style="display:flex;align-items:center;height:30px;padding:0 12px;border-bottom:1px solid #1f1f22;font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">~/.config/kemudi/servers.yaml</div>
+              <pre style="margin:0;padding:12px 14px;font-family:'Geist Mono',monospace;font-size:12px;line-height:19px;color:#c9c9ce;user-select:text"><span style="color:#79c0ff">servers</span>:
+  - <span style="color:#79c0ff">id</span>: stg-svr03
+    <span style="color:#79c0ff">host</span>: 10.0.1.13
+    <span style="color:#79c0ff">user</span>: deploy
+    <span style="color:#79c0ff">env</span>: staging        <span style="color:#6b6b73"># prod | staging | dev</span>
+    <span style="color:#79c0ff">vpn</span>: wg-client      <span style="color:#6b6b73"># optional</span>
+    <span style="color:#79c0ff">apps</span>:
+      - <span style="color:#79c0ff">name</span>: akaun
+        <span style="color:#79c0ff">path</span>: /var/www/akaun
+        <span style="color:#79c0ff">branch</span>: develop</pre>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button style="height:30px;padding:0 12px;border-radius:6px;background:#ededef;border:none;color:#0a0a0a;font-family:inherit;font-size:12.5px;font-weight:500" style-hover="background:#ffffff">Create servers.yaml</button>
+              <button style="display:flex;align-items:center;gap:8px;height:30px;padding:0 10px 0 12px;border-radius:6px;background:#1f1f23;border:1px solid #2e2e33;color:#ededef;font-family:inherit;font-size:12.5px;font-weight:500" style-hover="background:#26262b">Open local shell <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#8b8b92">⌘T</span></button>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ showHistory }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;min-height:0;display:flex;flex-direction:column;background:#0a0a0a">
+          <div style="display:flex;align-items:center;gap:10px;padding:14px 20px;border-bottom:1px solid #1f1f22">
+            <div style="font-size:15px;font-weight:600">History</div>
+            <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">1,284 runs</div>
+            <div style="flex:1"></div>
+            <div style="display:flex;align-items:center;gap:8px;width:280px;height:28px;padding:0 8px;background:#18181b;border:1px solid #26262a;border-radius:6px;color:#6b6b73;font-size:12.5px;box-sizing:border-box">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg>
+              <span>Search command, app, server…</span>
+            </div>
+            <button style="height:28px;padding:0 10px;border-radius:6px;background:transparent;border:1px solid #2a2a2e;color:#a1a1a8;font-family:inherit;font-size:12px">All envs ▾</button>
+            <button style="height:28px;padding:0 10px;border-radius:6px;background:transparent;border:1px solid #2a2a2e;color:#a1a1a8;font-family:inherit;font-size:12px">Any exit ▾</button>
+            <button style="height:28px;padding:0 10px;border-radius:6px;background:transparent;border:1px solid #2a2a2e;color:#a1a1a8;font-family:inherit;font-size:12px">Last 7 days ▾</button>
+          </div>
+          <div style="display:grid;grid-template-columns:84px 170px 128px 118px minmax(0,1fr) 80px 66px 64px;align-items:center;gap:0 12px;height:30px;padding:0 20px;border-bottom:1px solid #1f1f22;font-size:11px;font-weight:500;color:#6b6b73">
+            <span>Time</span><span>Server</span><span>App</span><span>Action</span><span>Command</span><span>Exit</span><span style="text-align:right">Duration</span><span></span>
+          </div>
+          <div style="flex:1;min-height:0;overflow:auto">
+            <sc-for list="{{ history }}" as="r" hint-placeholder-count="12">
+              <sc-if value="{{ r.sep }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:12px 20px 6px;font-size:11px;font-weight:500;color:#6b6b73">{{ r.label }}</div>
+              </sc-if>
+              <sc-if value="{{ r.row }}" hint-placeholder-val="{{ true }}">
+                <div style="display:grid;grid-template-columns:84px 170px 128px 118px minmax(0,1fr) 80px 66px 64px;align-items:center;gap:0 12px;height:34px;padding:0 20px;border-bottom:1px solid #161618;font-size:12.5px;box-shadow:inset 2px 0 0 {{ r.bar }}" style-hover="background:#121215">
+                  <span style="font-family:'Geist Mono',monospace;font-size:11.5px;color:#8b8b92">{{ r.time }}</span>
+                  <span style="display:flex;align-items:center;gap:7px;min-width:0">
+                    <span style="font-family:'Geist Mono',monospace;font-size:9.5px;letter-spacing:0.04em;width:34px;text-align:center;height:16px;line-height:14px;border-radius:4px;box-sizing:border-box;flex:none;color:{{ r.envFg }};background:{{ r.envBg }};border:1px solid {{ r.envBd }}">{{ r.envLabel }}</span>
+                    <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.server }}</span>
+                  </span>
+                  <span style="color:{{ r.appFg }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.app }}</span>
+                  <span style="color:#c9c9ce;white-space:nowrap">{{ r.action }}</span>
+                  <span style="font-family:'Geist Mono',monospace;font-size:11.5px;color:#8b8b92;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.cmd }}</span>
+                  <span style="display:flex;align-items:center;gap:6px;font-family:'Geist Mono',monospace;font-size:11.5px;color:{{ r.exitFg }}">{{ r.exitEl }}{{ r.exit }}</span>
+                  <span style="font-family:'Geist Mono',monospace;font-size:11.5px;color:#6b6b73;text-align:right">{{ r.dur }}</span>
+                  <button style="height:24px;padding:0 8px;border-radius:5px;background:transparent;border:1px solid #2a2a2e;color:#c9c9ce;font-family:inherit;font-size:11.5px;font-weight:500;justify-self:end" style-hover="background:#1f1f23;color:#ffffff">{{ r.btn }}</button>
+                </div>
+              </sc-if>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+
+  <sc-if value="{{ anyOverlay }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ close }}" style="position:absolute;left:0;right:0;bottom:0;top:38px;background:rgba(0,0,0,0.55);display:flex;justify-content:center;align-items:{{ ovAlign }};padding-top:{{ ovPadTop }}">
+
+      <sc-if value="{{ ovPreview }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ stop }}" style="width:600px;background:#161618;border:1px solid #2a2a2e;border-radius:12px;box-shadow:0 24px 80px rgba(0,0,0,0.6);overflow:hidden">
+          <div style="padding:16px 20px 12px;display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:15px;font-weight:600">{{ dlgTitle }}</span>
+              <span style="font-family:'Geist Mono',monospace;font-size:9.5px;letter-spacing:0.04em;width:34px;text-align:center;height:16px;line-height:14px;border-radius:4px;box-sizing:border-box;color:{{ dlgEnvFg }};background:{{ dlgEnvBg }};border:1px solid {{ dlgEnvBd }}">{{ dlgEnvLabel }}</span>
+            </div>
+            <div style="font-size:12.5px;color:#a1a1a8">{{ dlgWhere }}</div>
+          </div>
+          <div style="padding:0 20px 16px;display:flex;flex-direction:column;gap:12px">
+            <div style="display:grid;grid-template-columns:72px 1fr;row-gap:6px;font-size:12px">
+              <span style="color:#6b6b73">Target</span>
+              <span style="display:flex;align-items:center;gap:7px;font-family:'Geist Mono',monospace;font-size:11.5px;color:#c9c9ce"><span style="width:7px;height:7px;border-radius:50%;background:#46a758"></span>{{ dlgHost }}</span>
+              <span style="color:#6b6b73">Directory</span>
+              <span style="font-family:'Geist Mono',monospace;font-size:11.5px;color:#c9c9ce">{{ dlgPath }}</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <div style="display:flex;align-items:center;font-size:12px;color:#6b6b73">
+                <span style="flex:1">Command</span>
+                <sc-if value="{{ edited }}" hint-placeholder-val="{{ false }}"><span style="color:#ffca5c;margin-right:10px">Edited</span></sc-if>
+                <span style="font-size:11px">from servers.yaml</span>
+              </div>
+              <textarea value="{{ cmd }}" onChange="{{ onCmd }}" spellcheck="false" style="height:104px;resize:none;background:#0a0a0a;border:1px solid #2a2a2e;border-radius:8px;padding:10px 12px;font-family:'Geist Mono',monospace;font-size:12.5px;line-height:19px;color:#ededef;outline:none;box-sizing:border-box;width:100%" style-focus="border-color:#52525b;box-shadow:0 0 0 3px rgba(255,255,255,0.06)"></textarea>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;padding:12px 20px;border-top:1px solid #232326;background:#131315">
+            <button onClick="{{ resetCmd }}" style="height:30px;padding:0 10px;border-radius:6px;background:transparent;border:none;color:#a1a1a8;font-family:inherit;font-size:12.5px" style-hover="color:#ededef;background:#1f1f23">Reset</button>
+            <span style="flex:1;font-size:11.5px;color:#6b6b73;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Current tab: {{ activeTitle }}</span>
+            <button onClick="{{ close }}" style="display:flex;align-items:center;gap:8px;height:30px;padding:0 10px 0 12px;border-radius:6px;background:#1f1f23;border:1px solid #2e2e33;color:#ededef;font-family:inherit;font-size:12.5px;font-weight:500" style-hover="background:#26262b">Send to current tab <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#8b8b92">⌥↵</span></button>
+            <button onClick="{{ close }}" style="display:flex;align-items:center;gap:8px;height:30px;padding:0 10px 0 14px;border-radius:6px;background:#ededef;border:none;color:#0a0a0a;font-family:inherit;font-size:12.5px;font-weight:500" style-hover="background:#ffffff">Run <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#55555c">⌘↵</span></button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ovProd }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ stop }}" style="width:600px;background:#161618;border:1px solid #2a2a2e;border-radius:12px;box-shadow:0 24px 80px rgba(0,0,0,0.6);overflow:hidden">
+          <div style="padding:16px 20px 12px;display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:15px;font-weight:600">Run on production?</span>
+              <span style="font-family:'Geist Mono',monospace;font-size:9.5px;letter-spacing:0.04em;width:34px;text-align:center;height:16px;line-height:14px;border-radius:4px;box-sizing:border-box;color:#ff9592;background:rgba(229,72,77,0.12);border:1px solid rgba(229,72,77,0.32)">PROD</span>
+            </div>
+            <div style="font-size:12.5px;color:#a1a1a8">{{ dlgTitle }} · {{ dlgWhere }}</div>
+          </div>
+          <div style="padding:0 20px 18px">
+            <div style="border:1px solid rgba(229,72,77,0.55);background:rgba(229,72,77,0.05);border-radius:8px;overflow:hidden">
+              <div style="display:flex;align-items:center;gap:8px;height:28px;padding:0 12px;border-bottom:1px solid rgba(229,72,77,0.25);font-family:'Geist Mono',monospace;font-size:11px;color:#ff9592">{{ dlgHost }}</div>
+              <div style="padding:10px 12px;font-family:'Geist Mono',monospace;font-size:12.5px;line-height:19px;color:#f4f4f5;white-space:pre-wrap;word-break:break-word;user-select:text">{{ dlgCmd }}</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;padding:12px 20px;border-top:1px solid #232326;background:#131315">
+            <span style="flex:1;font-size:11.5px;color:#6b6b73">Opens in a new prod tab</span>
+            <button onClick="{{ close }}" style="display:flex;align-items:center;gap:8px;height:30px;padding:0 10px 0 12px;border-radius:6px;background:transparent;border:1px solid #2e2e33;color:#ededef;font-family:inherit;font-size:12.5px;font-weight:500" style-hover="background:#1f1f23">Cancel <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#8b8b92">esc</span></button>
+            <button onClick="{{ close }}" style="height:30px;padding:0 14px;border-radius:6px;background:#e5484d;border:none;color:#ffffff;font-family:inherit;font-size:12.5px;font-weight:500" style-hover="background:#ec5d61">Run on {{ dlgServer }}</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ovDanger }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ stop }}" style="width:600px;background:#161618;border:1px solid #2a2a2e;border-radius:12px;box-shadow:0 24px 80px rgba(0,0,0,0.6);overflow:hidden">
+          <div style="padding:16px 20px 12px;display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:15px;font-weight:600">{{ dlgTitle }} on production</span>
+              <span style="font-family:'Geist Mono',monospace;font-size:9.5px;letter-spacing:0.04em;width:34px;text-align:center;height:16px;line-height:14px;border-radius:4px;box-sizing:border-box;color:#ff9592;background:rgba(229,72,77,0.12);border:1px solid rgba(229,72,77,0.32)">PROD</span>
+              <span style="display:flex;align-items:center;gap:5px;font-family:'Geist Mono',monospace;font-size:9.5px;letter-spacing:0.04em;height:16px;padding:0 5px;border-radius:4px;box-sizing:border-box;color:#ffffff;background:#e5484d"><span style="width:5px;height:5px;transform:rotate(45deg);background:#ffffff"></span>DANGER</span>
+            </div>
+            <div style="font-size:12.5px;color:#a1a1a8">{{ dlgWhere }} · {{ dangerNote }}</div>
+          </div>
+          <div style="padding:0 20px 16px;display:flex;flex-direction:column;gap:14px">
+            <div style="border:1px solid rgba(229,72,77,0.55);background:rgba(229,72,77,0.05);border-radius:8px;overflow:hidden">
+              <div style="display:flex;align-items:center;gap:8px;height:28px;padding:0 12px;border-bottom:1px solid rgba(229,72,77,0.25);font-family:'Geist Mono',monospace;font-size:11px;color:#ff9592">{{ dlgHost }}</div>
+              <div style="padding:10px 12px;font-family:'Geist Mono',monospace;font-size:12.5px;line-height:19px;color:#f4f4f5;white-space:pre-wrap;word-break:break-word;user-select:text">{{ dlgCmd }}</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <div style="font-size:12px;color:#a1a1a8">Type <span style="font-family:'Geist Mono',monospace;color:#ededef;background:#232327;padding:1px 5px;border-radius:4px">{{ dlgServer }}</span> to confirm</div>
+              <input value="{{ typed }}" onChange="{{ onType }}" spellcheck="false" placeholder="{{ dlgServer }}" style="height:32px;padding:0 10px;background:#0a0a0a;border:1px solid {{ typedBd }};border-radius:6px;font-family:'Geist Mono',monospace;font-size:12.5px;color:#ededef;outline:none;box-sizing:border-box;width:100%;user-select:text" style-focus="box-shadow:0 0 0 3px rgba(229,72,77,0.15)">
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;padding:12px 20px;border-top:1px solid #232326;background:#131315">
+            <span style="flex:1"></span>
+            <button onClick="{{ close }}" style="display:flex;align-items:center;gap:8px;height:30px;padding:0 10px 0 12px;border-radius:6px;background:transparent;border:1px solid #2e2e33;color:#ededef;font-family:inherit;font-size:12.5px;font-weight:500" style-hover="background:#1f1f23">Cancel <span style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#8b8b92">esc</span></button>
+            <sc-if value="{{ canRun }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ close }}" style="height:30px;padding:0 14px;border-radius:6px;background:#e5484d;border:none;color:#ffffff;font-family:inherit;font-size:12.5px;font-weight:500" style-hover="background:#ec5d61">{{ dlgTitle }} {{ dlgServer }}</button>
+            </sc-if>
+            <sc-if value="{{ cantRun }}" hint-placeholder-val="{{ true }}">
+              <button disabled style="height:30px;padding:0 14px;border-radius:6px;background:rgba(229,72,77,0.22);border:none;color:rgba(255,255,255,0.38);font-family:inherit;font-size:12.5px;font-weight:500;cursor:not-allowed">{{ dlgTitle }} {{ dlgServer }}</button>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ovVpn }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ stop }}" style="width:520px;background:#161618;border:1px solid #2a2a2e;border-radius:12px;box-shadow:0 24px 80px rgba(0,0,0,0.6);overflow:hidden">
+          <div style="padding:18px 20px 16px;display:flex;gap:12px">
+            <span style="width:28px;height:28px;flex:none;border-radius:50%;background:rgba(229,72,77,0.14);display:flex;align-items:center;justify-content:center"><span style="width:8px;height:8px;border-radius:50%;background:#e5484d"></span></span>
+            <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+              <div style="font-size:14px;font-weight:600;line-height:20px">client-prod-01 is unreachable (10.0.0.5:22)</div>
+              <div style="font-size:12.5px;line-height:19px;color:#a1a1a8;text-wrap:pretty">This server is behind <span style="font-family:'Geist Mono',monospace;color:#ededef">vpn: wg-client</span> in servers.yaml. Connect the VPN, then retry.</div>
+              <div style="font-family:'Geist Mono',monospace;font-size:11.5px;line-height:17px;color:#8b8b92;background:#0a0a0a;border:1px solid #232326;border-radius:6px;padding:8px 10px">ssh: connect to host 10.0.0.5 port 22: Operation timed out (5s)</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;padding:12px 20px;border-top:1px solid #232326;background:#131315">
+            <button onClick="{{ close }}" style="height:30px;padding:0 10px;border-radius:6px;background:transparent;border:none;color:#a1a1a8;font-family:inherit;font-size:12.5px" style-hover="color:#ededef;background:#1f1f23">Cancel</button>
+            <span style="flex:1"></span>
+            <button onClick="{{ retry }}" style="height:30px;padding:0 12px;border-radius:6px;background:#1f1f23;border:1px solid #2e2e33;color:#ededef;font-family:inherit;font-size:12.5px;font-weight:500" style-hover="background:#26262b">Retry</button>
+            <button onClick="{{ connectVpn }}" style="height:30px;padding:0 14px;border-radius:6px;background:#ededef;border:none;color:#0a0a0a;font-family:inherit;font-size:12.5px;font-weight:500" style-hover="background:#ffffff">Connect VPN</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ ovPalette }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ stop }}" style="width:640px;background:#161618;border:1px solid #2a2a2e;border-radius:12px;box-shadow:0 24px 80px rgba(0,0,0,0.6);overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;height:50px;padding:0 14px 0 16px;border-bottom:1px solid #232326">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#6b6b73" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg>
+            <span style="flex:1;font-size:15px;color:#ededef;display:flex;align-items:center">pull akaun stg{{ caretEl }}</span>
+            <span style="font-family:'Geist Mono',monospace;font-size:10.5px;height:18px;line-height:18px;padding:0 5px;border:1px solid #2e2e33;background:#1c1c1f;border-radius:4px;color:#8b8b92">esc</span>
+          </div>
+          <div style="padding:6px;display:flex;flex-direction:column">
+            <div style="padding:8px 10px 4px;font-size:11px;font-weight:500;color:#6b6b73">Actions</div>
+            <div style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:7px;background:#222226">
+              <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+                <div style="font-size:13px;color:#a1a1a8"><span style="color:#ffffff;font-weight:500">Git pull</span> · <span style="color:#ffffff;font-weight:500">akaun</span> on <span style="color:#ffffff;font-weight:500">stg</span>-svr03</div>
+                <div style="font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">cd /var/www/akaun &amp;&amp; git pull --ff-only origin develop</div>
+              </div>
+              <span style="font-family:'Geist Mono',monospace;font-size:9.5px;letter-spacing:0.04em;width:34px;text-align:center;height:16px;line-height:14px;border-radius:4px;box-sizing:border-box;color:#ffca5c;background:rgba(229,160,13,0.12);border:1px solid rgba(229,160,13,0.30)">STG</span>
+              <span style="font-family:'Geist Mono',monospace;font-size:10.5px;height:18px;line-height:18px;padding:0 5px;border:1px solid #34343a;border-radius:4px;color:#a1a1a8">↵</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border-radius:7px" style-hover="background:#1c1c20">
+              <div style="flex:1;font-size:13px;color:#a1a1a8"><span style="color:#ededef;font-weight:500">Git pull</span> · <span style="color:#ededef;font-weight:500">akaun</span> on <span style="color:#ededef;font-weight:500">stg</span>-svr04</div>
+              <span style="font-family:'Geist Mono',monospace;font-size:9.5px;letter-spacing:0.04em;width:34px;text-align:center;height:16px;line-height:14px;border-radius:4px;box-sizing:border-box;color:#ffca5c;background:rgba(229,160,13,0.12);border:1px solid rgba(229,160,13,0.30)">STG</span>
+              <span style="width:24px"></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border-radius:7px" style-hover="background:#1c1c20">
+              <div style="flex:1;font-size:13px;color:#a1a1a8"><span style="color:#ededef;font-weight:500">Git pull</span> · <span style="color:#ededef;font-weight:500">akaun</span> on <span style="color:#ededef;font-weight:500">stg</span>-legacy</div>
+              <span style="font-family:'Geist Mono',monospace;font-size:9.5px;letter-spacing:0.04em;width:34px;text-align:center;height:16px;line-height:14px;border-radius:4px;box-sizing:border-box;color:#ffca5c;background:rgba(229,160,13,0.12);border:1px solid rgba(229,160,13,0.30)">STG</span>
+              <span style="width:24px"></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border-radius:7px" style-hover="background:#1c1c20">
+              <div style="flex:1;font-size:13px;color:#a1a1a8"><span style="color:#ededef;font-weight:500">Git pull</span> · <span style="color:#ededef;font-weight:500">akaun</span> on client-prod-01</div>
+              <span style="font-size:11px;color:#d98c8a">confirms</span>
+              <span style="font-family:'Geist Mono',monospace;font-size:9.5px;letter-spacing:0.04em;width:34px;text-align:center;height:16px;line-height:14px;border-radius:4px;box-sizing:border-box;color:#ff9592;background:rgba(229,72,77,0.12);border:1px solid rgba(229,72,77,0.32)">PROD</span>
+              <span style="width:24px"></span>
+            </div>
+            <div style="padding:10px 10px 4px;font-size:11px;font-weight:500;color:#6b6b73">Open tabs</div>
+            <div style="display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border-radius:7px" style-hover="background:#1c1c20">
+              <span style="color:#7ee787;font-size:12px;width:12px;text-align:center">✓</span>
+              <div style="flex:1;font-size:13px;color:#a1a1a8"><span style="color:#ededef;font-weight:500">stg</span>-svr03 · <span style="color:#ededef;font-weight:500">pull</span></div>
+              <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#6b6b73">exit 0 · 4m ago</span>
+              <span style="width:24px"></span>
+            </div>
+            <div style="padding:10px 10px 4px;font-size:11px;font-weight:500;color:#6b6b73">Apps</div>
+            <div style="display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border-radius:7px" style-hover="background:#1c1c20">
+              <div style="flex:1;font-size:13px;color:#a1a1a8"><span style="color:#ededef;font-weight:500">akaun</span> on <span style="color:#ededef;font-weight:500">stg</span>-svr03</div>
+              <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#55555c">develop</span>
+              <span style="font-family:'Geist Mono',monospace;font-size:9.5px;letter-spacing:0.04em;width:34px;text-align:center;height:16px;line-height:14px;border-radius:4px;box-sizing:border-box;color:#ffca5c;background:rgba(229,160,13,0.12);border:1px solid rgba(229,160,13,0.30)">STG</span>
+              <span style="width:24px"></span>
+            </div>
+            <div style="padding:10px 10px 4px;font-size:11px;font-weight:500;color:#6b6b73">Servers</div>
+            <div style="display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border-radius:7px" style-hover="background:#1c1c20">
+              <span style="width:7px;height:7px;border-radius:50%;background:#46a758;margin:0 2px"></span>
+              <div style="flex:1;font-size:13px;color:#a1a1a8"><span style="color:#ededef;font-weight:500">stg</span>-svr03</div>
+              <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#55555c">10.0.1.13</span>
+              <span style="font-family:'Geist Mono',monospace;font-size:9.5px;letter-spacing:0.04em;width:34px;text-align:center;height:16px;line-height:14px;border-radius:4px;box-sizing:border-box;color:#ffca5c;background:rgba(229,160,13,0.12);border:1px solid rgba(229,160,13,0.30)">STG</span>
+              <span style="width:24px"></span>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:16px;height:36px;padding:0 16px;border-top:1px solid #232326;background:#131315;font-size:11.5px;color:#6b6b73">
+            <span style="display:flex;gap:6px;align-items:center"><span style="font-family:'Geist Mono',monospace;color:#a1a1a8">↑↓</span>Navigate</span>
+            <span style="display:flex;gap:6px;align-items:center"><span style="font-family:'Geist Mono',monospace;color:#a1a1a8">↵</span>Run</span>
+            <span style="display:flex;gap:6px;align-items:center"><span style="font-family:'Geist Mono',monospace;color:#a1a1a8">⌘↵</span>Edit command first</span>
+            <span style="flex:1"></span>
+            <span>7 results</span>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;view&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;busy&quot;,&quot;empty&quot;,&quot;error&quot;,&quot;history&quot;],&quot;default&quot;:&quot;busy&quot;,&quot;tsType&quot;:&quot;'busy'|'empty'|'error'|'history'&quot;},&quot;overlay&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;none&quot;,&quot;preview&quot;,&quot;prodConfirm&quot;,&quot;dangerConfirm&quot;,&quot;vpn&quot;,&quot;palette&quot;],&quot;default&quot;:&quot;none&quot;,&quot;tsType&quot;:&quot;'none'|'preview'|'prodConfirm'|'dangerConfirm'|'vpn'|'palette'&quot;},&quot;select&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;prod&quot;,&quot;stg&quot;],&quot;default&quot;:&quot;prod&quot;,&quot;tsType&quot;:&quot;'prod'|'stg'&quot;}}">
+const h = React.createElement;
+const ENV = {
+  prod:    { label:'PROD', fg:'#ff9592', bg:'rgba(229,72,77,0.12)', bd:'rgba(229,72,77,0.32)', bar:'#e5484d', bBg:'rgba(229,72,77,0.09)', bBd:'rgba(229,72,77,0.28)', bFg:'#ffb1ae' },
+  staging: { label:'STG',  fg:'#ffca5c', bg:'rgba(229,160,13,0.12)', bd:'rgba(229,160,13,0.30)', bar:'#e5a00d', bBg:'rgba(229,160,13,0.07)', bBd:'rgba(229,160,13,0.26)', bFg:'#f5d48a' },
+  dev:     { label:'DEV',  fg:'#a1a1a8', bg:'rgba(255,255,255,0.04)', bd:'rgba(255,255,255,0.12)', bar:'transparent', bBg:'rgba(255,255,255,0.03)', bBd:'#2a2a2e', bFg:'#d4d4d8' },
+};
+const SC = { up:'#46a758', down:'#e5484d', checking:'#52a8ff', unknown:'#48484f' };
+const SERVERS = [
+  { id:'client-prod-01', env:'prod', status:'up', vpn:true, host:'10.0.0.5', apps:'akaun:main:run gaji:main portal-pelanggan:release e-invois:main laporan:main tempahan:main:fail hrms:master inventori:main' },
+  { id:'stg-svr03', env:'staging', status:'up', host:'10.0.1.13', apps:'akaun:develop gaji:develop portal-pelanggan:develop e-invois:develop laporan:develop tempahan:develop hrms:develop inventori:develop sms-gateway:main' },
+  { id:'stg-svr04', env:'staging', status:'checking', host:'10.0.1.14', apps:'inventori:develop:fail gudang:develop pos-kedai:develop loyalti:develop akaun:develop tiket:develop crm:develop' },
+  { id:'stg-legacy', env:'staging', status:'unknown', vpn:true, host:'172.16.4.10', apps:'sekolah:master klinik:master koperasi:master majlis:master asrama:master yuran:master perpustakaan:master' },
+  { id:'dev-01', env:'dev', status:'up', host:'192.168.1.21', apps:'akaun:feature/lhdn gaji:develop hrms:develop inventori:develop laporan:develop e-invois:develop tempahan:develop playground:main' },
+  { id:'dev-02', env:'dev', status:'down', host:'192.168.1.22', apps:'pos-kedai:develop gudang:develop loyalti:develop tiket:develop crm:develop sandbox:main' },
+].map(s => ({ ...s, apps: s.apps.split(' ').map(x => { const [name, branch, st] = x.split(':'); return { name, branch, st: st || 'none' }; }) }));
+const ACTIONS = [
+  { k:'pull', label:'Git pull' }, { k:'composer', label:'Composer install' }, { k:'migrate', label:'Migrate', danger:true },
+  { k:'clear', label:'Clear & cache' }, { k:'tail', label:'Tail log' }, { k:'deploy', label:'Deploy', danger:true },
+];
+const SACTIONS = [{ k:'nginx', label:'nginx -t && reload' }, { k:'queues', label:'Restart queues' }];
+const LABEL = { pull:'Git pull', composer:'Composer install', migrate:'Migrate', clear:'Clear & cache', tail:'Tail log', deploy:'Deploy', nginx:'nginx -t && reload', queues:'Restart queues' };
+const DANGER = { migrate:true, deploy:true };
+function cmdFor(sid, app, k) {
+  const sv = SERVERS.find(s => s.id === sid);
+  const a = sv && sv.apps.find(x => x.name === app);
+  const p = '/var/www/' + app, br = a ? a.branch : 'main';
+  return ({
+    pull: `cd ${p} && git pull --ff-only origin ${br}`,
+    composer: `cd ${p} && composer install --no-dev --optimize-autoloader --no-interaction`,
+    migrate: `cd ${p} && php artisan migrate --force`,
+    clear: `cd ${p} && php artisan optimize:clear && php artisan optimize`,
+    tail: `tail -n 200 -f ${p}/storage/logs/laravel.log`,
+    deploy: `cd ${p} && php artisan down --retry=15 \\\n  && git pull --ff-only origin ${br} \\\n  && composer install --no-dev -o --no-interaction \\\n  && php artisan migrate --force \\\n  && php artisan optimize && php artisan queue:restart \\\n  && php artisan up`,
+    nginx: `sudo nginx -t && sudo systemctl reload nginx`,
+    queues: `sudo supervisorctl restart 'laravel-worker:*'`,
+  })[k];
+}
+const T = { d:'#6b6b73', w:'#ededef', t:'#c9c9ce', g:'#7ee787', r:'#ff7b72', y:'#e3b341', c:'#79c0ff', b:'#58a6ff', m:'#a1a1a8', p:'#d2a8ff' };
+const L = (...a) => { const segs = []; for (let i = 0; i < a.length; i += 2) segs.push({ c:T[a[i]], t:a[i+1] }); return { segs, cursor:false }; };
+const B = () => L('t', ' ');
+const P = (host, path, cmd) => L('g', 'deploy@' + host, 'd', ':', 'b', path, 'd', '$ ', 'w', cmd);
+const K = txt => L('c', 'kemudi', 'd', ' ▸ ' + txt);
+const D = (label, time, res = 'DONE') => L('t', '  ' + label + ' ', 'd', '.'.repeat(Math.max(3, 62 - label.length - time.length)), 't', ' ' + time + ' ', res === 'DONE' ? 'g' : 'r', res);
+const I = txt => L('t', '   ', 'c', 'INFO', 't', '  ' + txt);
+const CUR = l => ({ ...l, cursor:true });
+const OUT = {
+  deploy: [
+    K('client-prod-01 (10.0.0.5) · akaun · deploy · 14:31:07'),
+    P('client-prod-01', '/var/www/akaun', 'php artisan down --retry=15 && git pull --ff-only origin main && composer install --no-dev -o && php artisan migrate --force && php artisan optimize && php artisan queue:restart && php artisan up'),
+    B(), I('Application is now in maintenance mode.'), B(),
+    L('t', 'From github.com:hzk/akaun'),
+    L('t', '   3f9c2a1..8d41e07  main       -> origin/main'),
+    L('t', 'Updating 3f9c2a1..8d41e07'), L('t', 'Fast-forward'),
+    L('t', ' app/Http/Controllers/InvoiceController.php       | 42 ', 'g', '+++++++++', 'r', '-----'),
+    L('t', ' database/migrations/2026_10_06_add_due_date.php  | 31 ', 'g', '++++++'),
+    L('t', ' resources/views/invoices/show.blade.php          |  6 ', 'g', '++', 'r', '--'),
+    L('t', ' 3 files changed, 64 insertions(+), 17 deletions(-)'),
+    L('g', 'Installing dependencies from lock file'),
+    L('t', 'Verifying lock file contents can be installed on current platform.'),
+    L('t', 'Nothing to install, update or remove'),
+    L('t', 'Generating optimized autoload files'),
+    L('y', '> @php artisan package:discover --ansi'),
+    B(), I('Discovering packages.'), B(),
+    D('laravel/sanctum', ''), D('nesbot/carbon', ''), D('spatie/laravel-permission', ''),
+    B(), I('Running migrations.'), B(),
+    D('2026_10_06_add_due_date_to_invoices', '48.21ms'),
+    B(), I('Caching framework bootstrap, configuration, and metadata.'), B(),
+    D('config', '12.04ms'), D('events', '1.12ms'), D('routes', '22.67ms'),
+    CUR(L('t', '  views ', 'd', '.....................')),
+  ],
+  tail: [
+    K('client-prod-01 (10.0.0.5) · akaun · tail log · 14:30:12'),
+    P('client-prod-01', '/var/www/akaun', 'tail -n 200 -f storage/logs/laravel.log'),
+    L('d', '[2026-10-07 14:29:51] ', 'g', 'production.INFO', 't', ': Invoice INV-2026-08812 submitted to LHDN {"uuid":"F3K9QX2M"}'),
+    L('d', '[2026-10-07 14:30:02] ', 'g', 'production.INFO', 't', ': Processed App\\Jobs\\SendInvoiceEmail (212ms)'),
+    L('d', '[2026-10-07 14:30:18] ', 'y', 'production.WARNING', 't', ': Slow query 1.84s on invoices where customer_id = 4412'),
+    L('d', '[2026-10-07 14:30:44] ', 'g', 'production.INFO', 't', ': Processed App\\Jobs\\SyncPaymentStatus (98ms)'),
+    L('d', '[2026-10-07 14:31:08] ', 'g', 'production.INFO', 't', ': Application is now in maintenance mode.'),
+    CUR(L('t', '')),
+  ],
+  pull: [
+    K('stg-svr03 (10.0.1.13) · akaun · git pull · 14:27:40'),
+    P('stg-svr03', '/var/www/akaun', 'git pull --ff-only origin develop'),
+    L('t', 'From github.com:hzk/akaun'),
+    L('t', '   a71be02..c09d3f4  develop    -> origin/develop'),
+    L('t', 'Updating a71be02..c09d3f4'), L('t', 'Fast-forward'),
+    L('t', ' app/Models/Invoice.php                  |  8 ', 'g', '++++', 'r', '--'),
+    L('t', ' app/Services/EInvoice/LhdnClient.php    | 57 ', 'g', '++++++++++++'),
+    L('t', ' config/einvoice.php                     | 12 ', 'g', '+++'),
+    L('t', ' tests/Feature/LhdnSubmissionTest.php    | 74 ', 'g', '++++++++++++++'),
+    L('t', ' 4 files changed, 147 insertions(+), 4 deletions(-)'),
+    B(),
+    L('g', '✓ ', 'd', 'exit 0 · 3.2s · 14:27:43'),
+  ],
+  migrate: [
+    K('stg-svr04 (10.0.1.14) · inventori · migrate · 14:12:09'),
+    P('stg-svr04', '/var/www/inventori', 'php artisan migrate --force'),
+    B(), I('Running migrations.'), B(),
+    D('2026_10_02_create_stock_transfers_table', '31.40ms'),
+    D('2026_10_05_add_batch_no_to_stock_items', '4.12ms', 'FAIL'),
+    B(),
+    L('r', '   Illuminate\\Database\\QueryException'),
+    B(),
+    L('t', '  SQLSTATE[42S21]: Column already exists: 1060 Duplicate column name \'batch_no\' (Connection: mysql, SQL: alter table `stock_items` add `batch_no` varchar(64) null)'),
+    B(),
+    L('d', '  at vendor/laravel/framework/src/Illuminate/Database/Connection.php:825'),
+    B(),
+    L('r', '✗ ', 'd', 'exit 1 · 2.9s · 14:12:12'),
+  ],
+  shell: [
+    L('d', 'Last login: Wed Oct  7 09:12:44 2026 from 192.168.1.5'),
+    P('dev-01', '~', 'cd /var/www && ls'),
+    L('b', 'akaun  e-invois  gaji  hrms  inventori  laporan  playground  tempahan'),
+    CUR(P('dev-01', '/var/www', '')),
+  ],
+};
+const TABS = [
+  { key:'deploy', title:'client-prod-01 · deploy', state:'run', prod:true },
+  { key:'tail', title:'client-prod-01 · tail log', state:'run', prod:true },
+  { key:'pull', title:'stg-svr03 · pull', state:'ok' },
+  { key:'migrate', title:'stg-svr04 · migrate', state:'fail', code:'1' },
+  { key:'shell', title:'dev-01 · zsh', state:'shell' },
+];
+const HIST = [
+  { sep:'Today' },
+  ['14:31:07','client-prod-01','akaun','Deploy','deploy','run','—'],
+  ['14:30:12','client-prod-01','akaun','Tail log','tail','run','—'],
+  ['14:27:40','stg-svr03','akaun','Git pull','pull','0','3.2s'],
+  ['14:12:09','stg-svr04','inventori','Migrate','migrate','1','2.9s'],
+  ['13:58:21','stg-svr04','inventori','Git pull','pull','0','2.1s'],
+  ['13:40:03','client-prod-01','gaji','Clear & cache','clear','0','4.8s'],
+  ['13:02:47','client-prod-01','—','nginx reload','nginx','0','0.6s'],
+  ['12:44:10','dev-01','hrms','Composer install','composer','0','18.4s'],
+  ['12:15:55','stg-svr03','e-invois','Deploy','deploy','0','41.2s'],
+  ['11:51:30','dev-02','laporan','Git pull','pull','255','5.0s'],
+  ['11:20:08','stg-svr03','—','Restart queues','queues','0','1.3s'],
+  ['10:47:16','client-prod-01','tempahan','Migrate','migrate','1','3.4s'],
+  ['10:02:59','dev-01','akaun','Tail log','tail','130','12m 04s'],
+  { sep:'Yesterday' },
+  ['18:21:44','stg-svr03','gaji','Git pull','pull','0','2.7s'],
+  ['17:55:02','client-prod-01','portal-pelanggan','Deploy','deploy','0','52.8s'],
+  ['16:09:31','dev-01','inventori','Clear & cache','clear','0','2.2s'],
+];
+const spin = (s = 10) => h('span', { style:{ width:s, height:s, flex:'none', boxSizing:'border-box', borderRadius:'50%', border:'1.5px solid rgba(255,255,255,0.16)', borderTopColor:'#ededef', animation:'kspin .8s linear infinite', display:'inline-block' } });
+const dot = st => h('span', { style:{ width:7, height:7, flex:'none', borderRadius:'50%', background:SC[st], display:'inline-block', boxShadow: st === 'up' ? '0 0 0 2px rgba(70,167,88,0.16)' : st === 'down' ? '0 0 0 2px rgba(229,72,77,0.2)' : 'none', animation: st === 'checking' ? 'kpulse 1.2s ease-in-out infinite' : 'none' } });
+const glyph = (t, c) => h('span', { style:{ color:c, fontSize:12, lineHeight:1, flex:'none', width:12, textAlign:'center' } }, t);
+const tabIcon = s => s === 'run' ? spin(10) : s === 'ok' ? glyph('✓', '#7ee787') : s === 'fail' ? glyph('✗', '#ff7b72') : s === 'history' ? glyph('↺', '#a1a1a8') : h('span', { style:{ fontFamily:"'Geist Mono',monospace", fontSize:11, color:'#6b6b73', width:12, textAlign:'center', flex:'none' } }, '$');
+
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = this.init(props); }
+  init(p) {
+    const view = p.view || 'busy', overlay = p.overlay || 'none';
+    const select = p.select || (view === 'error' ? 'stg' : 'prod');
+    const sel = select === 'stg' ? { server:'stg-svr03', app:'akaun' } : { server:'client-prod-01', app:'akaun' };
+    const dlgMap = { preview:['stg-svr03','akaun','composer'], prodConfirm:['client-prod-01','akaun','clear'], dangerConfirm:['client-prod-01','akaun','deploy'], vpn:['client-prod-01','akaun','pull'] };
+    const dm = dlgMap[overlay] || [sel.server, sel.app, 'pull'];
+    const dlg = { server:dm[0], app:dm[1], action:dm[2] };
+    return {
+      sel, expanded:{ [sel.server]:true }, overlay, dlg, cmd:cmdFor(dlg.server, dlg.app, dlg.action),
+      typed: overlay === 'dangerConfirm' ? 'client-pro' : '',
+      activeTab: view === 'error' ? 2 : 0, sidebarW:264, prodStatus: overlay === 'vpn' ? 'down' : 'up',
+    };
+  }
+  componentDidUpdate(prev) {
+    const p = this.props;
+    if (prev.view !== p.view || prev.overlay !== p.overlay || prev.select !== p.select) this.setState(this.init(p));
+  }
+  openAction(server, app, k) {
+    const sv = SERVERS.find(s => s.id === server);
+    let overlay = 'preview';
+    if (sv.env === 'prod') overlay = sv.id === 'client-prod-01' && this.state.prodStatus === 'down' ? 'vpn' : (DANGER[k] ? 'dangerConfirm' : 'prodConfirm');
+    this.setState({ overlay, dlg:{ server, app, action:k }, cmd:cmdFor(server, app, k), typed:'' });
+  }
+  renderVals() {
+    const st = this.state, view = this.props.view || 'busy';
+    const isEmpty = view === 'empty', isError = view === 'error';
+    const tabsBase = isEmpty ? [] : (view === 'history' ? [{ key:'history', title:'History', state:'history' }, ...TABS] : TABS);
+    const ai = Math.max(0, Math.min(st.activeTab, tabsBase.length - 1));
+    const active = tabsBase[ai];
+    const tabs = tabsBase.map((t, i) => {
+      const on = i === ai;
+      return { ...t, failed:t.state === 'fail', bg:on ? '#0a0a0a' : 'transparent', fg:on ? '#ededef' : '#8b8b92',
+        shadow:t.prod ? 'inset 0 -2px 0 #e5484d' : (on ? 'none' : 'inset 0 -1px 0 #1f1f22'),
+        iconEl:tabIcon(t.state), activate:() => this.setState({ activeTab:i }) };
+    });
+    const servers = isEmpty ? [] : SERVERS.map(S => {
+      const status = S.id === 'client-prod-01' ? st.prodStatus : S.status;
+      const e = ENV[S.env], expanded = !!st.expanded[S.id];
+      return {
+        id:S.id, vpn:!!S.vpn, envLabel:e.label, envFg:e.fg, envBg:e.bg, envBd:e.bd, bar:e.bar,
+        dotEl:dot(status), nameFg: status === 'down' ? '#8b8b92' : '#ededef',
+        expanded, collapsed:!expanded, chev: expanded ? '▼' : '▶', count:String(S.apps.length),
+        toggle:() => this.setState(s => ({ expanded:{ ...s.expanded, [S.id]:!s.expanded[S.id] } })),
+        serverActions:SACTIONS.map(a => ({ label:a.label, bg:e.bBg, bd:e.bBd, fg:e.bFg, onClick:() => this.openAction(S.id, null, a.k) })),
+        apps:S.apps.map(a => {
+          const selected = st.sel.server === S.id && st.sel.app === a.name;
+          return {
+            name:a.name, branch:a.branch, selected, isProd:S.env === 'prod', path:`${S.host}:/var/www/${a.name}`,
+            bg:selected ? '#202024' : 'transparent', fg:selected ? '#ffffff' : (status === 'down' ? '#7a7a82' : '#c4c4ca'),
+            statusEl: a.st === 'run' ? spin(9) : a.st === 'fail' ? glyph('✗', '#ff7b72') : null,
+            select:() => this.setState({ sel:{ server:S.id, app:a.name } }),
+            actions:ACTIONS.map(x => ({ label:x.label, danger:!!x.danger, bg:e.bBg, bd:e.bBd, fg:e.bFg, onClick:() => this.openAction(S.id, a.name, x.k) })),
+          };
+        }),
+      };
+    });
+    const history = HIST.map(r => {
+      if (!Array.isArray(r)) return { sep:true, row:false, label:r.sep };
+      const [time, server, app, action, k, exit, dur] = r;
+      const sv = SERVERS.find(s => s.id === server), e = ENV[sv.env];
+      const running = exit === 'run';
+      const exitFg = running ? '#a1a1a8' : exit === '0' ? '#7ee787' : exit === '130' ? '#8b8b92' : '#ff7b72';
+      return { sep:false, row:true, time, server, app, action, dur, envLabel:e.label, envFg:e.fg, envBg:e.bg, envBd:e.bd,
+        bar: sv.env === 'prod' ? 'rgba(229,72,77,0.6)' : 'transparent', appFg: app === '—' ? '#55555c' : '#ededef',
+        cmd:cmdFor(server, app, k).replace(/\\\n\s*/g, ''), exitEl: running ? spin(9) : null,
+        exit: running ? 'running' : exit === '130' ? '130 ^C' : exit, exitFg, btn: running ? 'Open' : 'Re-run' };
+    });
+    const d = st.dlg, dsv = SERVERS.find(s => s.id === d.server), de = ENV[dsv.env];
+    const dlgCmd = cmdFor(d.server, d.app, d.action);
+    const ov = st.overlay;
+    return {
+      windowTitle: active ? 'Kemudi — ' + active.title : 'Kemudi',
+      sidebarW: st.sidebarW, isEmpty, isError, hasServers:!isEmpty, treeOpacity: isError ? 0.72 : 1,
+      servers, tabs, activeTitle: active ? active.title : 'none',
+      showTerminal: !!active && active.state !== 'history', showHistory: !!active && active.state === 'history',
+      termTop: active && active.prod ? '#e5484d' : '#0a0a0a',
+      lines: active && OUT[active.key] ? OUT[active.key] : [],
+      cursorEl: h('span', { style:{ display:'inline-block', width:8, height:15, background:'#d4d4d8', verticalAlign:'-3px', animation:'kblink 1s step-end infinite' } }),
+      caretEl: h('span', { style:{ display:'inline-block', width:1.5, height:18, marginLeft:1, background:'#ededef', animation:'kblink 1s step-end infinite' } }),
+      history,
+      openHistory: () => {},
+      anyOverlay: ov !== 'none', ovPreview: ov === 'preview', ovProd: ov === 'prodConfirm', ovDanger: ov === 'dangerConfirm', ovVpn: ov === 'vpn', ovPalette: ov === 'palette',
+      ovAlign: ov === 'palette' ? 'flex-start' : 'center', ovPadTop: ov === 'palette' ? '84px' : '0px',
+      dlgTitle: LABEL[d.action], dlgServer: d.server, dlgWhere: d.app ? `${d.app} on ${d.server}` : d.server,
+      dlgEnvLabel: de.label, dlgEnvFg: de.fg, dlgEnvBg: de.bg, dlgEnvBd: de.bd,
+      dlgHost: `deploy@${dsv.host}:22` + (dsv.vpn ? ' · via VPN wg-client' : ''), dlgPath: d.app ? '/var/www/' + d.app : '~',
+      dlgCmd, cmd: st.cmd, edited: st.cmd !== dlgCmd,
+      dangerNote: d.action === 'deploy' ? 'maintenance mode, pull, migrate --force' : 'runs pending migrations with --force',
+      typed: st.typed, canRun: st.typed === d.server, cantRun: st.typed !== d.server,
+      typedBd: st.typed === d.server ? 'rgba(229,72,77,0.7)' : '#2e2e33',
+      onType: e => this.setState({ typed:e.target.value }),
+      onCmd: e => this.setState({ cmd:e.target.value }),
+      resetCmd: () => this.setState({ cmd:dlgCmd }),
+      close: () => this.setState({ overlay:'none' }),
+      stop: e => e.stopPropagation(),
+      retry: () => this.setState({ overlay:'none', prodStatus:'checking' }),
+      connectVpn: () => this.setState({ overlay:'none', prodStatus:'up' }),
+      onResizeDown: e => {
+        e.preventDefault();
+        const x0 = e.clientX, w0 = st.sidebarW;
+        const mv = ev => this.setState({ sidebarW: Math.max(200, Math.min(380, w0 + ev.clientX - x0)) });
+        const up = () => { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up); };
+        window.addEventListener('mousemove', mv); window.addEventListener('mouseup', up);
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,67 @@
+# Kemudi servers and actions.
+#
+# Every server and button in the sidebar comes from this file. It reloads as
+# soon as you save. Never put passwords or secrets here: SSH uses your
+# ~/.ssh/config, keys and ssh-agent exactly like your terminal does.
+#
+# Each action can set `confirm: none | warn | type` (run on click / show the
+# command first / also type the server name). Default: prod + danger → type,
+# prod or danger → warn, else none.
+#
+# Template variables in `run:` are {{ server.* }} and {{ app.* }}. Values are
+# shell-quoted automatically when they contain spaces or special characters;
+# write {{ value | raw }} to insert one verbatim.
+
+servers:
+  # Uncomment and edit. `host` is an alias from ~/.ssh/config.
+  #
+  # - id: stg-svr03
+  #   name: Staging 03
+  #   host: stg-svr03
+  #   env: staging            # prod | staging | dev
+  #   vpn: none               # none | openfortivpn | globalprotect
+  #   apps:
+  #     - id: akaun
+  #       name: Akaun
+  #       path: /var/www/akaun
+  #       branch: develop
+  #       php: "8.4"
+  #       # actions:          # per-app overrides, matched by id
+  #       #   - { id: migrate, disabled: true }
+  #       #   - { id: seed, label: "Seed", run: "cd {{ app.path }} && php{{ app.php }} artisan db:seed", danger: true }
+  #
+  # - id: client-prod-01
+  #   name: Client Prod 01
+  #   host: client-prod-01
+  #   env: prod
+  #   vpn: openfortivpn
+  #   vpn_check: { host: 10.0.0.5, port: 22 }   # TCP probe: is the VPN up?
+  #   vpn_connect: sudo openfortivpn -c ~/.config/openfortivpn/client.conf
+  #   apps: []
+
+actions:
+  # Run over SSH in a new tab, once per app.
+  app:
+    # `branch` and `php` are optional: without them it's `git pull` on the
+    # current branch and plain `php`.
+    - { id: pull,     label: "Git pull",         run: "cd {{ app.path }} && git pull{% if app.branch is defined %} origin {{ app.branch }}{% endif %}" }
+    - { id: composer, label: "Composer install", run: "cd {{ app.path }} && composer install --no-dev -o" }
+    - { id: migrate,  label: "Migrate",          run: "cd {{ app.path }} && php{{ app.php | default('') }} artisan migrate --force", danger: true }
+    - { id: optimize, label: "Clear & cache",    run: "cd {{ app.path }} && php{{ app.php | default('') }} artisan optimize:clear && php{{ app.php | default('') }} artisan optimize" }
+    - { id: log,      label: "Tail log",         run: "tail -f {{ app.path }}/storage/logs/laravel.log" }
+  # Run over SSH, once per server.
+  server:
+    - { id: nginx,  label: "nginx -t && reload", run: "sudo nginx -t && sudo systemctl reload nginx", danger: true }
+    - { id: queues, label: "Restart queues",     run: "sudo supervisorctl restart all", danger: true }
+  # Run in a local shell tab on this Mac (app context).
+  local:
+    - { id: deploy, label: "Deployer", run: "cd ~/Projects/{{ app.id }} && dep deploy {{ server.env }}", danger: true }
+
+# Optional terminal settings.
+# terminal:
+#   font_family: Menlo
+#   font_size: 14
+#   line_height: 1.25
+#   shell_integration: true   # command blocks (copy command / output)
+#   option_as_meta: false
+#   scrollback: 10000
