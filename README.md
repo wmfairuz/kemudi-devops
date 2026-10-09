@@ -479,6 +479,11 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   all servers) and optionally delete the snippet. Right-click a command in a
   terminal ▸ *Save command as snippet…*; ⌘K finds snippets by name, command or
   notes (↵ inserts).
+- **Running an action in the shell you're in**: when the tab in front is an
+  idle shell on the action's server (for an app's action: that app's shell,
+  e.g. its *ssh* button), the action is typed at that prompt instead of
+  opening a tab (same guardrails, recorded in History like *Send to current
+  tab*); the tab keeps its name and stays your shell.
 - **Running an action again**: if its tab from the last run is still open
   and idle at the shell prompt, the command runs there again (typed at the
   prompt, recorded in History like *Send to current tab*), keeping the

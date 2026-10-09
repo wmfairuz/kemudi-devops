@@ -127,22 +127,39 @@ function intro(a: RenderedAction, command: string): string {
   return blockIntro([where, a.appId, a.label, localHms()].filter(Boolean).join(" · "), command);
 }
 
-/** The tab this action ran in before, if it's now idle at its shell's
- *  prompt: running it again there keeps its scrollback. */
+/** Idle at its shell's prompt (nothing running, shell integration on). */
+function idle(t: Tab): boolean {
+  return t.state !== "running" && t.session.status === "running" && t.session.ptyId !== null && t.session.blocks.inputStart() !== undefined;
+}
+
+/** Where the action can run without a new tab:
+ *  1. the tab in front, when it's an idle shell on the same server (for an
+ *     app's action: that app's shell, opened from it), so clicking Deploy in
+ *     your krsj shell runs it there;
+ *  2. else the tab this action ran in before, if it's idle again (keeps its
+ *     scrollback). */
 function reusableTab(a: RenderedAction): Tab | undefined {
-  return useTabs
-    .getState()
-    .tabs.find(
-      (t) =>
-        t.kind === "action" &&
-        t.actionId === a.actionId &&
-        t.serverId === a.serverId &&
-        (t.appId ?? null) === (a.appId ?? null) &&
-        t.state !== "running" &&
-        t.session.status === "running" &&
-        t.session.ptyId !== null &&
-        t.session.blocks.inputStart() !== undefined,
-    );
+  const state = useTabs.getState();
+  const front = activeTab(state);
+  if (
+    front &&
+    a.kind === "ssh" &&
+    front.kind === "ssh" &&
+    !front.local &&
+    front.serverId === a.serverId &&
+    (a.appId === null || (front.appId ?? null) === a.appId) &&
+    idle(front)
+  ) {
+    return front;
+  }
+  return state.tabs.find(
+    (t) =>
+      t.kind === "action" &&
+      t.actionId === a.actionId &&
+      t.serverId === a.serverId &&
+      (t.appId ?? null) === (a.appId ?? null) &&
+      idle(t),
+  );
 }
 
 /** Type the action at that tab's prompt (audited like "send") and follow
@@ -152,7 +169,8 @@ async function rerunInTab(tab: Tab, a: RenderedAction, override: string | null):
   if (ptyId === null) return;
   const tabs = useTabs.getState();
   tabs.activate(tab.id);
-  tabs.update(tab.id, { state: "running", exitCode: undefined, finishedAt: undefined, ...(tab.renamed ? {} : { title: a.title }) });
+  // An action tab takes the action's name; your own shell keeps its name.
+  tabs.update(tab.id, { state: "running", exitCode: undefined, finishedAt: undefined, ...(tab.renamed || tab.kind !== "action" ? {} : { title: a.title }) });
   // Clear anything half-typed at the prompt first (Ctrl+U).
   tab.session.send("\x15");
   const finished = tab.session.blocks.nextFinish();
@@ -160,14 +178,15 @@ async function rerunInTab(tab: Tab, a: RenderedAction, override: string | null):
     await actionSend(ptyId, refOf(a), override);
   } catch (e) {
     toastError(errorMessage(e));
-    useTabs.getState().update(tab.id, { state: "ok" });
+    useTabs.getState().update(tab.id, { state: tab.kind === "action" ? "ok" : "shell" });
     return;
   }
   tab.session.focus();
   const code = await finished;
   if (useTabs.getState().tabs.some((t) => t.id === tab.id)) {
     useTabs.getState().update(tab.id, {
-      state: code === undefined || code === 0 ? "ok" : "failed",
+      // Your own shell goes back to being a shell; an action tab shows ✓/✗.
+      state: tab.kind !== "action" ? "shell" : code === undefined || code === 0 ? "ok" : "failed",
       exitCode: code,
       finishedAt: Date.now(),
     });
