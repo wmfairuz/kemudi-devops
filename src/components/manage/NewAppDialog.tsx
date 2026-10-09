@@ -33,7 +33,7 @@ import { localHms } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { findServer, useConfig } from "@/stores/config";
 import { askConfirm } from "@/stores/confirm";
-import { openDetails, slug } from "@/stores/manage";
+import { freeId, openDetails } from "@/stores/manage";
 import { useNewApp, type NewAppDraft } from "@/stores/newApp";
 import { useTabs } from "@/stores/tabs";
 import { toastError, useToasts } from "@/stores/toasts";
@@ -151,7 +151,8 @@ function NewApp({ server }: { server: Server }) {
   useEffect(load, [serverId]);
 
   // Fields that follow others until they're typed in.
-  const id = d.idTouched ? d.id : slug(d.name);
+  // Kemudi's own key for it (never shown): from the name, free on the server.
+  const id = d.name.trim() ? freeId(d.name, server.apps.map((a) => a.id), "app") : "";
   const wild = probe?.wildcards.find((w) => wildKey(w) === d.wildcard) ?? null;
   const web = d.web === "wildcard" && !wild ? "new" : d.web;
   const sub = d.subTouched ? d.sub : id;
@@ -252,8 +253,7 @@ function NewApp({ server }: { server: Server }) {
   const notes: string[] = [];
   if (probe) {
     if (!d.name.trim()) problems.push("Give the app a name.");
-    if (!VALID_ID.test(id)) problems.push("The ID can use letters, digits, . _ -");
-    else if (server.apps.some((a) => a.id === id)) problems.push(`${serverId} already has an app “${id}”.`);
+    if (id && !VALID_ID.test(id)) problems.push("Give it a name with some letters or digits.");
     if (!plan.repo) problems.push("Add the repository.");
     if (!/^\/[A-Za-z0-9._/-]+$/.test(plan.path) || plan.path.split("/").length < 3) problems.push("The path must be a full path, two folders deep, without spaces.");
     else if (server.apps.some((a) => a.path.replace(/\/+$/, "") === plan.path)) problems.push(`${plan.path} is already an app in Kemudi.`);
@@ -370,14 +370,9 @@ function NewApp({ server }: { server: Server }) {
           <>
             <div className="flex w-[470px] flex-none flex-col gap-5 overflow-y-auto border-r border-divider p-4">
               <Section title="App">
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Name">
-                    {(fid) => <TextInput id={fid} autoFocus className="font-sans" value={d.name} placeholder="Akaun Staging" onChange={(e) => set({ name: e.target.value })} />}
-                  </Field>
-                  <Field label="ID">
-                    {(fid) => <TextInput id={fid} value={id} invalid={!!id && !VALID_ID.test(id)} onChange={(e) => set({ id: e.target.value, idTouched: true })} />}
-                  </Field>
-                </div>
+                <Field label="Name">
+                  {(fid) => <TextInput id={fid} autoFocus className="font-sans" value={d.name} placeholder="Billing Staging" onChange={(e) => set({ name: e.target.value })} />}
+                </Field>
                 <div className="grid grid-cols-[1fr_130px] gap-3">
                   <Field
                     label="Domain"
@@ -918,7 +913,8 @@ function Steps({ plan, owner, user, wild, hooks }: { plan: NewAppPlan; owner: st
  *  Kemudi. */
 function runNewApp(server: Server, plan: NewAppPlan, php: string, vhostFiles: string[]) {
   const serverId = server.id;
-  const tabId = useTabs.getState().open({
+  let tabId: string | null = null;
+  tabId = useTabs.getState().open({
     kind: "action",
     title: `${serverId} · new ${plan.id}`,
     serverId,
@@ -930,7 +926,7 @@ function runNewApp(server: Server, plan: NewAppPlan, php: string, vhostFiles: st
     intro: blockIntro(`${serverId} (${server.host}) · New app ${plan.name} · ${localHms()}`, `# set up ${plan.id} in ${plan.path}`),
     spawn: (cols, rows, onData, onEvent) =>
       newappRun(serverId, plan, cols, rows, onData, onEvent).then((info) => {
-        if (info.auditId !== null) useTabs.getState().update(tabId, { auditId: info.auditId });
+        if (info.auditId !== null && tabId) useTabs.getState().update(tabId, { auditId: info.auditId });
         return info.ptyId;
       }),
   });

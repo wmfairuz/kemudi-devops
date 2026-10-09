@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Btn } from "@/components/kit/Btn";
 import { EnvTag } from "@/components/kit/EnvTag";
@@ -6,7 +6,7 @@ import { Hint } from "@/components/kit/Kbd";
 import { Modal, ModalFooter, ModalHeader } from "@/components/kit/Modal";
 import { Field, Segmented, TextInput, VALID_ID } from "@/components/manage/fields";
 import { actionAdd, errorMessage } from "@/lib/ipc";
-import { slug } from "@/stores/manage";
+import { freeId } from "@/stores/manage";
 import { useConfig } from "@/stores/config";
 import { useSnippets } from "@/stores/snippets";
 import { toastError, useToasts } from "@/stores/toasts";
@@ -54,8 +54,13 @@ function AddActionForm() {
   const env = picked ? picked.env : target.env;
   const forApps = scope.kind === "app" || scope.kind === "sharedApp" || scope.kind === "teamApp";
   const [label, setLabel] = useState(target.prefill?.label ?? "");
-  const [id, setId] = useState(target.prefill ? slug(target.prefill.label) : "");
-  const [idTouched, setIdTouched] = useState(false);
+  // Kemudi's own key for it, from the name, unlike any action already there
+  // (the same id would replace a shared action instead of adding one).
+  const taken = useMemo(() => {
+    const servers = useConfig.getState().snapshot?.config?.servers ?? [];
+    return servers.flatMap((sv) => [...sv.actions, ...sv.hidden, ...sv.apps.flatMap((a) => [...a.actions, ...a.hidden])]).map((a) => a.id);
+  }, []);
+  const id = freeId(label, taken, "action");
   const [run, setRun] = useState(target.prefill?.run ?? "");
   const [dropSnippet, setDropSnippet] = useState(false);
   const [where, setWhere] = useState<"ssh" | "local">("ssh");
@@ -70,7 +75,7 @@ function AddActionForm() {
     setBusy(true);
     try {
       await actionAdd(scope, {
-        id: id.trim(),
+        id,
         label: label.trim(),
         run,
         danger,
@@ -126,37 +131,18 @@ function AddActionForm() {
               )}
             </Field>
           )}
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Name">
-              {(fid) => (
-                <TextInput
-                  id={fid}
-                  autoFocus
-                  value={label}
-                  placeholder="Seed database"
-                  className="font-sans"
-                  onChange={(e) => {
-                    setLabel(e.target.value);
-                    if (!idTouched) setId(slug(e.target.value));
-                  }}
-                />
-              )}
-            </Field>
-            <Field label="ID" hint={id && !idOk ? "Letters, digits, . _ -" : undefined}>
-              {(fid) => (
-                <TextInput
-                  id={fid}
-                  value={id}
-                  placeholder="seed"
-                  invalid={!!id && !idOk}
-                  onChange={(e) => {
-                    setId(e.target.value);
-                    setIdTouched(true);
-                  }}
-                />
-              )}
-            </Field>
-          </div>
+          <Field label="Name">
+            {(fid) => (
+              <TextInput
+                id={fid}
+                autoFocus
+                value={label}
+                placeholder="Seed database"
+                className="font-sans"
+                onChange={(e) => setLabel(e.target.value)}
+              />
+            )}
+          </Field>
           <Field
             label="Command"
             hint={

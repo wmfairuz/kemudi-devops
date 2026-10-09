@@ -61,10 +61,14 @@ export default function App() {
         if (s.activeId === prev.activeId) return;
         const tab = s.tabs.find((t) => t.id === s.activeId);
         if (!tab?.serverId) return;
-        const server = findServer(tab.serverId);
-        if (!server) return;
-        const appId = tab.appId && server.apps.some((a) => a.id === tab.appId) ? tab.appId : null;
-        useSidebar.getState().follow(server.id, appId);
+        const { serverId, appId } = tab;
+        // After the tab store's own update (opening a tab) has finished, so
+        // nothing here can interrupt it.
+        queueMicrotask(() => {
+          const server = findServer(serverId);
+          if (!server) return;
+          useSidebar.getState().follow(server.id, appId && server.apps.some((a) => a.id === appId) ? appId : null);
+        });
       }),
     [],
   );

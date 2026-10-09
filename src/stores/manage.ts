@@ -42,6 +42,14 @@ export function openDetails(target: DetailsTarget): void {
   useTabs.getState().openDetails();
 }
 
+/** Kemudi's key for something new, from its name: `slug(name)` (else
+ *  `fallback`), with -2, -3… when it's taken. Never shown in forms. */
+export function freeId(name: string, taken: string[], fallback: string): string {
+  const base = slug(name) || fallback;
+  if (!taken.includes(base)) return base;
+  for (let n = 2; ; n++) if (!taken.includes(`${base}-${n}`)) return `${base}-${n}`;
+}
+
 /** Lower-case id from a display name: "NovaOS Staging" → "novaos-staging". */
 export function slug(name: string): string {
   return name

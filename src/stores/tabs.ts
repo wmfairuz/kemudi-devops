@@ -154,6 +154,9 @@ export const useTabs = create<TabsState>((set, get) => {
     });
 
   const insert = (tab: Tab, background?: boolean, into?: OpenOptions["into"]) => {
+    // Watched first: if something reacting to the update below throws, the
+    // tab still tracks its exit (and isn't left spinning).
+    watch(tab.id, tab.session);
     set((s) => {
       const host = into ? groupOf(s, into.from) : undefined;
       if (host && into) {
@@ -169,7 +172,6 @@ export const useTabs = create<TabsState>((set, get) => {
         activeId: background && s.activeId ? s.activeId : tab.id,
       };
     });
-    watch(tab.id, tab.session);
     return tab.id;
   };
 

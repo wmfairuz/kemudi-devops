@@ -7,6 +7,7 @@ import { Hint } from "@/components/kit/Kbd";
 import { Modal, ModalFooter, ModalHeader } from "@/components/kit/Modal";
 import { appSave, discoverApps, errorMessage, type DiscoveredApp } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
+import { freeId } from "@/stores/manage";
 import { useToasts } from "@/stores/toasts";
 
 const ID_OK = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -58,13 +59,7 @@ export function DiscoverDialog({ server, onClose }: { server: { id: string; name
   const picked = fresh.filter((r) => r.pick);
 
   const taken = new Set(server.apps.map((a) => a.id));
-  const idProblem = (r: Row): string | null => {
-    if (!ID_OK.test(r.id)) return "letters, digits, - _ . only";
-    if (taken.has(r.id)) return "already used on this server";
-    if (picked.filter((p) => p.id === r.id).length > 1) return "used twice";
-    return null;
-  };
-  const bad = picked.some((r) => idProblem(r) || !r.name.trim());
+  const bad = picked.some((r) => !r.name.trim());
 
   const update = (path: string, patch: Partial<Row>) => setRows((list) => (list ?? []).map((r) => (r.path === path ? { ...r, ...patch } : r)));
 
@@ -72,10 +67,15 @@ export function DiscoverDialog({ server, onClose }: { server: { id: string; name
     if (!picked.length || bad) return;
     setBusy(true);
     let ok = 0;
+    // Each gets a free id (Kemudi's own key, never shown): the proposed one,
+    // else -2, -3…
+    const used = [...taken];
     for (const r of picked) {
+      const id = freeId(ID_OK.test(r.id) ? r.id : r.name, used, "app");
+      used.push(id);
       try {
         await appSave(server.id, null, {
-          id: r.id.trim(),
+          id,
           name: r.name.trim(),
           path: r.path,
           branch: r.branch,
@@ -156,7 +156,6 @@ export function DiscoverDialog({ server, onClose }: { server: { id: string; name
         )}
         <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-divider empty:hidden">
           {shown.map((r) => {
-            const idErr = r.pick ? idProblem(r) : null;
             return (
               <div key={r.path} className={cn("flex gap-2.5 border-b border-divider px-3 py-2 last:border-b-0", r.pick && "bg-selected/40")}>
                 <input type="checkbox" className="mt-1.5" checked={r.pick} onChange={(e) => update(r.path, { pick: e.target.checked })} aria-label={`Add ${r.name}`} />
@@ -167,14 +166,6 @@ export function DiscoverDialog({ server, onClose }: { server: { id: string; name
                       onChange={(e) => update(r.path, { name: e.target.value, pick: true })}
                       className="h-7 w-[16em] rounded-md border border-control-border bg-background px-2 text-[12.5px] outline-none focus:border-primary/60"
                       aria-label="Name"
-                    />
-                    <input
-                      value={r.id}
-                      onChange={(e) => update(r.path, { id: e.target.value, pick: true })}
-                      spellCheck={false}
-                      className={cn("h-7 w-[12em] rounded-md border bg-background px-2 font-mono text-[12px] outline-none focus:border-primary/60", idErr ? "border-env-prod-line" : "border-control-border")}
-                      aria-label="ID"
-                      title={idErr ?? "Its ID in Kemudi"}
                     />
                     {r.env && <EnvTag env={r.env} />}
                     <span className="min-w-0 truncate font-mono text-[11px] text-subtle-foreground" title={r.real && r.real !== r.path ? `${r.path} → ${r.real}` : r.path}>
@@ -200,7 +191,6 @@ export function DiscoverDialog({ server, onClose }: { server: { id: string; name
                       </span>
                     )}
                   </div>
-                  {idErr && <span className="text-[11px] text-env-prod-fg">ID {idErr}</span>}
                   {r.error && <span className="text-[11px] text-env-prod-fg">{r.error}</span>}
                 </div>
               </div>

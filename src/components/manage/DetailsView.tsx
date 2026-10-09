@@ -33,7 +33,7 @@ import { triggerAction } from "@/lib/actions";
 import { cn } from "@/lib/utils";
 import { useConfig } from "@/stores/config";
 import { askConfirm } from "@/stores/confirm";
-import { openDetails, slug, useManage } from "@/stores/manage";
+import { freeId, openDetails, useManage } from "@/stores/manage";
 import { useNewApp } from "@/stores/newApp";
 import { useTeam } from "@/stores/team";
 
@@ -194,9 +194,10 @@ function shellFor(server: Server, app?: App) {
 // ------------------------------------------------------------------ server
 
 function ServerDetails({ server }: { server: Server | null }) {
-  const [name, setName] = useState(server && server.name !== server.id ? server.name : "");
-  const [id, setId] = useState(server?.id ?? "");
-  const [idTouched, setIdTouched] = useState(!!server);
+  const [name, setName] = useState(server?.name ?? "");
+  const servers = useConfig((s) => s.snapshot?.config?.servers ?? NO_SERVERS);
+  // Kemudi's own key for it, from the name when it's added; never changed.
+  const id = server ? server.id : freeId(name, servers.map((s) => s.id), "server");
   const [host, setHost] = useState(server?.host ?? "");
   const [env, setEnv] = useState<Env>(server?.env ?? "staging");
   const [vpn, setVpn] = useState<Vpn>(server?.vpn ?? "none");
@@ -304,14 +305,14 @@ function ServerDetails({ server }: { server: Server | null }) {
     (mode !== "new" && mode !== "managed" && !movable) ||
     (entry.hostname !== "" && (sshPort.trim() === "" || entry.port !== null));
 
-  const idOk = VALID_ID.test(id);
+  const idOk = server ? true : name.trim() !== "" && VALID_ID.test(id);
   const vpnOk =
     vpn === "none" ||
     (vpnHost.trim() !== "" && portOf(vpnPort) !== null && (vpn !== "openfortivpn" || vpnConnect.trim() !== ""));
   const checkOk = checkHost.trim() === "" || portOf(checkPort) !== null;
   const form = {
-    id: id.trim(),
-    name: name.trim() || null,
+    id,
+    name: name.trim() && name.trim() !== id ? name.trim() : null,
     host: host.trim(),
     env,
     vpn,
@@ -352,7 +353,7 @@ function ServerDetails({ server }: { server: Server | null }) {
       sshHosts().then(setHosts, () => {});
     }
     if (ok) {
-      done(server ? `Saved ${form.id}` : `Added ${form.id}`);
+      done(server ? `Saved ${form.name ?? form.id}` : `Added ${form.name ?? form.id}`);
       openDetails({ kind: "server", serverId: form.id });
     }
   };
@@ -360,11 +361,11 @@ function ServerDetails({ server }: { server: Server | null }) {
     if (!server) return;
     const n = server.apps.length;
     const ok = await askConfirm(
-      `Delete ${server.id}?`,
-      `Removes ${server.id}${n ? ` and its ${n} app${n === 1 ? "" : "s"}` : ""} from Kemudi. Nothing on the server changes.`,
+      `Delete ${server.name}?`,
+      `Removes it${n ? ` and its ${n} app${n === 1 ? "" : "s"}` : ""} from Kemudi. Nothing on the server changes.`,
     );
     if (ok && (await run(() => serverDelete(server.id)))) {
-      done(`Deleted ${server.id}`);
+      done(`Deleted ${server.name}`);
       useTabs.getState().closeDetails();
     }
   };
@@ -446,21 +447,7 @@ function ServerDetails({ server }: { server: Server | null }) {
             value={name}
             placeholder="NovaOS"
             className="font-sans"
-            onChange={(e) => {
-              setName(e.target.value);
-              if (!idTouched) setId(slug(e.target.value));
-            }}
-          />
-        </Row>
-        <Row label="ID" hint={id && !idOk ? "Letters, digits, . _ - (start with a letter or digit)" : undefined}>
-          <TextInput
-            value={id}
-            placeholder="novaos"
-            invalid={!!id && !idOk}
-            onChange={(e) => {
-              setId(e.target.value);
-              setIdTouched(true);
-            }}
+            onChange={(e) => setName(e.target.value)}
           />
         </Row>
         <Row label="SSH host" hint="Pick one from your SSH config, or type a new name to create it">
@@ -726,7 +713,7 @@ function SudoPassword({ serverId }: { serverId: string }) {
 function AppsList({ server }: { server: Server }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">Apps on {server.id}</div>
+      <div className="text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">Apps on {server.name}</div>
       <div className="flex flex-col overflow-hidden rounded-xl border border-divider">
         {server.apps.map((a) => (
           <button
@@ -760,9 +747,9 @@ function AppsList({ server }: { server: Server }) {
 // --------------------------------------------------------------------- app
 
 function AppDetails({ server, app }: { server: Server; app: App | null }) {
-  const [name, setName] = useState(app && app.name !== app.id ? app.name : "");
-  const [id, setId] = useState(app?.id ?? "");
-  const [idTouched, setIdTouched] = useState(!!app);
+  const [name, setName] = useState(app?.name ?? "");
+  // Kemudi's own key for it, from the name when it's added; never changed.
+  const id = app ? app.id : freeId(name, server.apps.map((a) => a.id), "app");
   const [path, setPath] = useState(app?.path ?? "");
   const [branch, setBranch] = useState(app?.branch ?? "");
   const [php, setPhp] = useState(app?.php ?? "");
@@ -781,10 +768,10 @@ function AppDetails({ server, app }: { server: Server; app: App | null }) {
   const [detectingPhp, setDetectingPhp] = useState(false);
   const { busy, run } = useBusy();
 
-  const idOk = VALID_ID.test(id);
+  const idOk = app ? true : name.trim() !== "" && VALID_ID.test(id);
   const form = {
-    id: id.trim(),
-    name: name.trim() || null,
+    id,
+    name: name.trim() && name.trim() !== id ? name.trim() : null,
     path: path.trim(),
     branch: branch.trim() || null,
     php: php.trim() || null,
@@ -813,7 +800,7 @@ function AppDetails({ server, app }: { server: Server; app: App | null }) {
   const save = async () => {
     if (!valid || busy) return;
     if (await run(() => appSave(server.id, app?.id ?? null, form))) {
-      done(app ? `Saved ${form.id}` : `Added ${form.id} to ${server.id}`);
+      done(app ? `Saved ${form.name ?? form.id}` : `Added ${form.name ?? form.id} to ${server.name}`);
       openDetails({ kind: "app", serverId: server.id, appId: form.id });
     }
   };
@@ -821,10 +808,10 @@ function AppDetails({ server, app }: { server: Server; app: App | null }) {
     if (!app) return;
     const ok = await askConfirm(
       `Delete ${app.name}?`,
-      `Removes ${app.id} from ${server.id} in Kemudi. Nothing on the server changes.`,
+      `Removes it from ${server.name} in Kemudi. Nothing on the server changes.`,
     );
     if (ok && (await run(() => appDelete(server.id, app.id)))) {
-      done(`Deleted ${app.id}`);
+      done(`Deleted ${app.name}`);
       openDetails({ kind: "server", serverId: server.id });
     }
   };
@@ -925,21 +912,7 @@ function AppDetails({ server, app }: { server: Server; app: App | null }) {
             value={name}
             placeholder="Billing"
             className="font-sans"
-            onChange={(e) => {
-              setName(e.target.value);
-              if (!idTouched) setId(slug(e.target.value));
-            }}
-          />
-        </Row>
-        <Row label="ID" hint={id && !idOk ? "Letters, digits, . _ - (start with a letter or digit)" : undefined}>
-          <TextInput
-            value={id}
-            placeholder="billing"
-            invalid={!!id && !idOk}
-            onChange={(e) => {
-              setId(e.target.value);
-              setIdTouched(true);
-            }}
+            onChange={(e) => setName(e.target.value)}
           />
         </Row>
         <Row label="Path" hint="Where the app lives on the server; actions and Open shell start here">

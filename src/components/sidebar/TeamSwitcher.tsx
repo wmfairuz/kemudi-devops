@@ -12,7 +12,7 @@ import { TAB_COLORS, type TabColor } from "@/lib/tabColors";
 import { cn } from "@/lib/utils";
 import { useConfig } from "@/stores/config";
 import { askConfirm } from "@/stores/confirm";
-import { slug } from "@/stores/manage";
+import { freeId } from "@/stores/manage";
 import { initials, useTeam } from "@/stores/team";
 import { toastError, useToasts } from "@/stores/toasts";
 
@@ -92,8 +92,9 @@ export function TeamSwitcher() {
 /** New / edit a team: name, id, colour. */
 function TeamDialog({ team, onClose }: { team: Team | null; onClose: () => void }) {
   const [name, setName] = useState(team?.name ?? "");
-  const [id, setId] = useState(team?.id ?? "");
-  const [idTouched, setIdTouched] = useState(!!team);
+  const teams = useConfig((s) => s.snapshot?.config?.teams ?? NO_TEAMS);
+  // Kemudi's own key for it, from the name when it's added; never changed.
+  const id = team ? team.id : freeId(name, teams.map((t) => t.id), "team");
   const [color, setColor] = useState<TabColor | null>(team?.color ?? null);
   const [busy, setBusy] = useState(false);
   const idOk = VALID_ID.test(id);
@@ -129,36 +130,18 @@ function TeamDialog({ team, onClose }: { team: Team | null; onClose: () => void 
           <span className="text-[12.5px] text-muted-foreground">Servers belong to a team (pick it on a server's page). A team can have its own shared actions and snippets.</span>
         </ModalHeader>
         <div className="flex flex-col gap-3.5 px-5 pb-4">
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Name">
-              {(fid) => (
-                <TextInput
-                  id={fid}
-                  autoFocus
-                  value={name}
-                  placeholder="Northwind"
-                  className="font-sans"
-                  onChange={(e) => {
-                    setName(e.target.value);
-                    if (!idTouched) setId(slug(e.target.value));
-                  }}
-                />
-              )}
-            </Field>
-            <Field label="ID" hint={id && !idOk ? "Letters, digits, . _ -" : undefined}>
-              {(fid) => (
-                <TextInput
-                  id={fid}
-                  value={id}
-                  invalid={!!id && !idOk}
-                  onChange={(e) => {
-                    setId(e.target.value);
-                    setIdTouched(true);
-                  }}
-                />
-              )}
-            </Field>
-          </div>
+          <Field label="Name">
+            {(fid) => (
+              <TextInput
+                id={fid}
+                autoFocus
+                value={name}
+                placeholder="Northwind"
+                className="font-sans"
+                onChange={(e) => setName(e.target.value)}
+              />
+            )}
+          </Field>
           <Field label="Colour">{() => <ColorPicker value={color} onChange={setColor} />}</Field>
         </div>
         <ModalFooter>

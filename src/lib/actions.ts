@@ -184,24 +184,31 @@ export function runAction(a: RenderedAction, command?: string): string {
     return again.id;
   }
   const ref = refOf(a);
-  const tabId: string = useTabs.getState().open({
-    kind: "action",
-    title: a.title,
-    serverId: a.serverId,
-    host: a.host,
-    appId: a.appId,
-    actionId: a.actionId,
-    local: a.kind === "local",
-    prod: a.env === "prod",
-    state: "running",
-    intro: intro(a, override ?? a.rendered),
-    spawn: (cols, rows, onData, onEvent) =>
-      actionRun(ref, override, cols, rows, onData, onEvent).then((info) => {
-        if (info.auditId !== null) useTabs.getState().update(tabId, { auditId: info.auditId });
-        return info.ptyId;
-      }),
-  });
-  return tabId;
+  let tabId: string | null = null;
+  try {
+    tabId = useTabs.getState().open({
+      kind: "action",
+      title: a.title,
+      serverId: a.serverId,
+      host: a.host,
+      appId: a.appId,
+      actionId: a.actionId,
+      local: a.kind === "local",
+      prod: a.env === "prod",
+      state: "running",
+      intro: intro(a, override ?? a.rendered),
+      spawn: (cols, rows, onData, onEvent) =>
+        actionRun(ref, override, cols, rows, onData, onEvent).then((info) => {
+          if (info.auditId !== null && tabId) useTabs.getState().update(tabId, { auditId: info.auditId });
+          return info.ptyId;
+        }),
+    });
+  } catch (e) {
+    // Something reacting to the new tab failed; the tab itself still runs.
+    console.error(e);
+    toastError(`Opening the tab: ${errorMessage(e)}`);
+  }
+  return tabId ?? useTabs.getState().activeId ?? "";
 }
 
 /** The tab "Send to current tab" would type into, or why there isn't one. */
