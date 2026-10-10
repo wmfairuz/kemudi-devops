@@ -18,7 +18,7 @@ export function WorkflowRunDialog() {
   return <RunDialog key={`${wf.id}/${running.from}`} wf={wf} from={running.from} />;
 }
 
-const KIND: Record<string, string> = { local: "this Mac", server: "server", action: "action", pause: "pause" };
+const KIND: Record<string, string> = { local: "this Mac", server: "server", action: "action", pause: "pause", parallel: "at once", watch: "watch" };
 
 /** Run a workflow: its steps (click one to start there), the exact script,
  *  and on production the server's name typed first. */
@@ -72,8 +72,8 @@ function RunDialog({ wf, from: initialFrom }: { wf: Workflow; from: number }) {
           </Btn>
         </div>
         <span className="text-[12.5px] text-muted-foreground">
-          Runs in one terminal tab, top to bottom; answer prompts (passwords, questions) there. The first step that fails stops it, and you can
-          run again from that step. Click a step to start there.
+          Runs in one terminal tab, top to bottom; answer prompts (passwords, questions) there. Steps at once and watches open their own panes
+          beside it. The first step that fails stops it, and you can run again from that step. Click a step to start there.
         </span>
       </ModalHeader>
       <div className="flex max-h-[min(60vh,560px)] flex-col gap-3 overflow-y-auto px-5 pb-4">
@@ -96,13 +96,26 @@ function RunDialog({ wf, from: initialFrom }: { wf: Workflow; from: number }) {
                   <span className="w-5 flex-none text-right font-mono text-[12px] text-subtle-foreground">{n}</span>
                   <span className="w-[68px] flex-none text-[11px] text-subtle-foreground uppercase">{KIND[s.kind]}</span>
                   <span className="min-w-0 flex-1 truncate text-[13px]">{stepTitle(config, s)}</span>
-                  {s.kind !== "pause" && s.kind !== "action" && (
+                  {(s.kind === "local" || s.kind === "server" || s.kind === "watch") && (
                     <span className="max-w-[45%] truncate font-mono text-[11px] text-soft-foreground" title={s.run}>
                       {s.run}
                     </span>
                   )}
                   {n === from && from > 1 && <span className="text-[11px] text-primary">start</span>}
                 </button>
+                {s.kind === "parallel" && (
+                  <ol className={cn("ml-[60px] flex flex-col gap-0.5 border-l border-divider pl-3", skipped && "opacity-45")}>
+                    {s.branches.map((b, j) => (
+                      <li key={j} className="flex items-center gap-2.5 py-1 text-[12.5px]">
+                        <span className="font-mono text-[11px] text-subtle-foreground">
+                          {n}.{j + 1}
+                        </span>
+                        <span className="w-[68px] flex-none text-[11px] text-subtle-foreground uppercase">{KIND[b.kind]}</span>
+                        <span className="min-w-0 flex-1 truncate">{stepTitle(config, b)}</span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
               </li>
             );
           })}

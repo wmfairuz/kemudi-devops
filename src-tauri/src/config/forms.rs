@@ -641,30 +641,29 @@ pub enum StepFormKind {
     Pause {
         text: String,
     },
+    Parallel {
+        branches: Vec<StepForm>,
+    },
+    Watch {
+        server: Option<String>,
+        run: String,
+        #[serde(default)]
+        root: bool,
+        dir: Option<String>,
+        #[serde(default)]
+        keep: bool,
+    },
 }
 
-/// The workflow as YAML lines (dash at column 0).
-fn workflow_yaml(f: &WorkflowForm) -> Vec<String> {
+/// Steps as YAML list items, the dash at `indent`.
+fn step_lines(steps: &[StepForm], indent: usize, out: &mut Vec<String>) {
     let q = |s: &str| yaml_scalar(s.trim());
-    let mut out = vec![
-        format!("- id: {}", q(&f.id)),
-        format!("  name: {}", q(&f.name)),
-    ];
-    if let Some(s) = opt(&f.pin_server) {
-        match opt(&f.pin_app) {
-            Some(a) => out.push(format!("  pin: {{ server: {}, app: {} }}", q(&s), q(&a))),
-            None => out.push(format!("  pin: {{ server: {} }}", q(&s))),
-        }
-    }
-    if f.view == super::schema::WorkflowView::Terminal {
-        out.push("  view: terminal".into());
-    }
-    out.push("  steps:".into());
-    for st in &f.steps {
+    for st in steps {
         let mut fields: Vec<(&str, String)> = Vec::new();
         if let Some(l) = opt(&st.label) {
             fields.push(("label", q(&l)));
         }
+        let mut nested: Option<&Vec<StepForm>> = None;
         match &st.kind {
             StepFormKind::Local { run, dir } => {
                 fields.push(("local", q(run)));
@@ -706,12 +705,68 @@ fn workflow_yaml(f: &WorkflowForm) -> Vec<String> {
                 };
                 fields.push(("pause", q(t)));
             }
+            StepFormKind::Parallel { branches } => nested = Some(branches),
+            StepFormKind::Watch {
+                server,
+                run,
+                root,
+                dir,
+                keep,
+            } => {
+                fields.push(("watch", q(run)));
+                if let Some(s) = opt(server) {
+                    fields.push(("server", q(&s)));
+                    if *root {
+                        fields.push(("root", "true".into()));
+                    }
+                }
+                if let Some(d) = opt(dir) {
+                    fields.push(("dir", q(&d)));
+                }
+                if *keep {
+                    fields.push(("keep", "true".into()));
+                }
+            }
         }
-        for (i, (k, v)) in fields.iter().enumerate() {
-            let lead = if i == 0 { "    - " } else { "      " };
-            out.push(format!("{lead}{k}: {v}"));
+        let pad = " ".repeat(indent);
+        let mut first = true;
+        let mut lead = || {
+            let l = if first {
+                format!("{pad}- ")
+            } else {
+                format!("{pad}  ")
+            };
+            first = false;
+            l
+        };
+        for (k, v) in &fields {
+            out.push(format!("{}{k}: {v}", lead()));
+        }
+        if let Some(branches) = nested {
+            out.push(format!("{}parallel:", lead()));
+            step_lines(branches, indent + 4, out);
         }
     }
+}
+
+/// The workflow as YAML lines (dash at column 0).
+fn workflow_yaml(f: &WorkflowForm) -> Vec<String> {
+    let q = |s: &str| yaml_scalar(s.trim());
+    let mut out = vec![
+        format!("- id: {}", q(&f.id)),
+        format!("  name: {}", q(&f.name)),
+    ];
+    if let Some(s) = opt(&f.pin_server) {
+        match opt(&f.pin_app) {
+            Some(a) => out.push(format!("  pin: {{ server: {}, app: {} }}", q(&s), q(&a))),
+            None => out.push(format!("  pin: {{ server: {} }}", q(&s))),
+        }
+    }
+    if f.view == super::schema::WorkflowView::Terminal {
+        out.push("  view: terminal".into());
+    }
+    out.push("  steps:".into());
+    step_lines(&f.steps, 4, &mut out);
     out
 }
 
@@ -728,23 +783,43 @@ pub async fn workflow_save(
     if form.steps.is_empty() {
         return Err(AppError::Invalid("add at least one step".into()));
     }
-    for (i, st) in form.steps.iter().enumerate() {
-        let n = i + 1;
-        let empty = |s: &str| s.trim().is_empty();
-        let bad = match &st.kind {
-            StepFormKind::Local { run, .. } => empty(run).then_some("needs a command"),
-            StepFormKind::Server { server, run, .. } => {
-                (empty(server) || empty(run)).then_some("needs a server and a command")
+    fn check_steps(steps: &[StepForm], prefix: &str, top: bool) -> AppResult<()> {
+        for (i, st) in steps.iter().enumerate() {
+            let n = format!("{prefix}{}", i + 1);
+            let empty = |s: &str| s.trim().is_empty();
+            let bad = match &st.kind {
+                StepFormKind::Local { run, .. } => empty(run).then_some("needs a command"),
+                StepFormKind::Server { server, run, .. } => {
+                    (empty(server) || empty(run)).then_some("needs a server and a command")
+                }
+                StepFormKind::Action { server, action, .. } => {
+                    (empty(server) || empty(action)).then_some("needs an action")
+                }
+                StepFormKind::Pause { .. }
+                | StepFormKind::Watch { .. }
+                | StepFormKind::Parallel { .. }
+                    if !top =>
+                {
+                    Some("can't be inside a parallel step")
+                }
+                StepFormKind::Pause { .. } => None,
+                StepFormKind::Watch { run, .. } => empty(run).then_some("needs a command"),
+                StepFormKind::Parallel { branches } => {
+                    if branches.len() < 2 {
+                        Some("needs at least two steps at once")
+                    } else {
+                        check_steps(branches, &format!("{n}."), false)?;
+                        None
+                    }
+                }
+            };
+            if let Some(why) = bad {
+                return Err(AppError::Invalid(format!("step {n} {why}")));
             }
-            StepFormKind::Action { server, action, .. } => {
-                (empty(server) || empty(action)).then_some("needs an action")
-            }
-            StepFormKind::Pause { .. } => None,
-        };
-        if let Some(why) = bad {
-            return Err(AppError::Invalid(format!("step {n} {why}")));
         }
+        Ok(())
     }
+    check_steps(&form.steps, "", true)?;
     let id = form.id.trim().to_string();
     let source = read(&state)?;
     let edited = set_workflow(&source, original.as_deref(), &workflow_yaml(&form))
@@ -809,6 +884,39 @@ mod workflow_tests {
                         text: String::new(),
                     },
                 },
+                StepForm {
+                    label: Some("both".into()),
+                    kind: StepFormKind::Parallel {
+                        branches: vec![
+                            StepForm {
+                                label: None,
+                                kind: StepFormKind::Local {
+                                    run: "echo a".into(),
+                                    dir: None,
+                                },
+                            },
+                            StepForm {
+                                label: Some("b".into()),
+                                kind: StepFormKind::Server {
+                                    server: "stg".into(),
+                                    run: "echo b".into(),
+                                    root: false,
+                                    dir: Some("/x".into()),
+                                },
+                            },
+                        ],
+                    },
+                },
+                StepForm {
+                    label: None,
+                    kind: StepFormKind::Watch {
+                        server: Some("stg".into()),
+                        run: "tail -f storage/logs/laravel.log".into(),
+                        root: false,
+                        dir: Some("/x".into()),
+                        keep: true,
+                    },
+                },
             ],
         };
         let src = "servers:\n  - id: stg\n    host: stg\n    env: staging\n    apps:\n      - { id: shop, path: /x }\n";
@@ -825,7 +933,14 @@ mod workflow_tests {
         assert_eq!(w.name, "Ship it: \"now\"");
         assert_eq!(w.pin_app.as_deref(), Some("shop"));
         assert_eq!(w.view, crate::config::schema::WorkflowView::Terminal);
-        assert_eq!(w.steps.len(), 3);
+        assert_eq!(w.steps.len(), 5, "{out}");
+        assert!(
+            matches!(&w.steps[3].kind, crate::config::schema::StepKind::Parallel { branches } if branches.len() == 2)
+        );
+        assert!(matches!(
+            &w.steps[4].kind,
+            crate::config::schema::StepKind::Watch { keep: true, .. }
+        ));
         assert!(matches!(
             &w.steps[1].kind,
             crate::config::schema::StepKind::Server { root: true, .. }

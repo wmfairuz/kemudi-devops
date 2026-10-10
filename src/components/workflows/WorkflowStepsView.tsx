@@ -6,10 +6,11 @@ import { cn } from "@/lib/utils";
 import type { StepState } from "@/lib/stepTracker";
 import { passwordPromptIn } from "@/lib/terminalSession";
 import { useTabs, type Tab } from "@/stores/tabs";
+import { killPty } from "@/lib/ipc";
 import { fillPassword, suggested, useVault } from "@/stores/vault";
 import { useWorkflows } from "@/stores/workflows";
 
-const KIND: Record<string, string> = { local: "this Mac", server: "server", action: "action", pause: "pause" };
+const KIND: Record<string, string> = { local: "this Mac", server: "server", action: "action", pause: "pause", parallel: "at once", watch: "watch" };
 
 function clock(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
@@ -113,7 +114,11 @@ export function WorkflowStepsView({ tab }: { tab: Tab }) {
                   </button>
                 )}
               </div>
-              {tail && !waiting && <div className="mt-1 ml-[52px] truncate text-[12px] text-[#8a8ea8]">{tail}</div>}
+              {tail && !waiting && run.kinds[i] !== "parallel" && run.kinds[i] !== "watch" && (
+                <div className="mt-1 ml-[52px] truncate text-[12px] text-[#8a8ea8]">{tail}</div>
+              )}
+              {run.kinds[i] === "parallel" && run.branches?.[n] && <Branches ids={run.branches[n]!} />}
+              {run.kinds[i] === "watch" && run.watches?.[n] && <WatchRow id={run.watches[n]!.tab} keep={run.watches[n]!.keep} />}
               {s.status === "failed" && (
                 <div className="mt-1.5 ml-[52px] flex items-center gap-2 text-[12px]">
                   <span className="text-[#ff5555]">exit {s.code ?? "?"}</span>
@@ -232,6 +237,69 @@ function Answer({ tab, text, secret, yesNo }: { tab: Tab; text: string; secret: 
           </button>
         )}
       </form>
+    </div>
+  );
+}
+
+/** A parallel step's panes: each branch's state; click to go to it. */
+function Branches({ ids }: { ids: string[] }) {
+  const tabs = useTabs((s) => s.tabs);
+  const [, rerender] = useReducer((x: number) => x + 1, 0);
+  // Their trackers (waiting for an answer) live outside the store.
+  useEffect(() => {
+    const offs = ids.map((id) => tabs.find((t) => t.id === id)?.workflow?.tracker.subscribe(rerender));
+    return () => offs.forEach((off) => off?.());
+  }, [ids, tabs]);
+  return (
+    <ol className="mt-1.5 ml-[52px] flex flex-col gap-0.5">
+      {ids.map((id) => {
+        const t = tabs.find((x) => x.id === id);
+        if (!t) return null;
+        const waiting = t.workflow?.tracker.waiting;
+        return (
+          <li key={id}>
+            <button
+              onClick={() => useTabs.getState().activate(id)}
+              className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-1.5 py-1 text-left text-[12.5px] hover:bg-white/[0.05]"
+              title="Go to its pane"
+            >
+              {t.state === "running" ? (
+                <Spinner size={9} />
+              ) : t.state === "failed" ? (
+                <X className="size-3.5 text-[#ff5555]" strokeWidth={2.5} />
+              ) : (
+                <Check className="size-3.5 text-[#50fa7b]" strokeWidth={2.5} />
+              )}
+              <span className="min-w-0 flex-1 truncate">{t.title}</span>
+              {waiting && <span className="text-[11.5px] text-[#f1fa8c]">needs an answer ›</span>}
+              {t.state === "failed" && <span className="text-[11.5px] text-[#ff5555]">exit {t.exitCode ?? "?"}</span>}
+            </button>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/** A watch step's pane: show it, or stop it. */
+function WatchRow({ id, keep }: { id: string; keep: boolean }) {
+  const tab = useTabs((s) => s.tabs.find((t) => t.id === id));
+  if (!tab) return <div className="mt-1 ml-[52px] text-[12px] text-[#8a8ea8]">its pane was closed</div>;
+  const running = tab.state === "running";
+  const btn = "h-6 cursor-pointer rounded-md border border-white/15 px-2.5 text-[12px] text-[#b6b8c8] hover:bg-white/10 hover:text-[#f8f8f2]";
+  return (
+    <div className="mt-1.5 ml-[52px] flex items-center gap-2 text-[12px] text-[#8a8ea8]">
+      <span className="flex-1">
+        {running ? `watching in a pane below${keep ? " (stays after the run)" : " until the run ends"}` : "stopped"}
+      </span>
+      <button className={btn} onClick={() => useTabs.getState().activate(id)}>
+        Show
+      </button>
+      {running && tab.session.ptyId !== null && (
+        <button className={btn} onClick={() => void killPty(tab.session.ptyId!).catch(() => {})}>
+          Stop
+        </button>
+      )}
     </div>
   );
 }

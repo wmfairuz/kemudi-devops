@@ -78,6 +78,15 @@ pub struct RawStep {
     pub action: Option<String>,
     /// Wait for Enter (with this message) before going on.
     pub pause: Option<String>,
+    /// Steps run at the same time, each in its own pane (this Mac, server
+    /// or action steps); the run goes on when all have passed.
+    pub parallel: Option<Vec<RawStep>>,
+    /// A command left running in a side pane (e.g. `tail -f` a log) while
+    /// the workflow goes on; on `server`, else this Mac.
+    pub watch: Option<String>,
+    /// A watch pane keeps running after the workflow ends.
+    #[serde(default)]
+    pub keep: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -410,6 +419,16 @@ pub enum StepKind {
     },
     Pause {
         text: String,
+    },
+    Parallel {
+        branches: Vec<Step>,
+    },
+    Watch {
+        server: Option<String>,
+        run: String,
+        root: bool,
+        dir: Option<String>,
+        keep: bool,
     },
 }
 

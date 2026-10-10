@@ -209,6 +209,8 @@ pub fn run() {
             config::forms::server_move,
             workflows::workflow_script,
             workflows::workflow_run,
+            workflows::workflow_branch_run,
+            workflows::workflow_watch_run,
             config::forms::workflow_save,
             config::forms::workflow_delete,
             snippets::snippets_list,

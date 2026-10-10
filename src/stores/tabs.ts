@@ -25,6 +25,12 @@ export interface WorkflowRunState {
   kinds: string[];
   tracker: StepTracker;
   view: "steps" | "output";
+  /** Parallel steps: the panes running each branch (step → tab ids). */
+  branches?: Record<number, string[]>;
+  /** Watch steps: the pane running each (step → tab id, kept after?). */
+  watches?: Record<number, { tab: string; keep: boolean }>;
+  /** A branch pane (one step of another run), not a whole run. */
+  part?: boolean;
 }
 
 export interface Tab {

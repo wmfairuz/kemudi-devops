@@ -407,7 +407,11 @@ export type StepKind =
   | { kind: "local"; run: string; dir: string | null }
   | { kind: "server"; server: string; run: string; root: boolean; dir: string | null }
   | { kind: "action"; server: string; app: string | null; action: string }
-  | { kind: "pause"; text: string };
+  | { kind: "pause"; text: string }
+  /** Steps at once, each in its own pane; goes on when all have passed. */
+  | { kind: "parallel"; branches: WorkflowStep[] }
+  /** A command left running in a side pane (on `server`, else this Mac). */
+  | { kind: "watch"; server: string | null; run: string; root: boolean; dir: string | null; keep: boolean };
 
 export type WorkflowStep = { label: string | null } & StepKind;
 
@@ -1275,10 +1279,51 @@ export function workflowRun(
   rows: number,
   onData: (bytes: Uint8Array) => void,
   onEvent: (event: PtyEvent) => void,
-): Promise<{ ptyId: number; auditId: number | null }> {
+): Promise<WorkflowRunInfo> {
   const data = new Channel<ArrayBuffer>();
   data.onmessage = (buf) => onData(new Uint8Array(buf));
   const events = new Channel<PtyEvent>();
   events.onmessage = onEvent;
   return invoke("workflow_run", { id, from, cols, rows, onData: data, onEvent: events });
+}
+
+export interface WorkflowRunInfo {
+  ptyId: number;
+  auditId: number | null;
+  /** The run's private folder (its parallel branches report there). */
+  token: string;
+}
+
+/** Branch `branch` of parallel step `step`, in its own pane. */
+export function workflowBranchRun(
+  id: string,
+  step: number,
+  branch: number,
+  token: string,
+  cols: number,
+  rows: number,
+  onData: (bytes: Uint8Array) => void,
+  onEvent: (event: PtyEvent) => void,
+): Promise<WorkflowRunInfo> {
+  const data = new Channel<ArrayBuffer>();
+  data.onmessage = (buf) => onData(new Uint8Array(buf));
+  const events = new Channel<PtyEvent>();
+  events.onmessage = onEvent;
+  return invoke("workflow_branch_run", { id, step, branch, token, cols, rows, onData: data, onEvent: events });
+}
+
+/** A watch step's command, in its own pane. */
+export function workflowWatchRun(
+  id: string,
+  step: number,
+  cols: number,
+  rows: number,
+  onData: (bytes: Uint8Array) => void,
+  onEvent: (event: PtyEvent) => void,
+): Promise<WorkflowRunInfo> {
+  const data = new Channel<ArrayBuffer>();
+  data.onmessage = (buf) => onData(new Uint8Array(buf));
+  const events = new Channel<PtyEvent>();
+  events.onmessage = onEvent;
+  return invoke("workflow_watch_run", { id, step, cols, rows, onData: data, onEvent: events });
 }

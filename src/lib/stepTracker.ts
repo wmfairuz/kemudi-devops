@@ -44,6 +44,8 @@ export class StepTracker {
     private readonly term: Terminal,
     count: number,
     from: number,
+    /** A parallel group / a watch reached: open their panes. */
+    private readonly hooks: { group?: (step: number, branches: number) => void; watch?: (step: number) => void } = {},
   ) {
     this.steps = Array.from({ length: count }, (_, i) => ({ status: i + 1 < from ? "skipped" : "pending" }));
     term.parser.registerOscHandler(6973, (data) => {
@@ -127,6 +129,13 @@ export class StepTracker {
       s.end = this.term.registerMarker(0);
     } else if (kind === "end") {
       this.finished = "ok";
+    } else if (kind === "group" && s) {
+      // Opened after the terminal finishes this write.
+      setTimeout(() => this.hooks.group?.(n, Number(b)), 0);
+      return;
+    } else if (kind === "watch" && s) {
+      setTimeout(() => this.hooks.watch?.(n), 0);
+      return;
     } else {
       return;
     }

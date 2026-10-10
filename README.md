@@ -245,6 +245,29 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
         - { action: clear-cache, server: shop-prod, app: shop }
   ```
 
+  Two more step types:
+  - **At once** (`parallel:` with two or more this-Mac / server / action
+    steps): when the run gets there, each opens in its own pane beside the
+    run (with its own Steps view and answer box, so each can ask its own
+    questions) and they run at the same time; the run goes on when all have
+    passed, and stops there if any failed (the main Steps view lists them,
+    with *needs an answer* when one is waiting; click one to go to its pane).
+    Each branch writes its exit code into the run's private temp folder,
+    also when its pane is closed or Ctrl+C'd, so the run never waits forever.
+  - **Watch** (`watch:` a command, on `server` or this Mac, optional `dir`
+    and `root`): opens a pane under the run (e.g. `tail -f
+    storage/logs/laravel.log` or `supervisorctl tail -f horizon`) and the run
+    goes straight on; it's stopped when the run ends, unless `keep: true`.
+
+  ```yaml
+      steps:
+        - { watch: tail -f storage/logs/laravel.log, server: shop-prod, dir: /opt/www/app }
+        - label: Deploy both
+          parallel:
+            - { server: shop-prod, root: true, run: deploy /opt/www/app }
+            - { server: shop-prod-2, root: true, run: deploy /opt/www/app }
+  ```
+
   A run opens in the **Steps** view (or the terminal: *Opens in* per
   workflow, `view: terminal`; switch any time with *Output* / *Steps ▸*):
   each step pending / running (timer, its last line) / ✓ with its time / ✗

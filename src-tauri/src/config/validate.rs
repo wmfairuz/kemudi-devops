@@ -477,117 +477,10 @@ impl Validator<'_> {
             }
             let mut steps = Vec::new();
             for (si, st) in rw.steps.into_iter().enumerate() {
-                let n = si + 1;
-                let kinds = [
-                    st.local.is_some(),
-                    st.run.is_some(),
-                    st.action.is_some(),
-                    st.pause.is_some(),
-                ]
-                .iter()
-                .filter(|x| **x)
-                .count();
-                if kinds != 1 {
-                    self.error(
-                        Diag::new(format!(
-                            "workflow `{}` step {n}: give exactly one of `local`, `run`, `action` or `pause`",
-                            rw.id
-                        ))
-                        .at(line)
-                        .path(&path),
-                    );
-                    continue;
+                let n = (si + 1).to_string();
+                if let Some(step) = self.workflow_step(&rw.id, &n, st, servers, line, &path, true) {
+                    steps.push(step);
                 }
-                let server_of = |this: &mut Self, s: &Option<String>| -> Option<String> {
-                    match s {
-                        None => {
-                            this.error(
-                                Diag::new(format!(
-                                    "workflow `{}` step {n}: which `server`?",
-                                    rw.id
-                                ))
-                                .at(line)
-                                .path(&path),
-                            );
-                            None
-                        }
-                        Some(s) => Some(s.clone()),
-                    }
-                };
-                let kind = if let Some(cmd) = st.local {
-                    StepKind::Local {
-                        run: cmd,
-                        dir: st.dir,
-                    }
-                } else if let Some(cmd) = st.run {
-                    let Some(server) = server_of(self, &st.server) else {
-                        continue;
-                    };
-                    if !servers.iter().any(|x| x.id == server) {
-                        warn(
-                            self,
-                            format!("workflow `{}` step {n}: `{server}` isn't a server", rw.id),
-                        );
-                    }
-                    StepKind::Server {
-                        server,
-                        run: cmd,
-                        root: st.root,
-                        dir: st.dir,
-                    }
-                } else if let Some(action) = st.action {
-                    let Some(server) = server_of(self, &st.server) else {
-                        continue;
-                    };
-                    let found = servers
-                        .iter()
-                        .find(|x| x.id == server)
-                        .map(|srv| match &st.app {
-                            Some(a) => srv
-                                .app(a)
-                                .map(|app| app.actions.iter().any(|x| x.id == action)),
-                            None => Some(srv.actions.iter().any(|x| x.id == action)),
-                        });
-                    match found {
-                        None => warn(
-                            self,
-                            format!("workflow `{}` step {n}: `{server}` isn't a server", rw.id),
-                        ),
-                        Some(None) => warn(
-                            self,
-                            format!(
-                                "workflow `{}` step {n}: app `{}` isn't on {server}",
-                                rw.id,
-                                st.app.clone().unwrap_or_default()
-                            ),
-                        ),
-                        Some(Some(false))
-                            if crate::actions::commands::builtin(&action).is_none() =>
-                        {
-                            warn(
-                                self,
-                                format!(
-                                    "workflow `{}` step {n}: there's no action `{action}` there",
-                                    rw.id
-                                ),
-                            )
-                        }
-                        _ => {}
-                    }
-                    StepKind::Action {
-                        server,
-                        app: st.app,
-                        action,
-                    }
-                } else {
-                    StepKind::Pause {
-                        text: st.pause.unwrap_or_default(),
-                    }
-                };
-                steps.push(Step {
-                    label: st.label.filter(|l| !l.trim().is_empty()),
-                    kind,
-                });
             }
             out.push(Workflow {
                 name: rw.name.unwrap_or_else(|| rw.id.clone()),
@@ -600,6 +493,149 @@ impl Validator<'_> {
             });
         }
         out
+    }
+
+    /// One workflow step (`n`: "3", or "3.2" for a parallel branch).
+    /// `top`: pauses, parallel groups and watches are allowed (not in a
+    /// parallel group). Bad shapes are errors; missing servers, apps or
+    /// actions are warnings.
+    #[allow(clippy::too_many_arguments)]
+    fn workflow_step(
+        &mut self,
+        wf: &str,
+        n: &str,
+        st: RawStep,
+        servers: &[Server],
+        line: Option<usize>,
+        path: &str,
+        top: bool,
+    ) -> Option<Step> {
+        let err = |this: &mut Self, m: String| {
+            this.error(
+                Diag::new(format!("workflow `{wf}` step {n}: {m}"))
+                    .at(line)
+                    .path(path),
+            );
+        };
+        let warn = |this: &mut Self, m: String| {
+            this.warnings.push(
+                Diag::new(format!("workflow `{wf}` step {n}: {m}"))
+                    .at(line)
+                    .path(path),
+            );
+        };
+        let kinds = [
+            st.local.is_some(),
+            st.run.is_some(),
+            st.action.is_some(),
+            st.pause.is_some(),
+            st.parallel.is_some(),
+            st.watch.is_some(),
+        ]
+        .iter()
+        .filter(|x| **x)
+        .count();
+        if kinds != 1 {
+            err(
+                self,
+                "give exactly one of `local`, `run`, `action`, `pause`, `parallel` or `watch`"
+                    .into(),
+            );
+            return None;
+        }
+        if !top && (st.pause.is_some() || st.parallel.is_some() || st.watch.is_some()) {
+            err(
+                self,
+                "a parallel branch is a `local`, `run` or `action` step".into(),
+            );
+            return None;
+        }
+        let check_server = |this: &mut Self, s: &str| {
+            if !servers.iter().any(|x| x.id == s) {
+                warn(this, format!("`{s}` isn't a server"));
+            }
+        };
+        let need_server = |this: &mut Self, s: Option<String>| -> Option<String> {
+            if s.is_none() {
+                err(this, "which `server`?".into());
+            }
+            s
+        };
+        let kind = if let Some(cmd) = st.local {
+            StepKind::Local {
+                run: cmd,
+                dir: st.dir,
+            }
+        } else if let Some(cmd) = st.run {
+            let server = need_server(self, st.server)?;
+            check_server(self, &server);
+            StepKind::Server {
+                server,
+                run: cmd,
+                root: st.root,
+                dir: st.dir,
+            }
+        } else if let Some(action) = st.action {
+            let server = need_server(self, st.server)?;
+            let found = servers
+                .iter()
+                .find(|x| x.id == server)
+                .map(|srv| match &st.app {
+                    Some(a) => srv
+                        .app(a)
+                        .map(|app| app.actions.iter().any(|x| x.id == action)),
+                    None => Some(srv.actions.iter().any(|x| x.id == action)),
+                });
+            match found {
+                None => warn(self, format!("`{server}` isn't a server")),
+                Some(None) => warn(
+                    self,
+                    format!(
+                        "app `{}` isn't on {server}",
+                        st.app.clone().unwrap_or_default()
+                    ),
+                ),
+                Some(Some(false)) if crate::actions::commands::builtin(&action).is_none() => {
+                    warn(self, format!("there's no action `{action}` there"))
+                }
+                _ => {}
+            }
+            StepKind::Action {
+                server,
+                app: st.app,
+                action,
+            }
+        } else if let Some(branches) = st.parallel {
+            if branches.len() < 2 {
+                err(self, "`parallel` needs at least two steps".into());
+                return None;
+            }
+            let mut out = Vec::new();
+            for (bi, b) in branches.into_iter().enumerate() {
+                let bn = format!("{n}.{}", bi + 1);
+                out.push(self.workflow_step(wf, &bn, b, servers, line, path, false)?);
+            }
+            StepKind::Parallel { branches: out }
+        } else if let Some(cmd) = st.watch {
+            if let Some(s) = &st.server {
+                check_server(self, s);
+            }
+            StepKind::Watch {
+                server: st.server,
+                run: cmd,
+                root: st.root,
+                dir: st.dir,
+                keep: st.keep,
+            }
+        } else {
+            StepKind::Pause {
+                text: st.pause.unwrap_or_default(),
+            }
+        };
+        Some(Step {
+            label: st.label.filter(|l| !l.trim().is_empty()),
+            kind,
+        })
     }
 
     fn resolve_globals(&mut self, defs: &[ActionDef], kind: ActionKind, path: &str) -> Vec<Action> {

@@ -34,8 +34,33 @@ const blank = (kind: Kind, server: string): WorkflowStep => {
       return { kind, label: null, server, app: null, action: "" };
     case "pause":
       return { kind, label: null, text: "Continue?" };
+    case "parallel":
+      return { kind, label: null, branches: [blank("server", server), blank("server", server)] };
+    case "watch":
+      return { kind, label: null, server: server || null, run: "", root: false, dir: null, keep: false };
   }
 };
+
+/** What's missing in a step (and its branches); `n` names it. */
+function stepProblems(s: WorkflowStep, n: string): string[] {
+  switch (s.kind) {
+    case "local":
+      return s.run.trim() ? [] : [`Step ${n} needs a command.`];
+    case "server":
+      return [...(s.server ? [] : [`Step ${n} needs a server.`]), ...(s.run.trim() ? [] : [`Step ${n} needs a command.`])];
+    case "action":
+      return [...(s.server ? [] : [`Step ${n} needs a server.`]), ...(s.action ? [] : [`Step ${n}: pick the action.`])];
+    case "watch":
+      return s.run.trim() ? [] : [`Step ${n} needs a command to watch.`];
+    case "parallel":
+      return [
+        ...(s.branches.length < 2 ? [`Step ${n} needs at least two steps at once.`] : []),
+        ...s.branches.flatMap((b, i) => stepProblems(b, `${n}.${i + 1}`)),
+      ];
+    case "pause":
+      return [];
+  }
+}
 
 const NO_SERVERS: Server[] = [];
 const select =
@@ -98,12 +123,7 @@ function Editor({ workflow, pin }: { workflow: Workflow | null; pin?: { server: 
   const problems: string[] = [];
   if (!name.trim()) problems.push("Give it a name.");
   if (steps.length === 0) problems.push("Add a step.");
-  steps.forEach((s, i) => {
-    const n = i + 1;
-    if ((s.kind === "local" || s.kind === "server") && !s.run.trim()) problems.push(`Step ${n} needs a command.`);
-    if ((s.kind === "server" || s.kind === "action") && !s.server) problems.push(`Step ${n} needs a server.`);
-    if (s.kind === "action" && !s.action) problems.push(`Step ${n}: pick the action.`);
-  });
+  steps.forEach((s, i) => problems.push(...stepProblems(s, String(i + 1))));
 
   const save = async () => {
     if (problems.length || busy) return;
@@ -208,7 +228,7 @@ function Editor({ workflow, pin }: { workflow: Workflow | null; pin?: { server: 
                 <span className="pointer-events-none absolute right-0 -bottom-[5px] left-0 h-[3px] rounded bg-primary" />
               )}
               <StepEditor
-                n={i + 1}
+                n={String(i + 1)}
                 step={s}
                 servers={servers}
                 lifted={drag?.from === i}
@@ -261,13 +281,16 @@ function StepEditor({
   onUp,
   onDown,
   onRemove,
+  nested,
 }: {
-  n: number;
+  n: string;
   step: WorkflowStep;
   servers: Server[];
   title: string;
   lifted: boolean;
-  onHandle: (e: React.PointerEvent) => void;
+  /** A branch of a parallel step: only this Mac / server / action. */
+  nested?: boolean;
+  onHandle?: (e: React.PointerEvent) => void;
   onKind: (k: Kind) => void;
   onChange: (p: Partial<WorkflowStep>) => void;
   onUp?: () => void;
@@ -289,12 +312,14 @@ function StepEditor({
     </select>
   );
   return (
-    <div className={cn("flex gap-2 rounded-xl border border-divider bg-panel p-3", lifted && "opacity-40")}>
-      <div className="flex w-6 flex-none flex-col items-center gap-1 pt-1">
+    <div className={cn("flex gap-2 rounded-xl border border-divider p-3", nested ? "bg-background" : "bg-panel", lifted && "opacity-40")}>
+      <div className="flex w-7 flex-none flex-col items-center gap-1 pt-1">
         <span className="font-mono text-[12px] text-subtle-foreground">{n}</span>
-        <button type="button" title="Drag to reorder" onPointerDown={onHandle} className="cursor-grab text-faint-foreground hover:text-foreground">
-          <GripVertical className="size-4" />
-        </button>
+        {onHandle && (
+          <button type="button" title="Drag to reorder" onPointerDown={onHandle} className="cursor-grab text-faint-foreground hover:text-foreground">
+            <GripVertical className="size-4" />
+          </button>
+        )}
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-2.5">
         <div className="flex items-center gap-2">
@@ -306,7 +331,13 @@ function StepEditor({
               { value: "local", label: "This Mac" },
               { value: "server", label: "Server" },
               { value: "action", label: "Action" },
-              { value: "pause", label: "Pause" },
+              ...(nested
+                ? []
+                : [
+                    { value: "pause" as const, label: "Pause" },
+                    { value: "parallel" as const, label: "At once" },
+                    { value: "watch" as const, label: "Watch" },
+                  ]),
             ]}
           />
           <input
@@ -377,7 +408,99 @@ function StepEditor({
         {step.kind === "pause" && (
           <TextInput className="font-sans" value={step.text} placeholder="Check the site, then continue?" onChange={(e) => onChange({ text: e.target.value })} />
         )}
+        {step.kind === "parallel" && (
+          <ParallelEditor n={n} branches={step.branches} servers={servers} onChange={(branches) => onChange({ branches } as Partial<WorkflowStep>)} />
+        )}
+        {step.kind === "watch" && (
+          <>
+            <div className="grid grid-cols-[1fr_1fr_auto] items-center gap-2">
+              <select
+                value={step.server ?? ""}
+                onChange={(e) => onChange({ server: e.target.value || null } as Partial<WorkflowStep>)}
+                className={select}
+              >
+                <option value="">This Mac</option>
+                {servers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                    {s.env === "prod" ? " (prod)" : ""}
+                  </option>
+                ))}
+              </select>
+              <TextInput value={step.dir ?? ""} placeholder="Folder (optional), e.g. /opt/www/app" onChange={(e) => onChange({ dir: e.target.value || null })} />
+              <label className={cn("flex cursor-pointer items-center gap-1.5 text-[12px] text-muted-foreground", !step.server && "invisible")}>
+                <input type="checkbox" checked={step.root} onChange={(e) => onChange({ root: e.target.checked })} /> as root
+              </label>
+            </div>
+            <textarea
+              rows={1}
+              spellCheck={false}
+              value={step.run}
+              placeholder="tail -f storage/logs/laravel.log"
+              onChange={(e) => onChange({ run: e.target.value })}
+              className={area}
+            />
+            <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-muted-foreground">
+              <input type="checkbox" checked={step.keep} onChange={(e) => onChange({ keep: e.target.checked } as Partial<WorkflowStep>)} />
+              Keep it open after the run (else it stops when the run ends)
+            </label>
+          </>
+        )}
       </div>
+    </div>
+  );
+}
+
+/** The steps of a parallel step: each runs in its own pane, all at once. */
+function ParallelEditor({
+  n,
+  branches,
+  servers,
+  onChange,
+}: {
+  n: string;
+  branches: WorkflowStep[];
+  servers: Server[];
+  onChange: (b: WorkflowStep[]) => void;
+}) {
+  const config = useConfig((s) => s.snapshot?.config);
+  const firstServer = servers[0]?.id ?? "";
+  const set = (i: number, b: WorkflowStep) => onChange(branches.map((x, j) => (j === i ? b : x)));
+  const move = (i: number, to: number) => {
+    if (to < 0 || to >= branches.length) return;
+    const next = [...branches];
+    const [b] = next.splice(i, 1);
+    next.splice(to, 0, b!);
+    onChange(next);
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="text-[11.5px] text-subtle-foreground">
+        These run at the same time, each in its own pane (with its own questions); the next step waits until all have passed.
+      </div>
+      {branches.map((b, i) => (
+        <StepEditor
+          key={i}
+          n={`${n}.${i + 1}`}
+          step={b}
+          servers={servers}
+          title={stepTitle(config, b)}
+          lifted={false}
+          nested
+          onKind={(k) => set(i, { ...blank(k, (b.kind === "server" || b.kind === "action" ? b.server : "") || firstServer), label: b.label })}
+          onChange={(p) => set(i, { ...b, ...p } as WorkflowStep)}
+          onUp={i > 0 ? () => move(i, i - 1) : undefined}
+          onDown={i < branches.length - 1 ? () => move(i, i + 1) : undefined}
+          onRemove={() => onChange(branches.filter((_, j) => j !== i))}
+        />
+      ))}
+      <button
+        type="button"
+        onClick={() => onChange([...branches, blank("server", firstServer)])}
+        className="flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-control-border text-[12px] text-subtle-foreground hover:border-primary/50 hover:bg-hover hover:text-foreground"
+      >
+        <Plus className="size-3.5" /> Add a step at once
+      </button>
     </div>
   );
 }
