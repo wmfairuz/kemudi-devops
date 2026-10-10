@@ -7,6 +7,7 @@
 import { copyCommand, copyOutput } from "@/lib/blockActions";
 import { DETAILS_ID, HISTORY_ID, isViewTab, openLocalShell, useTabs } from "@/stores/tabs";
 import { useVault } from "@/stores/vault";
+import { useUpdates } from "@/stores/updates";
 import { useUi } from "@/stores/ui";
 
 function activeSession() {
@@ -59,6 +60,7 @@ const COMMANDS: Record<string, () => void> = {
     else document.execCommand("selectAll");
   },
   settings: () => useUi.getState().setOverlay("settings"),
+  "updates.check": () => useUpdates.getState().show(),
   passwords: () => useUi.getState().setOverlay("passwords"),
   environment: () => useUi.getState().setOverlay("environment"),
   "panel.actions": () => useUi.getState().toggleActionsPanel(),

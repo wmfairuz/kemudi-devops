@@ -10,6 +10,8 @@ import { FileEditorDialog } from "@/components/manage/FileEditor";
 import { VhostGeneratorDialog } from "@/components/manage/VhostGenerator";
 import { NewAppDialog } from "@/components/manage/NewAppDialog";
 import { WorkflowEditor } from "@/components/workflows/WorkflowEditor";
+import { UpdateDialog } from "@/components/dialogs/UpdateDialog";
+import { checkAtLaunch } from "@/stores/updates";
 import { WorkflowRunDialog } from "@/components/workflows/WorkflowRunDialog";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { ParamsDialog } from "@/components/actions/ParamsDialog";
@@ -55,6 +57,8 @@ export default function App() {
   // Restores tabs once and saves them for the app's lifetime.
   useEffect(() => void initSession(), []);
   useEffect(() => installShortcuts(), []);
+  // Opt-in (Settings ▸ About): at most once a day.
+  useEffect(() => void checkAtLaunch(), []);
   // The Actions panel and the sidebar follow the tab in front: an action,
   // logs or ssh tab of an app shows that app's actions.
   useEffect(
@@ -140,6 +144,7 @@ export default function App() {
       <VhostGeneratorDialog />
       <NewAppDialog />
       <WorkflowRunDialog />
+      <UpdateDialog />
       <WorkflowEditor />
       <ConfirmDialog />
       <ParamsDialog />

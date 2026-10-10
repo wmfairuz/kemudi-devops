@@ -25,6 +25,7 @@ mod ssh_hosts;
 mod system;
 mod tab_configs;
 mod tune;
+mod updates;
 mod util;
 mod vault;
 mod workflows;
@@ -89,6 +90,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState {
             env: Arc::new(LazyLock::new(LoginEnv::capture)),
             ptys: PtyRegistry::default(),
@@ -209,6 +211,8 @@ pub fn run() {
             config::forms::server_move,
             workflows::workflow_script,
             workflows::workflow_run,
+            updates::update_check,
+            updates::update_install,
             workflows::workflow_branch_run,
             workflows::workflow_watch_run,
             config::forms::workflow_save,

@@ -5,9 +5,30 @@ servers, apps and one-click actions next to real terminal tabs. Actions open
 keep typing. It uses the system `ssh`, so `~/.ssh/config`, ProxyJump, keys
 and ssh-agent work exactly as they do in your terminal.
 
-No accounts, no cloud, no telemetry.
+No accounts, no cloud, no telemetry. Kemudi only talks to your servers (ssh
+and the reachability/VPN probes), plus GitHub when you check for updates.
 
-## Prerequisites
+## Install
+
+Download the `.dmg` from [Releases](https://github.com/wmfairuz/kemudi-devops/releases),
+open it and drag **Kemudi Devops** to Applications. It runs on macOS 12+ (Apple Silicon
+and Intel). On first launch it writes a sample config to
+`~/.config/kemudi/servers.yaml`. Add your servers with **Add server**, or edit that file. It uses your own `~/.ssh/config` and ssh-agent, so whatever
+`ssh <alias>` does in your terminal works the same in Kemudi.
+
+## Updates
+
+**Kemudi ▸ Check for Updates…** (also in Settings ▸ About) asks GitHub for the latest
+release. If there's a newer one it shows the release notes, and **Update and restart**
+downloads it. Before installing, Kemudi checks the download's signature against the key
+built into the app, then installs it and restarts. Your config, History, passwords and
+tabs stay where they are.
+
+Kemudi never checks on its own unless you turn on **Settings ▸ About ▸ Check for updates
+at launch** (off by default). With that on, it checks at most once a day, and if a newer
+release exists it shows a toast.
+
+## Prerequisites (building from source)
 
 - macOS on Apple Silicon, Xcode command line tools
 - Rust stable (`rustup`): `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
@@ -762,3 +783,61 @@ would seem to stop working). Tabs come back through session restore.
 - [ ] Git-pull deploy with a preview (incoming commits, migrations, composer.lock) and one-click rollback to the previous commit
 - [ ] Run a command on several servers at once (one pane each, ✓/✗ summary)
 - [ ] Claude button (parked)
+
+## Versioning and releases
+
+Versions follow semver: `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`
+always carry the same version, and `CHANGELOG.md` lists what changed in each one.
+
+```bash
+pnpm release patch        # or minor, major, or an exact 1.2.3; --dry-run to preview
+```
+
+`pnpm release` bumps all three versions, adds a CHANGELOG section built from the commit
+subjects since the last tag, then commits `Release vX.Y.Z`, tags it and pushes.
+
+Pushing the tag starts `.github/workflows/release.yml`, which:
+
+- builds a universal `.app` and `.dmg`
+- signs them with the Developer ID and notarizes them
+- signs the updater bundle
+- publishes the GitHub release, with that CHANGELOG section as its notes, plus the
+  `latest.json` that Check for Updates reads
+
+### One-time setup
+
+1. **Updater key.** Updates are signed with a minisign key: the private half is
+   `~/.tauri/kemudi-updater.key` and the public half is in `tauri.conf.json`
+   (`plugins.updater.pubkey`). Back the private key up. If it's lost, installed copies
+   can't verify any future update, and people would have to download a new copy by hand.
+   ```bash
+   gh secret set TAURI_SIGNING_PRIVATE_KEY < ~/.tauri/kemudi-updater.key
+   gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --body ""
+   ```
+2. **Developer ID.** You need the Apple Developer Program.
+   1. Create a *Developer ID Application* certificate (Xcode ▸ Settings ▸ Accounts ▸
+      Manage Certificates ▸ + ▸ Developer ID Application).
+   2. In Keychain Access, export it with its private key as a `.p12`, protected by a
+      password.
+   3. Set the secrets:
+      ```bash
+      base64 -i DeveloperID.p12 | gh secret set APPLE_CERTIFICATE
+      gh secret set APPLE_CERTIFICATE_PASSWORD        # the .p12's password
+      gh secret set APPLE_SIGNING_IDENTITY            # e.g. Developer ID Application: Your Name (TEAMID)
+      ```
+      `security find-identity -v -p codesigning` shows the exact identity name.
+3. **Notarization.** You need an app-specific password, made at account.apple.com ▸
+   Sign-In and Security ▸ App-Specific Passwords.
+   ```bash
+   gh secret set APPLE_ID                          # your Apple ID email
+   gh secret set APPLE_PASSWORD                    # the app-specific password
+   gh secret set APPLE_TEAM_ID                     # the 10-character team ID
+   ```
+
+If the Apple secrets aren't set, the workflow still builds, but the app is only
+ad-hoc signed. In that case, people open it the first time with right-click ▸ Open, or by
+allowing it in System Settings ▸ Privacy & Security. The updater key is always required.
+
+## License
+
+[MIT](LICENSE)

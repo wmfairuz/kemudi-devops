@@ -30,6 +30,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                 ..AboutMetadata::default()
             }),
         )
+        .item(&item(app, "updates.check", "Check for Updates…", None)?)
         .separator()
         .item(&item(app, "settings", "Settings…", Some("CmdOrCtrl+,"))?)
         .item(&item(

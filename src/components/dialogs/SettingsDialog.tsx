@@ -10,6 +10,8 @@ import { downloadDir, setDownloadDir, shortPath } from "@/lib/downloads";
 import { useDiskAlerts } from "@/stores/diskAlerts";
 import { useSslAlerts } from "@/stores/sslAlerts";
 import { toastError, useToasts } from "@/stores/toasts";
+import { getVersion } from "@tauri-apps/api/app";
+import { useUpdates } from "@/stores/updates";
 import { useUi } from "@/stores/ui";
 
 const FONTS = ["Menlo", "SF Mono", "Monaco", "JetBrains Mono", "Fira Code", "Cascadia Code", "Source Code Pro", "Hack"];
@@ -37,6 +39,9 @@ function SettingsForm() {
   const [busy, setBusy] = useState(false);
   const [diskAlerts, setDiskAlerts] = useState(useDiskAlerts.getState().enabled);
   const [sslAlerts, setSslAlerts] = useState(useSslAlerts.getState().enabled);
+  const [updatesAtLaunch, setUpdatesAtLaunch] = useState(useUpdates.getState().atLaunch);
+  const [version, setVersion] = useState("");
+  useEffect(() => void getVersion().then(setVersion, () => {}), []);
   const [downloads, setDownloads] = useState<string | null>(downloadDir());
   const [fonts, setFonts] = useState<string[]>(FONTS);
 
@@ -68,6 +73,7 @@ function SettingsForm() {
       });
       useDiskAlerts.getState().setEnabled(diskAlerts);
       useSslAlerts.getState().setEnabled(sslAlerts);
+      useUpdates.getState().setAtLaunch(updatesAtLaunch);
       setDownloadDir(downloads);
       useToasts.getState().push("Settings saved", "info");
       close();
@@ -206,6 +212,25 @@ function SettingsForm() {
             )}
           </div>
           <div className="-mt-1 pl-[118px] text-[11px] text-subtle-foreground">Where Files ▸ Download saves; right-click ▸ Download to… asks each time.</div>
+          <div className="mt-1 text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">About</div>
+          <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+            <span className="flex-1">
+              Kemudi Devops <span className="font-mono text-foreground">{version || "…"}</span>
+            </span>
+            <Btn size="sm" variant="outline" onClick={() => useUpdates.getState().show()}>
+              Check for updates…
+            </Btn>
+          </div>
+          <label className="flex cursor-pointer items-start gap-2 text-[12px] text-muted-foreground">
+            <input type="checkbox" className="mt-0.5" checked={updatesAtLaunch} onChange={(e) => setUpdatesAtLaunch(e.target.checked)} />
+            <span>
+              Check for updates at launch
+              <span className="block text-[11px] text-subtle-foreground">
+                At most once a day, ask GitHub whether there's a newer release (nothing about you or your servers is sent). Off: Kemudi
+                only checks when you ask.
+              </span>
+            </span>
+          </label>
         </div>
         <ModalFooter>
           <span className="flex-1" />

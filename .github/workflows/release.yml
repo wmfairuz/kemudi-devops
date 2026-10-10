@@ -1,0 +1,90 @@
+# Builds a release when a v* tag is pushed (pnpm release …): a universal
+# .app/.dmg, signed with the Developer ID and notarized when those secrets
+# are set, plus the signed updater bundle and latest.json that
+# Check for Updates reads. Publishes a draft-free GitHub release.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: pnpm install --frozen-lockfile
+
+      # Only the secrets that are set: without the Apple ones the build is
+      # ad-hoc signed (opens with right-click ▸ Open), not notarized.
+      - name: Signing
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY isn't set: the updater bundle can't be signed (see README ▸ Releasing)"
+            exit 1
+          fi
+          put() { printf '%s<<__KEMUDI__\n%s\n__KEMUDI__\n' "$1" "$2" >> "$GITHUB_ENV"; }
+          put TAURI_SIGNING_PRIVATE_KEY "$TAURI_SIGNING_PRIVATE_KEY"
+          put TAURI_SIGNING_PRIVATE_KEY_PASSWORD "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+          if [ -n "$APPLE_CERTIFICATE" ] && [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+            put APPLE_CERTIFICATE "$APPLE_CERTIFICATE"
+            put APPLE_CERTIFICATE_PASSWORD "$APPLE_CERTIFICATE_PASSWORD"
+            put APPLE_SIGNING_IDENTITY "$APPLE_SIGNING_IDENTITY"
+            if [ -n "$APPLE_ID" ] && [ -n "$APPLE_PASSWORD" ] && [ -n "$APPLE_TEAM_ID" ]; then
+              put APPLE_ID "$APPLE_ID"
+              put APPLE_PASSWORD "$APPLE_PASSWORD"
+              put APPLE_TEAM_ID "$APPLE_TEAM_ID"
+            else
+              echo "::warning::Signed with the Developer ID but not notarized (APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID missing)"
+            fi
+          else
+            echo "::warning::No Developer ID certificate: ad-hoc signed, not notarized"
+            put APPLE_SIGNING_IDENTITY "-"
+          fi
+
+      # This version's section of CHANGELOG.md: the release notes, which
+      # Check for Updates shows.
+      - name: Release notes
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          awk -v v="$v" '$0 ~ "^## "v" " {on=1; next} /^## / {on=0} on' CHANGELOG.md > notes.md || true
+          [ -s notes.md ] || echo "Kemudi Devops $v" > notes.md
+          { echo 'NOTES<<__KEMUDI__'; cat notes.md; echo '__KEMUDI__'; } >> "$GITHUB_ENV"
+
+      - uses: tauri-apps/tauri-action@v0
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Kemudi Devops ${{ github.ref_name }}
+          releaseBody: ${{ env.NOTES }}
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
+          args: --target universal-apple-darwin --config src-tauri/tauri.release.conf.json

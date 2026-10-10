@@ -1327,3 +1327,25 @@ export function workflowWatchRun(
   events.onmessage = onEvent;
   return invoke("workflow_watch_run", { id, step, cols, rows, onData: data, onEvent: events });
 }
+
+// ------------------------------------------------------------------ updates
+
+export interface UpdateInfo {
+  current: string;
+  /** A newer version, if there is one. */
+  version: string | null;
+  notes: string | null;
+  date: string | null;
+}
+
+export type UpdateProgress = { kind: "downloading"; done: number; total: number | null } | { kind: "installing" };
+
+/** Ask GitHub for the latest release (only when asked; see Settings). */
+export const updateCheck = (): Promise<UpdateInfo> => invoke("update_check");
+
+/** Download, verify and install the update, then restart. */
+export function updateInstall(onProgress: (p: UpdateProgress) => void): Promise<void> {
+  const ch = new Channel<UpdateProgress>();
+  ch.onmessage = onProgress;
+  return invoke("update_install", { onProgress: ch });
+}
