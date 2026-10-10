@@ -5,6 +5,7 @@ import { Btn } from "@/components/kit/Btn";
 import { EnvTag } from "@/components/kit/EnvTag";
 import { certsList, errorMessage, healthCheck, healthComposerAudit, openUrl, type CertbotCert, type ComposerAudit, type Health, type HealthCert } from "@/lib/ipc";
 import { CertRenewDialog } from "./CertRenewDialog";
+import { useServiceMenu } from "@/components/actions/ServiceMenu";
 import { cn } from "@/lib/utils";
 import { findServer, useConfig } from "@/stores/config";
 import { useSslAlerts } from "@/stores/sslAlerts";
@@ -59,6 +60,7 @@ export function HealthView({ tab, visible }: { tab: Tab; visible: boolean }) {
   const term = useConfig((s) => s.snapshot?.config?.terminal);
   const font = { fontFamily: term?.fontFamily ?? 'Menlo, "SF Mono", monospace', fontSize: `${term?.fontSize ?? 14}px` };
   const [health, setHealth] = useState<Health | null>(null);
+  const serviceMenu = useServiceMenu(serverId);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [checkedAt, setCheckedAt] = useState<number | null>(null);
@@ -271,11 +273,20 @@ export function HealthView({ tab, visible }: { tab: Tab; visible: boolean }) {
                   <span className="flex flex-wrap gap-1.5">
                     {h.services.length === 0 && <span className="text-subtle-foreground">—</span>}
                     {h.services.map((s) => (
-                      <Pill key={s.name} tone={s.active === "active" ? "ok" : s.active === "failed" ? "bad" : "dim"} title={`${s.active} (${s.sub})`}>
-                        {s.name}
-                        {s.active !== "active" ? ` · ${s.active}` : ""}
-                      </Pill>
+                      <button
+                        key={s.name}
+                        type="button"
+                        className="cursor-pointer rounded hover:ring-1 hover:ring-control-border"
+                        title={`${s.active} (${s.sub}) · click for Status / Start / Stop / Restart`}
+                        onClick={(e) => serviceMenu.open(e, "service", s.name)}
+                      >
+                        <Pill tone={s.active === "active" ? "ok" : s.active === "failed" ? "bad" : "dim"}>
+                          {s.name}
+                          {s.active !== "active" ? ` · ${s.active}` : ""}
+                        </Pill>
+                      </button>
                     ))}
+                    {serviceMenu.node}
                   </span>
                   {h.failedUnits.length > 0 && (
                     <>

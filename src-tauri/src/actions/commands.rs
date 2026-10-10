@@ -69,6 +69,25 @@ pub struct RunInfo {
     pub audit_id: Option<i64>,
 }
 
+/// A root command for a terminal tab: as root it just runs; else `sudo`
+/// (which may prompt), or `sudo su -c` when sudoers lets this user run only
+/// `su` without a password. `cmd` is plain words (no quoting needed).
+pub fn as_root(cmd: &str) -> String {
+    format!("{ROOT_FN}; asroot {cmd}")
+}
+
+/// `asroot cmd args…` (see `as_root`), for commands that use it twice.
+const ROOT_FN: &str = r#"asroot(){ if [ "$(id -u)" = 0 ]; then "$@"; elif sudo -n true 2>/dev/null || ! sudo -n su -c true 2>/dev/null; then sudo "$@"; else sudo su -c "$*"; fi; }"#;
+
+/// systemd unit / Supervisor program names: safe as plain words.
+fn plain_name(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 128
+        && !s.starts_with('-')
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || "@._-".contains(c))
+}
+
 /// Built-in actions offered outside servers.yaml (from Inspect), e.g.
 /// `supervisor-restart:<program>`. Treated as danger: prod asks for the
 /// server name, like any danger action.
@@ -99,8 +118,8 @@ pub fn builtin(id: &str) -> Option<Action> {
         // web-reload:nginx, web-restart:apache … always test the config first.
         let (verb, server) = rest.split_once(':')?;
         let (test, unit, name) = match server {
-            "nginx" => ("sudo nginx -t", "nginx", "nginx"),
-            "apache" => ("sudo apachectl configtest", "apache2", "Apache"),
+            "nginx" => ("asroot nginx -t", "nginx", "nginx"),
+            "apache" => ("asroot apachectl configtest", "apache2", "Apache"),
             _ => return None,
         };
         let systemctl = match verb {
@@ -108,9 +127,9 @@ pub fn builtin(id: &str) -> Option<Action> {
             _ => return None,
         };
         let run = if server == "apache" {
-            format!("{test} && {{ sudo systemctl {systemctl} {unit} 2>/dev/null || sudo systemctl {systemctl} httpd; }}")
+            format!("{ROOT_FN}; {test} && {{ asroot systemctl {systemctl} {unit} 2>/dev/null || asroot systemctl {systemctl} httpd; }}")
         } else {
-            format!("{test} && sudo systemctl {systemctl} {unit}")
+            format!("{ROOT_FN}; {test} && asroot systemctl {systemctl} {unit}")
         };
         let label = if verb == "reload" {
             format!("Test & reload {name}")
@@ -150,7 +169,7 @@ pub fn builtin(id: &str) -> Option<Action> {
         return Some(Action {
             id: id.to_string(),
             label: format!("Get HTTPS certificate for {}", domains[0]),
-            run: format!("sudo certbot --nginx {}", args.join(" ")),
+            run: as_root(&format!("certbot --nginx {}", args.join(" "))),
             shared: false,
             inherited: false,
             team: None,
@@ -211,7 +230,7 @@ pub fn builtin(id: &str) -> Option<Action> {
         return Some(Action {
             id: id.to_string(),
             label: "Apply Supervisor changes".into(),
-            run: "sudo supervisorctl reread && sudo supervisorctl update".into(),
+            run: as_root("supervisorctl update"),
             shared: false,
             inherited: false,
             team: None,
@@ -221,24 +240,56 @@ pub fn builtin(id: &str) -> Option<Action> {
             line: None,
         });
     }
-    let program = id.strip_prefix("supervisor-restart:")?;
-    let ok = !program.is_empty()
-        && program.len() <= 128
-        && program
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || "._-".contains(c));
-    ok.then(|| Action {
+    // `service:<verb>:<unit>`: a systemd service (Health ▸ Services).
+    if let Some(rest) = id.strip_prefix("service:") {
+        let (verb, unit) = rest.split_once(':')?;
+        if !plain_name(unit) || !["status", "start", "stop", "restart", "reload"].contains(&verb) {
+            return None;
+        }
+        return Some(Action {
+            id: id.to_string(),
+            label: format!("{} {unit}", capital(verb)),
+            run: if verb == "status" {
+                format!("systemctl status {unit} --no-pager -l -n 30")
+            } else {
+                as_root(&format!("systemctl {verb} {unit}"))
+            },
+            shared: false,
+            inherited: false,
+            team: None,
+            danger: matches!(verb, "stop" | "restart"),
+            confirm: None,
+            kind: ActionKind::Ssh,
+            line: None,
+        });
+    }
+    // `supervisor:<verb>:<program>` (and the older `supervisor-restart:<program>`).
+    let (verb, program) = match id.strip_prefix("supervisor-restart:") {
+        Some(p) => ("restart", p),
+        None => id.strip_prefix("supervisor:")?.split_once(':')?,
+    };
+    if !plain_name(program) || !["status", "start", "stop", "restart"].contains(&verb) {
+        return None;
+    }
+    Some(Action {
         id: id.to_string(),
-        label: format!("Restart {program}"),
-        run: format!("sudo supervisorctl restart '{program}:*'"),
+        label: format!("{} {program}", capital(verb)),
+        run: as_root(&format!("supervisorctl {verb} '{program}:*'")),
         shared: false,
         inherited: false,
         team: None,
-        danger: true,
+        danger: matches!(verb, "stop" | "restart"),
         confirm: None,
         kind: ActionKind::Ssh,
         line: None,
     })
+}
+
+fn capital(s: &str) -> String {
+    let mut c = s.chars();
+    c.next()
+        .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
+        .unwrap_or_default()
 }
 
 fn lookup<'c>(
@@ -496,18 +547,21 @@ mod tests {
     #[test]
     fn builtin_supervisor_restart() {
         let a = super::builtin("supervisor-restart:core-worker").expect("builtin");
-        assert_eq!(a.run, "sudo supervisorctl restart 'core-worker:*'");
+        assert_eq!(a.run, as_root("supervisorctl restart 'core-worker:*'"));
         assert!(a.danger);
         assert!(super::builtin("supervisor-restart:x; rm -rf /").is_none());
         assert!(super::builtin("supervisor-restart:").is_none());
         assert!(super::builtin("deploy").is_none());
         let r = super::builtin("web-reload:nginx").expect("nginx");
-        assert_eq!(r.run, "sudo nginx -t && sudo systemctl reload nginx");
+        assert_eq!(
+            r.run,
+            format!("{ROOT_FN}; asroot nginx -t && asroot systemctl reload nginx")
+        );
         assert_eq!(r.label, "Test & reload nginx");
         assert!(super::builtin("web-restart:apache")
             .expect("apache")
             .run
-            .starts_with("sudo apachectl configtest && "));
+            .contains("; asroot apachectl configtest && "));
         assert!(super::builtin("web-reload:caddy").is_none());
         assert!(super::builtin("web-stop:nginx").is_none());
         let c = super::builtin("laravel:config-cache").expect("config-cache");
@@ -521,7 +575,34 @@ mod tests {
             super::builtin("certbot:shop.example.com,www.shop.example.com")
                 .expect("certbot")
                 .run,
-            "sudo certbot --nginx -d shop.example.com -d www.shop.example.com"
+            as_root("certbot --nginx -d shop.example.com -d www.shop.example.com")
+        );
+        let s = super::builtin("service:restart:php8.4-fpm").expect("service");
+        assert!(s.danger && s.run.ends_with("asroot systemctl restart php8.4-fpm"));
+        assert!(
+            !super::builtin("service:status:nginx")
+                .expect("status")
+                .danger
+        );
+        assert!(super::builtin("service:restart:x;rm").is_none());
+        assert!(super::builtin("service:kill:nginx").is_none());
+        let p = super::builtin("supervisor:stop:horizon").expect("stop");
+        assert!(p.danger && p.run.ends_with("asroot supervisorctl stop 'horizon:*'"));
+        assert_eq!(
+            super::builtin("supervisor-restart:horizon")
+                .expect("old id")
+                .label,
+            "Restart horizon"
+        );
+        // The helper is valid sh, and runs the command directly as root.
+        let out = std::process::Command::new("sh")
+            .args(["-n", "-c", &s.run])
+            .output()
+            .expect("sh");
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
         );
         assert!(super::builtin("certbot:x.com;rm -rf /").is_none());
         assert!(super::builtin("certbot:-x.com").is_none());

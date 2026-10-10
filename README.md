@@ -345,7 +345,14 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   the reason from its log (e.g. `--manual` DNS-challenge certificates,
   which can't renew unattended). **System**: OS, kernel, uptime, pending
   updates (and security ones), reboot needed, the usual services and any
-  failed unit. **Apps**: PHP and Laravel versions, APP_ENV, APP_DEBUG (red
+  failed unit; click a service for **Status / Start / Stop / Restart**
+  (`systemctl`, run as an action in a tab: production asks first, Stop and
+  Restart count as danger, all in History). Inspect ▸ Supervisor does the
+  same for each program (click its name). Root comes as for every built-in
+  that needs it: directly as root, else `sudo` (your saved password is
+  offered at its prompt), else `sudo su -c …` where sudoers allows only
+  `/bin/su` without a password (also used by nginx test & reload, certbot
+  and Apply Supervisor changes). **Apps**: PHP and Laravel versions, APP_ENV, APP_DEBUG (red
   when on in production), and **composer audit** on request (known
   vulnerabilities in composer.lock; asks packagist from the server, as the
   app's owner, cache in /tmp/kemudi-composer-<owner>). Every 6 hours (and 2

@@ -9,6 +9,7 @@ import { cronChoices, useFileEditor } from "@/components/manage/FileEditor";
 import { useVhostGenerator } from "@/components/manage/VhostGenerator";
 import { appInspect, errorMessage, inspectSecretsRetry, openUrl, type Env, type EnvVar } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
+import { useServiceMenu } from "@/components/actions/ServiceMenu";
 import { toastError, useToasts } from "@/stores/toasts";
 
 function ago(ms: number): string {
@@ -201,6 +202,7 @@ export function InspectPanel({
   onSupervisorFiles: (f: string[]) => void;
 }) {
   const [cached, setCached] = useState<Cached | null>(() => getCached(serverId, path));
+  const programMenu = useServiceMenu(serverId, appId);
   const ins = cached?.ins ?? null;
   const [busy, setBusy] = useState(false);
   const [, tick] = useState(0);
@@ -439,6 +441,7 @@ export function InspectPanel({
             <Pins files={vhostFiles} candidates={ins.vhostCandidates ?? []} missing={ins.missing ?? []} onChange={onVhostFiles} what="vhost" />
           </Section>
 
+          {programMenu.node}
           <Section title={`Supervisor${ins.programs.length ? ` · ${ins.programs.length}` : ""}`}>
             {ins.programs.length === 0 && (
               <div className="text-[12px] text-subtle-foreground">No Supervisor program mentions {path}. Pin its file below if it uses another path.</div>
@@ -446,7 +449,14 @@ export function InspectPanel({
             {ins.programs.map((p) => (
               <div key={`${p.file}:${p.name}`} className="flex flex-col gap-1 text-[12.5px]">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono font-medium">{p.name}</span>
+                  <button
+                    type="button"
+                    className="cursor-pointer rounded font-mono font-medium hover:underline"
+                    title="Status / Start / Stop / Restart"
+                    onClick={(e) => programMenu.open(e, "supervisor", p.name)}
+                  >
+                    {p.name} ▾
+                  </button>
                   {p.numprocs && <span className="text-[11px] text-subtle-foreground">×{p.numprocs}</span>}
                   {p.user && <span className="text-[11px] text-subtle-foreground">as {p.user}</span>}
                   {p.status.length === 0 && <span className="text-[11px] text-subtle-foreground">status unknown</span>}
