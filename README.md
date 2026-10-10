@@ -209,6 +209,9 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   team (shown only there) or every team. Deleting a team keeps its servers,
   with no team. In servers.yaml: `teams: [{ id, name, color, actions: { app,
   server, local } }]` and `team:` on a server.
+- **Reorder servers**: drag a server by its row in the sidebar and drop it
+  on another server (upper half: before it; lower half: after it). Its apps
+  and settings go with it; comments above it in the config stay put.
 - **Reorder and move apps**: drag an app in the sidebar. Drop it on another
   app (upper half: before it; lower half: after it) to change the order, or
   on another server (its row or its apps) to move it there, after a

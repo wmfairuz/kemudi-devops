@@ -6,8 +6,8 @@ import { EnvTag, StaleBadge, VpnBadge } from "@/components/kit/EnvTag";
 import { envBar } from "@/components/kit/env";
 import { Glyph, Spinner } from "@/components/kit/Spinner";
 import { StatusDot } from "@/components/kit/StatusDot";
-import { appMove, errorMessage, type App, type Server } from "@/lib/ipc";
-import { findServer } from "@/stores/config";
+import { appMove, errorMessage, serverMove, type App, type Server } from "@/lib/ipc";
+import { findServer, useConfig } from "@/stores/config";
 import { askConfirm } from "@/stores/confirm";
 import { toastError, useToasts } from "@/stores/toasts";
 import { cn } from "@/lib/utils";
@@ -31,12 +31,16 @@ function matches(text: string, q: string) {
 // ------------------------------------------------------------ drag apps
 
 interface Drag {
+  /** An app (to another place / server), or a server (in the list). */
+  kind: "app" | "server";
   serverId: string;
+  /** "" for a server. */
   appId: string;
   name: string;
   x: number;
   y: number;
-  /** Where it would land: before `before` on `serverId` (null: the end). */
+  /** Where it would land: before `before` (an app on `serverId`, or a
+   *  server), null: at the end. */
   over: { serverId: string; before: string | null } | null;
 }
 
@@ -46,7 +50,8 @@ let justDropped = false;
 
 /** Press on an app row and move: drag it (to another place in its server's
  *  list, or onto another server). A plain click still opens it. */
-function startDrag(e: React.PointerEvent, server: Server, app: App) {
+function startDrag(e: React.PointerEvent, server: Server, app?: App) {
+  const kind = app ? "app" : "server";
   if (e.button !== 0 || useSidebar.getState().filter.trim()) return;
   const start = { x: e.clientX, y: e.clientY };
   let dragging = false;
@@ -54,7 +59,17 @@ function startDrag(e: React.PointerEvent, server: Server, app: App) {
     if (!dragging && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 6) return;
     dragging = true;
     document.body.style.userSelect = "none";
-    useDrag.setState({ drag: { serverId: server.id, appId: app.id, name: app.name, x: ev.clientX, y: ev.clientY, over: dropAt(ev.clientX, ev.clientY) } });
+    useDrag.setState({
+      drag: {
+        kind,
+        serverId: server.id,
+        appId: app?.id ?? "",
+        name: app?.name ?? server.name,
+        x: ev.clientX,
+        y: ev.clientY,
+        over: kind === "app" ? dropAt(ev.clientX, ev.clientY) : serverDropAt(ev.clientX, ev.clientY),
+      },
+    });
   };
   const up = () => {
     window.removeEventListener("pointermove", move);
@@ -65,7 +80,8 @@ function startDrag(e: React.PointerEvent, server: Server, app: App) {
     if (!dragging || !d) return;
     justDropped = true;
     setTimeout(() => (justDropped = false), 0);
-    if (d.over) void drop(d.serverId, d.appId, d.over.serverId, d.over.before);
+    if (d.over && d.kind === "app") void drop(d.serverId, d.appId, d.over.serverId, d.over.before);
+    if (d.over && d.kind === "server") void dropServer(d.serverId, d.over.before);
   };
   window.addEventListener("pointermove", move);
   window.addEventListener("pointerup", up);
@@ -81,6 +97,27 @@ function dropAt(x: number, y: number): Drag["over"] {
   if (!appId) return { serverId, before: null };
   const r = el.getBoundingClientRect();
   return { serverId, before: y < r.top + r.height / 2 ? appId : (el.dataset.dropNext ?? null) };
+}
+
+/** For a server: the group under the pointer (upper half: before it; lower
+ *  half: before the next one). */
+function serverDropAt(x: number, y: number): Drag["over"] {
+  const el = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-server-group]");
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  const id = el.dataset.serverGroup!;
+  return { serverId: id, before: y < r.top + r.height / 2 ? id : (el.dataset.nextServer ?? null) };
+}
+
+async function dropServer(id: string, before: string | null) {
+  const servers = useConfig.getState().snapshot?.config?.servers ?? [];
+  const ids = servers.map((s) => s.id);
+  if (before === id || (before ?? null) === (ids[ids.indexOf(id) + 1] ?? null)) return; // where it already is
+  try {
+    await serverMove(id, before);
+  } catch (e) {
+    toastError(errorMessage(e));
+  }
 }
 
 async function drop(from: string, appId: string, to: string, before: string | null) {
@@ -154,12 +191,13 @@ export function ServerTree({ servers, stale }: Props) {
         <AddServerButton />
       </div>
       <div role="tree" className={cn("min-h-0 flex-1 overflow-y-auto pb-2", stale && "opacity-72")}>
-        {visible.map(({ server, apps, forced }) => (
+        {visible.map(({ server, apps, forced }, i) => (
           <ServerGroup
             key={server.id}
             server={server}
             apps={apps}
             forceOpen={forced || (!!filter && apps.length > 0)}
+            next={visible[i + 1]?.server.id ?? null}
           />
         ))}
         <DragGhost />
@@ -180,20 +218,38 @@ function statusTitle(s: ReturnType<typeof useStatus.getState>["byServer"][string
 }
 
 /** Click: details page (and its actions on the right). Double-click: ssh. */
-function ServerGroup({ server, apps, forceOpen }: { server: Server; apps: App[]; forceOpen: boolean }) {
+function ServerGroup({ server, apps, forceOpen, next }: { server: Server; apps: App[]; forceOpen: boolean; next: string | null }) {
   const expanded = useSidebar((s) => !!s.expanded[server.id]) || forceOpen;
   const toggle = useSidebar((s) => s.toggle);
   const selected = useSidebar((s) => s.selected?.serverId === server.id && s.selected.appId === null);
   const reach = useStatus((s) => s.byServer[server.id]);
   const status = reach?.state ?? "unknown";
   const down = status === "down";
-  const dropHere = useDrag((s) => (s.drag?.over?.serverId === server.id ? s.drag.over.before : undefined));
-  const dragging = useDrag((s) => !!s.drag);
+  const dropHere = useDrag((s) => (s.drag?.kind === "app" && s.drag.over?.serverId === server.id ? s.drag.over.before : undefined));
+  const dragging = useDrag((s) => s.drag?.kind === "app");
+  // Dragging a server: a line above this group (before it) or below the last one.
+  const serverLine = useDrag((s) => {
+    const d = s.drag;
+    if (d?.kind !== "server" || !d.over) return null;
+    if (d.over.before === server.id) return "above";
+    return d.over.before === null && next === null ? "below" : null;
+  });
+  const lifted = useDrag((s) => s.drag?.kind === "server" && s.drag.serverId === server.id);
 
   return (
-    <div className={cn("mx-2 mb-2 flex flex-col gap-0.5", envBar[server.env])}>
+    <div
+      data-server-group={server.id}
+      data-next-server={next ?? undefined}
+      className={cn("relative mx-2 mb-2 flex flex-col gap-0.5", envBar[server.env], lifted && "opacity-40")}
+    >
+      {serverLine === "above" && <span className="pointer-events-none absolute -top-[5px] right-1 left-1 h-[3px] rounded bg-primary" />}
+      {serverLine === "below" && <span className="pointer-events-none absolute right-1 -bottom-[5px] left-1 h-[3px] rounded bg-primary" />}
       <div
         data-drop-server={server.id}
+        onPointerDown={(e) => startDrag(e, server)}
+        onClickCapture={(e) => {
+          if (justDropped) e.stopPropagation();
+        }}
         role="treeitem"
         aria-expanded={expanded}
         aria-selected={selected}

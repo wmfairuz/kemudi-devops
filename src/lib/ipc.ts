@@ -573,6 +573,8 @@ export const appDelete = (serverId: string, id: string): Promise<ConfigSnapshot>
   invoke("app_delete", { serverId, id });
 /** Move an app before `before` (null: to the end), on its server or another
  *  one. Resolves to its id there (renamed `-2`… if that server has it). */
+/** Move a server before `before` (null: to the end) in Kemudi's list. */
+export const serverMove = (serverId: string, before: string | null): Promise<ConfigSnapshot> => invoke("server_move", { serverId, before });
 export const appMove = (serverId: string, appId: string, toServer: string, before: string | null): Promise<string> =>
   invoke("app_move", { serverId, appId, toServer, before });
 

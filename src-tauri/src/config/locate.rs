@@ -1201,6 +1201,60 @@ pub fn move_app(
     Ok(finish(lines, source))
 }
 
+/// Move server `id` before server `before` (None: to the end). The entry
+/// moves as written; comments above it stay where they are.
+pub fn move_server(source: &str, id: &str, before: Option<&str>) -> Result<String, String> {
+    if before == Some(id) {
+        return Ok(source.to_string());
+    }
+    let doc = Doc::new(source);
+    let (key_at, list) = doc
+        .key_at((0, doc.lines.len()), "servers")
+        .ok_or("the server list is missing (no `servers:`)")?;
+    if !value_part(doc.lines[key_at]).is_empty() {
+        return Err(format!("the server list is written inline; {HAND}"));
+    }
+    let (at, body) = doc
+        .item(list, id)
+        .ok_or_else(|| format!("server `{id}` not found"))?;
+    let last = doc.last_content(body).unwrap_or(at).max(at);
+    let block: Vec<String> = doc.lines[at..=last].iter().map(|l| l.to_string()).collect();
+    let first = (list.0..list.1).find(|&i| is_content(doc.lines[i]));
+    let spaced = first.is_some_and(|f| {
+        let end = doc.last_content(list).unwrap_or(f);
+        (f..end).any(|i| doc.lines[i].trim().is_empty())
+    });
+    let mut lines: Vec<String> = doc.lines.iter().map(|l| l.to_string()).collect();
+    remove_list_item(&doc, &mut lines, key_at, list, at, body, false);
+    let mid = finish(lines, source);
+
+    let doc = Doc::new(&mid);
+    let mut lines: Vec<String> = doc.lines.iter().map(|l| l.to_string()).collect();
+    let (key_at, list) = doc
+        .key_at((0, doc.lines.len()), "servers")
+        .ok_or("the server list is missing (no `servers:`)")?;
+    let mut moved = block;
+    match before.and_then(|b| doc.item(list, b)) {
+        Some((pos, _)) => {
+            if spaced {
+                moved.push(String::new());
+            }
+            lines.splice(pos..pos, moved);
+        }
+        None => {
+            if value_part(doc.lines[key_at]) == "[]" {
+                lines[key_at] = "servers:".into();
+            }
+            let after = doc.last_content(list).unwrap_or(key_at);
+            if spaced {
+                moved.insert(0, String::new());
+            }
+            lines.splice(after + 1..after + 1, moved);
+        }
+    }
+    Ok(finish(lines, source))
+}
+
 /// Set `id:` in an entry's lines (relative to its dash).
 fn rename_entry(block: &mut [String], id: &str) -> Result<(), String> {
     let value = yaml_scalar(id);
@@ -1342,6 +1396,47 @@ fn finish(lines: Vec<String>, source: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn moves_servers() {
+        let src = "servers:
+  - id: a
+    host: a
+    env: staging
+
+  # the prod ones
+  - id: b
+    host: b
+    env: prod
+    apps:
+      - { id: x, path: /x }
+
+  - { id: c, host: c, env: dev }
+actions:
+  server:
+    - { id: up, run: uptime }
+";
+        let ids = |src: &str| -> Vec<String> {
+            let c = crate::config::validate::parse(src);
+            assert!(c.errors.is_empty(), "{:?}\n{src}", c.errors);
+            c.config
+                .expect("config")
+                .servers
+                .iter()
+                .map(|s| s.id.clone())
+                .collect()
+        };
+        let out = move_server(src, "c", Some("a")).expect("c first");
+        assert_eq!(ids(&out), ["c", "a", "b"], "{out}");
+        let out = move_server(src, "a", None).expect("a last");
+        assert_eq!(ids(&out), ["b", "c", "a"], "{out}");
+        assert!(out.contains("actions:\n  server:"), "the rest stays: {out}");
+        let out = move_server(src, "b", Some("a")).expect("b first");
+        assert_eq!(ids(&out), ["b", "a", "c"], "{out}");
+        let c = crate::config::validate::parse(&out).config.expect("c");
+        assert_eq!(c.server("b").expect("b").apps.len(), 1, "apps move with it");
+        assert_eq!(move_server(src, "a", Some("a")).expect("same"), src);
+    }
 
     #[test]
     fn moves_apps() {

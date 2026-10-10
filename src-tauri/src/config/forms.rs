@@ -7,8 +7,8 @@ use tauri::{AppHandle, State};
 
 use super::commands::save;
 use super::locate::{
-    add_app, add_server, add_team, delete_entity, delete_team, move_app, set_entity_field,
-    set_server_block, set_team_block, set_team_field, yaml_quote, yaml_scalar,
+    add_app, add_server, add_team, delete_entity, delete_team, move_app, move_server,
+    set_entity_field, set_server_block, set_team_block, set_team_field, yaml_quote, yaml_scalar,
 };
 use super::schema::{Config, Env, HostPort, TabColor, Vpn};
 use super::Snapshot;
@@ -569,4 +569,27 @@ pub async fn app_move(
     })?;
     save(&app, &state, state.config.path(), &edited)?;
     Ok(id)
+}
+
+/// Move a server before `before` (None: to the end) in Kemudi's list.
+#[tauri::command]
+pub async fn server_move(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    server_id: String,
+    before: Option<String>,
+) -> AppResult<Snapshot> {
+    let source = read(&state)?;
+    let edited = move_server(&source, &server_id, before.as_deref()).map_err(AppError::Invalid)?;
+    checked(&edited, |c| {
+        let ids: Vec<&str> = c.servers.iter().map(|s| s.id.as_str()).collect();
+        let Some(at) = ids.iter().position(|x| *x == server_id) else {
+            return false;
+        };
+        match before.as_deref().filter(|b| *b != server_id) {
+            Some(b) => ids.get(at + 1) == Some(&b),
+            None => before.is_some() || at + 1 == ids.len(),
+        }
+    })?;
+    save(&app, &state, state.config.path(), &edited)
 }
