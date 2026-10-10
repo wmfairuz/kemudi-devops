@@ -3,6 +3,7 @@
 // again from there.
 import { blockIntro } from "@/lib/actions";
 import { workflowRun, type Config, type Server, type Workflow, type WorkflowStep } from "@/lib/ipc";
+import { StepTracker } from "@/lib/stepTracker";
 import { localHms } from "@/lib/time";
 import { useConfig } from "@/stores/config";
 import { useTabs } from "@/stores/tabs";
@@ -76,12 +77,28 @@ export function runWorkflow(wf: Workflow, from = 1): string {
       }),
   });
   const id = tabId;
+  const opened = useTabs.getState().tabs.find((t) => t.id === id);
+  const tracker = opened ? new StepTracker(opened.session.term, steps, from) : null;
+  if (tracker) {
+    useTabs.getState().update(id, {
+      workflow: {
+        id: wf.id,
+        name: wf.name,
+        from,
+        titles: wf.steps.map((s) => stepTitle(config, s)),
+        kinds: wf.steps.map((s) => s.kind),
+        tracker,
+        view: wf.view === "terminal" ? "output" : "steps",
+      },
+    });
+  }
   const unsubscribe = useTabs.subscribe((s) => {
     const tab = s.tabs.find((t) => t.id === id);
     if (!tab) return unsubscribe();
     if (tab.state === "running") return;
     unsubscribe();
     const code = tab.exitCode ?? 0;
+    tracker?.exited(code);
     if (tab.state === "failed" && code > 100 && code <= 100 + steps) {
       const n = code - 100;
       useToasts.getState().push(`${wf.name} stopped at step ${n}: ${stepTitle(config, wf.steps[n - 1]!)}`, "error", {

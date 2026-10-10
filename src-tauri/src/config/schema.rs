@@ -36,8 +36,18 @@ pub struct RawWorkflow {
     pub name: Option<String>,
     /// Shown as a button in this server's / app's Actions panel.
     pub pin: Option<RawPin>,
+    /// How a run opens: `steps` (progress, the default) or `terminal`.
+    pub view: Option<WorkflowView>,
     #[serde(default)]
     pub steps: Vec<RawStep>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WorkflowView {
+    #[default]
+    Steps,
+    Terminal,
 }
 
 #[derive(Debug, Deserialize)]
@@ -362,6 +372,7 @@ pub struct Workflow {
     pub name: String,
     pub pin_server: Option<String>,
     pub pin_app: Option<String>,
+    pub view: WorkflowView,
     pub steps: Vec<Step>,
     /// 1-based line in servers.yaml.
     pub line: Option<usize>,

@@ -50,6 +50,7 @@ function Editor({ workflow, pin }: { workflow: Workflow | null; pin?: { server: 
   const [name, setName] = useState(workflow?.name ?? "");
   const [pinServer, setPinServer] = useState<string>(workflow?.pinServer ?? pin?.server ?? "");
   const [pinApp, setPinApp] = useState<string>(workflow?.pinApp ?? pin?.app ?? "");
+  const [view, setView] = useState<"steps" | "terminal">(workflow?.view ?? "steps");
   const [steps, setSteps] = useState<Row[]>(() => (workflow?.steps ?? []).map((s) => ({ ...s, key: nextKey++ })));
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState<{ from: number; to: number } | null>(null);
@@ -113,6 +114,7 @@ function Editor({ workflow, pin }: { workflow: Workflow | null; pin?: { server: 
         name: name.trim(),
         pinServer: pinServer || null,
         pinApp: pinServer && pinApp ? pinApp : null,
+        view,
         steps: steps.map(({ key: _key, ...s }) => ({ ...s, label: s.label?.trim() || null })),
       });
       useToasts.getState().push(workflow ? `Saved ${name.trim()}` : `Added ${name.trim()}`, "info");
@@ -134,7 +136,7 @@ function Editor({ workflow, pin }: { workflow: Workflow | null; pin?: { server: 
     }
   };
   const close = async () => {
-    const changed = workflow ? name !== workflow.name || JSON.stringify(steps.map(({ key: _k, ...s }) => s)) !== JSON.stringify(workflow.steps) : name || steps.length;
+    const changed = workflow ? name !== workflow.name || view !== workflow.view || JSON.stringify(steps.map(({ key: _k, ...s }) => s)) !== JSON.stringify(workflow.steps) : name || steps.length;
     if (changed && !(await askConfirm("Discard your changes?", "The workflow stays as it was.", "Discard"))) return;
     useWorkflows.getState().close();
   };
@@ -151,7 +153,7 @@ function Editor({ workflow, pin }: { workflow: Workflow | null; pin?: { server: 
         </span>
       </ModalHeader>
       <div className="flex max-h-[min(66vh,640px)] flex-col gap-4 overflow-y-auto px-5 pb-4">
-        <div className="grid grid-cols-[1fr_1fr_1fr] gap-3">
+        <div className="grid grid-cols-[1.2fr_1fr_1fr_auto] gap-3">
           <Field label="Name">
             {(fid) => (
               <TextInput id={fid} autoFocus className="font-sans" value={name} placeholder="Deploy eTabika" onChange={(e) => setName(e.target.value)} />
@@ -179,6 +181,19 @@ function Editor({ workflow, pin }: { workflow: Workflow | null; pin?: { server: 
                   </option>
                 ))}
               </select>
+            )}
+          </Field>
+          <Field label="Opens in" hint="Switch any time">
+            {() => (
+              <Segmented
+                label="Opens in"
+                value={view}
+                onChange={setView}
+                options={[
+                  { value: "steps", label: "Steps" },
+                  { value: "terminal", label: "Terminal" },
+                ]}
+              />
             )}
           </Field>
         </div>

@@ -418,6 +418,8 @@ export interface Workflow {
   /** Shown as a button in this server's (and app's) Actions panel. */
   pinServer: string | null;
   pinApp: string | null;
+  /** How a run opens: progress (`steps`) or the terminal. */
+  view: "steps" | "terminal";
   steps: WorkflowStep[];
   line: number | null;
 }

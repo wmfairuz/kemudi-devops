@@ -26,10 +26,13 @@ use crate::AppState;
 /// may prompt), or `sudo su -c` when only `su` is passwordless.
 const ROOT_SH: &str = r#"rootsh(){ if [ "$(id -u)" = 0 ]; then sh -c "$1"; elif sudo -n true 2>/dev/null || ! sudo -n su -c true 2>/dev/null; then sudo sh -c "$1"; else sudo su -c "$1"; fi; }"#;
 
+/// `\e]6973;…\a` markers (the terminal ignores them) tell Kemudi's Steps
+/// view where each step starts, ends, fails or pauses.
 const HELPERS: &str = r#"set -o pipefail
-hdr(){ printf '\n\033[1;35m━━ %s/%s · %s\033[0m\n' "$1" "$N" "$2"; }
-fail(){ printf '\n\033[1;31m✗ step %s failed (exit %s); later steps did not run\033[0m\n' "$1" "$2"; exit $((100 + $1)); }
-done_(){ printf '\033[32m✓ step %s\033[0m\n' "$1"; }
+mark(){ printf '\033]6973;%s\007' "$*"; }
+hdr(){ mark "start;$1"; printf '\n\033[1;35m━━ %s/%s · %s\033[0m\n' "$1" "$N" "$2"; }
+fail(){ mark "fail;$1;$2"; printf '\n\033[1;31m✗ step %s failed (exit %s); later steps did not run\033[0m\n' "$1" "$2"; exit $((100 + $1)); }
+done_(){ mark "done;$1"; printf '\033[32m✓ step %s\033[0m\n' "$1"; }
 "#;
 
 /// `cd` into a folder: `~/…` stays expandable, the rest is quoted.
@@ -185,7 +188,7 @@ pub fn script(config: &Config, wf: &Workflow, from: usize, ssh: &SshFor) -> Resu
                 }
             }
             StepKind::Pause { text } => format!(
-                "printf '%s \\033[2m[Enter: go on · Ctrl+C: stop]\\033[0m ' {}; read -r _",
+                "mark \"pause;{n}\"; printf '%s \\033[2m[Enter: go on · Ctrl+C: stop]\\033[0m ' {}; read -r _",
                 shell_quote(text)
             ),
         };
@@ -195,7 +198,7 @@ pub fn script(config: &Config, wf: &Workflow, from: usize, ssh: &SshFor) -> Resu
         ));
     }
     out.push_str(&format!(
-        "\nprintf '\\n\\033[1;32m✓ %s: all done\\033[0m\\n' {}\n",
+        "\nmark end; printf '\\n\\033[1;32m✓ %s: all done\\033[0m\\n' {}\n",
         shell_quote(&wf.name)
     ));
     Ok(out)
@@ -439,6 +442,10 @@ workflows:
             "{s}"
         );
         assert!(s.contains("fail 4 $rc"));
+        assert!(
+            s.contains("mark \"pause;3\"") && s.contains("\nmark end;"),
+            "markers: {s}"
+        );
         let out = std::process::Command::new("bash")
             .args(["-n", "-c", &s])
             .output()
@@ -529,5 +536,9 @@ workflows:
         assert_eq!(out.status.code(), Some(102), "{text}");
         assert!(text.contains("one") && !text.contains("three"), "{text}");
         assert!(text.contains("step 2 failed (exit 7)"), "{text}");
+        assert!(
+            text.contains("\u{1b}]6973;start;1\u{7}") && text.contains("\u{1b}]6973;fail;2;7\u{7}"),
+            "{text:?}"
+        );
     }
 }

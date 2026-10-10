@@ -603,6 +603,8 @@ pub struct WorkflowForm {
     pub name: String,
     pub pin_server: Option<String>,
     pub pin_app: Option<String>,
+    #[serde(default)]
+    pub view: super::schema::WorkflowView,
     pub steps: Vec<StepForm>,
 }
 
@@ -653,6 +655,9 @@ fn workflow_yaml(f: &WorkflowForm) -> Vec<String> {
             Some(a) => out.push(format!("  pin: {{ server: {}, app: {} }}", q(&s), q(&a))),
             None => out.push(format!("  pin: {{ server: {} }}", q(&s))),
         }
+    }
+    if f.view == super::schema::WorkflowView::Terminal {
+        out.push("  view: terminal".into());
     }
     out.push("  steps:".into());
     for st in &f.steps {
@@ -780,6 +785,7 @@ mod workflow_tests {
             name: "Ship it: \"now\"".into(),
             pin_server: Some("stg".into()),
             pin_app: Some("shop".into()),
+            view: crate::config::schema::WorkflowView::Terminal,
             steps: vec![
                 StepForm {
                     label: Some("Merge & push".into()),
@@ -818,6 +824,7 @@ mod workflow_tests {
         let w = &c.workflows[0];
         assert_eq!(w.name, "Ship it: \"now\"");
         assert_eq!(w.pin_app.as_deref(), Some("shop"));
+        assert_eq!(w.view, crate::config::schema::WorkflowView::Terminal);
         assert_eq!(w.steps.len(), 3);
         assert!(matches!(
             &w.steps[1].kind,

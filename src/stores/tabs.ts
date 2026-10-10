@@ -9,14 +9,28 @@ import { ptySpawner, TerminalSession, type SessionOptions, type Spawner } from "
 import { maybeNotifyFinished } from "@/lib/notify";
 import { leaves, neighbour, remove, setRatio, split, type Dir, type Layout, type Side } from "@/lib/layout";
 import type { TabColor } from "@/lib/tabColors";
+import type { StepTracker } from "@/lib/stepTracker";
 import { useConfig } from "@/stores/config";
 
 /** Design frame 1j, TerminalTab states. */
 export type TabState = "shell" | "running" | "ok" | "failed";
 
+/** A workflow running in an action tab: its steps' progress (from the
+ *  script's markers) and which view the tab shows. */
+export interface WorkflowRunState {
+  id: string;
+  name: string;
+  from: number;
+  titles: string[];
+  kinds: string[];
+  tracker: StepTracker;
+  view: "steps" | "output";
+}
+
 export interface Tab {
   id: string;
   title: string;
+  workflow?: WorkflowRunState;
   /** Set once the user renames the tab; later automatic titles don't apply. */
   renamed: boolean;
   /** Config server id, when the tab belongs to one. */

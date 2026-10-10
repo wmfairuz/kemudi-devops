@@ -15,6 +15,7 @@ import { TuneView } from "@/components/tune/TuneView";
 import { MonitorView } from "@/components/monitor/MonitorView";
 
 import { PasswordChip } from "./PasswordChip";
+import { WorkflowStepsView, setWorkflowView } from "@/components/workflows/WorkflowStepsView";
 import { TerminalView } from "./TerminalView";
 
 /** Every tab's panes, in split layouts; only the front tab is visible.
@@ -122,8 +123,18 @@ function LayoutView({
           <TuneView tab={tab} visible={visible} />
         ) : (
           <>
-            <TerminalView session={tab.session} active={visible && focused} />
-            <PasswordChip tab={tab} />
+            <TerminalView session={tab.session} active={visible && focused && tab.workflow?.view !== "steps"} />
+            {tab.workflow?.view !== "steps" && <PasswordChip tab={tab} />}
+            {tab.workflow?.view === "steps" && <WorkflowStepsView tab={tab} />}
+            {tab.workflow?.view === "output" && (
+              <button
+                onClick={() => setWorkflowView(tab, "steps")}
+                className="absolute top-2 right-4 z-10 flex h-7 cursor-pointer items-center gap-1.5 rounded-md border border-white/15 bg-[#343746] px-2.5 font-mono text-[12px] text-[#b6b8c8] shadow hover:text-[#f8f8f2]"
+                title="Back to the steps"
+              >
+                Steps ▸
+              </button>
+            )}
           </>
         )}
         {split && !focused && <div className="pointer-events-none absolute inset-0 bg-black/20" />}

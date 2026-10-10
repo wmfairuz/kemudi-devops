@@ -594,6 +594,7 @@ impl Validator<'_> {
                 id: rw.id,
                 pin_server,
                 pin_app,
+                view: rw.view.unwrap_or_default(),
                 steps,
                 line,
             });
