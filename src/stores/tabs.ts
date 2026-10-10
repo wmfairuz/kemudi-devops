@@ -128,6 +128,8 @@ function likeOptions(t: Tab): OpenOptions {
     host: t.host,
     cwd,
     serverId: t.serverId,
+    // A pane next to an app's shell is that app's too (same folder).
+    appId: cwd ? t.appId : undefined,
     prod: t.prod,
     spawn: ptySpawner({ kind: "ssh", host: t.host ?? "", cwd }),
   };

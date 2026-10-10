@@ -74,6 +74,9 @@ function restoreTab(t: SavedTab): string {
     title,
     host: local ? undefined : t.host,
     serverId: t.serverId,
+    // An app's shell (it started in the app's folder) stays that app's, so
+    // the Actions panel and "run in this shell" still know it.
+    appId: !local && t.cwd && t.appId ? t.appId : undefined,
     prod: t.prod,
     background: true,
     cwd: local ? undefined : t.cwd,
