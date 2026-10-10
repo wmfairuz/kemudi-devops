@@ -403,7 +403,27 @@ export interface Team {
   newApp: NewAppHooks;
 }
 
+export type StepKind =
+  | { kind: "local"; run: string; dir: string | null }
+  | { kind: "server"; server: string; run: string; root: boolean; dir: string | null }
+  | { kind: "action"; server: string; app: string | null; action: string }
+  | { kind: "pause"; text: string };
+
+export type WorkflowStep = { label: string | null } & StepKind;
+
+/** Steps run one after another in one terminal tab. */
+export interface Workflow {
+  id: string;
+  name: string;
+  /** Shown as a button in this server's (and app's) Actions panel. */
+  pinServer: string | null;
+  pinApp: string | null;
+  steps: WorkflowStep[];
+  line: number | null;
+}
+
 export interface Config {
+  workflows: Workflow[];
   teams: Team[];
   servers: Server[];
   terminal: TerminalSettings;
@@ -1235,4 +1255,28 @@ export function newappRun(
   const events = new Channel<PtyEvent>();
   events.onmessage = onEvent;
   return invoke("newapp_run", { serverId, plan, cols, rows, onData: data, onEvent: events });
+}
+
+// --------------------------------------------------------------- workflows
+
+/** Add (`original` null) or replace a workflow in Kemudi's config. */
+export const workflowSave = (original: string | null, form: Omit<Workflow, "line">): Promise<ConfigSnapshot> =>
+  invoke("workflow_save", { original, form });
+export const workflowDelete = (id: string): Promise<ConfigSnapshot> => invoke("workflow_delete", { id });
+/** The bash a run from step `from` (1-based) would use. */
+export const workflowScript = (id: string, from: number): Promise<string> => invoke("workflow_script", { id, from });
+
+export function workflowRun(
+  id: string,
+  from: number,
+  cols: number,
+  rows: number,
+  onData: (bytes: Uint8Array) => void,
+  onEvent: (event: PtyEvent) => void,
+): Promise<{ ptyId: number; auditId: number | null }> {
+  const data = new Channel<ArrayBuffer>();
+  data.onmessage = (buf) => onData(new Uint8Array(buf));
+  const events = new Channel<PtyEvent>();
+  events.onmessage = onEvent;
+  return invoke("workflow_run", { id, from, cols, rows, onData: data, onEvent: events });
 }

@@ -7,8 +7,9 @@ use tauri::{AppHandle, State};
 
 use super::commands::save;
 use super::locate::{
-    add_app, add_server, add_team, delete_entity, delete_team, move_app, move_server,
-    set_entity_field, set_server_block, set_team_block, set_team_field, yaml_quote, yaml_scalar,
+    add_app, add_server, add_team, delete_entity, delete_team, delete_workflow, move_app,
+    move_server, set_entity_field, set_server_block, set_team_block, set_team_field, set_workflow,
+    yaml_quote, yaml_scalar,
 };
 use super::schema::{Config, Env, HostPort, TabColor, Vpn};
 use super::Snapshot;
@@ -592,4 +593,248 @@ pub async fn server_move(
         }
     })?;
     save(&app, &state, state.config.path(), &edited)
+}
+
+/// A workflow as the editor sends it.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowForm {
+    pub id: String,
+    pub name: String,
+    pub pin_server: Option<String>,
+    pub pin_app: Option<String>,
+    pub steps: Vec<StepForm>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StepForm {
+    pub label: Option<String>,
+    #[serde(flatten)]
+    pub kind: StepFormKind,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum StepFormKind {
+    Local {
+        run: String,
+        dir: Option<String>,
+    },
+    Server {
+        server: String,
+        run: String,
+        root: bool,
+        dir: Option<String>,
+    },
+    Action {
+        server: String,
+        app: Option<String>,
+        action: String,
+    },
+    Pause {
+        text: String,
+    },
+}
+
+/// The workflow as YAML lines (dash at column 0).
+fn workflow_yaml(f: &WorkflowForm) -> Vec<String> {
+    let q = |s: &str| yaml_scalar(s.trim());
+    let mut out = vec![
+        format!("- id: {}", q(&f.id)),
+        format!("  name: {}", q(&f.name)),
+    ];
+    if let Some(s) = opt(&f.pin_server) {
+        match opt(&f.pin_app) {
+            Some(a) => out.push(format!("  pin: {{ server: {}, app: {} }}", q(&s), q(&a))),
+            None => out.push(format!("  pin: {{ server: {} }}", q(&s))),
+        }
+    }
+    out.push("  steps:".into());
+    for st in &f.steps {
+        let mut fields: Vec<(&str, String)> = Vec::new();
+        if let Some(l) = opt(&st.label) {
+            fields.push(("label", q(&l)));
+        }
+        match &st.kind {
+            StepFormKind::Local { run, dir } => {
+                fields.push(("local", q(run)));
+                if let Some(d) = opt(dir) {
+                    fields.push(("dir", q(&d)));
+                }
+            }
+            StepFormKind::Server {
+                server,
+                run,
+                root,
+                dir,
+            } => {
+                fields.push(("server", q(server)));
+                if *root {
+                    fields.push(("root", "true".into()));
+                }
+                if let Some(d) = opt(dir) {
+                    fields.push(("dir", q(&d)));
+                }
+                fields.push(("run", q(run)));
+            }
+            StepFormKind::Action {
+                server,
+                app,
+                action,
+            } => {
+                fields.push(("action", q(action)));
+                fields.push(("server", q(server)));
+                if let Some(a) = opt(app) {
+                    fields.push(("app", q(&a)));
+                }
+            }
+            StepFormKind::Pause { text } => {
+                let t = if text.trim().is_empty() {
+                    "Continue?"
+                } else {
+                    text.as_str()
+                };
+                fields.push(("pause", q(t)));
+            }
+        }
+        for (i, (k, v)) in fields.iter().enumerate() {
+            let lead = if i == 0 { "    - " } else { "      " };
+            out.push(format!("{lead}{k}: {v}"));
+        }
+    }
+    out
+}
+
+/// Add (`original` None) or replace a workflow.
+#[tauri::command]
+pub async fn workflow_save(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    original: Option<String>,
+    form: WorkflowForm,
+) -> AppResult<Snapshot> {
+    required(&form.id, "An ID")?;
+    required(&form.name, "A name")?;
+    if form.steps.is_empty() {
+        return Err(AppError::Invalid("add at least one step".into()));
+    }
+    for (i, st) in form.steps.iter().enumerate() {
+        let n = i + 1;
+        let empty = |s: &str| s.trim().is_empty();
+        let bad = match &st.kind {
+            StepFormKind::Local { run, .. } => empty(run).then_some("needs a command"),
+            StepFormKind::Server { server, run, .. } => {
+                (empty(server) || empty(run)).then_some("needs a server and a command")
+            }
+            StepFormKind::Action { server, action, .. } => {
+                (empty(server) || empty(action)).then_some("needs an action")
+            }
+            StepFormKind::Pause { .. } => None,
+        };
+        if let Some(why) = bad {
+            return Err(AppError::Invalid(format!("step {n} {why}")));
+        }
+    }
+    let id = form.id.trim().to_string();
+    let source = read(&state)?;
+    let edited = set_workflow(&source, original.as_deref(), &workflow_yaml(&form))
+        .map_err(AppError::Invalid)?;
+    checked(&edited, |c| {
+        c.workflows.iter().filter(|w| w.id == id).count() == 1
+            && c.workflows
+                .iter()
+                .find(|w| w.id == id)
+                .is_some_and(|w| w.name == form.name.trim() && w.steps.len() == form.steps.len())
+            && original
+                .as_ref()
+                .is_none_or(|o| o == &id || c.workflows.iter().all(|w| &w.id != o))
+    })?;
+    save(&app, &state, state.config.path(), &edited)
+}
+
+#[tauri::command]
+pub async fn workflow_delete(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> AppResult<Snapshot> {
+    let source = read(&state)?;
+    let edited = delete_workflow(&source, &id).map_err(AppError::Invalid)?;
+    checked(&edited, |c| c.workflows.iter().all(|w| w.id != id))?;
+    save(&app, &state, state.config.path(), &edited)
+}
+
+#[cfg(test)]
+mod workflow_tests {
+    use super::*;
+
+    #[test]
+    fn workflow_yaml_round_trips() {
+        let form = WorkflowForm {
+            id: "ship".into(),
+            name: "Ship it: \"now\"".into(),
+            pin_server: Some("stg".into()),
+            pin_app: Some("shop".into()),
+            steps: vec![
+                StepForm {
+                    label: Some("Merge & push".into()),
+                    kind: StepFormKind::Local {
+                        run: "git pull && git merge origin/main --no-edit && git push".into(),
+                        dir: Some("~/work/shop".into()),
+                    },
+                },
+                StepForm {
+                    label: None,
+                    kind: StepFormKind::Server {
+                        server: "stg".into(),
+                        run: "deploy /opt/www/app".into(),
+                        root: true,
+                        dir: None,
+                    },
+                },
+                StepForm {
+                    label: None,
+                    kind: StepFormKind::Pause {
+                        text: String::new(),
+                    },
+                },
+            ],
+        };
+        let src = "servers:\n  - id: stg\n    host: stg\n    env: staging\n    apps:\n      - { id: shop, path: /x }\n";
+        let out = set_workflow(src, None, &workflow_yaml(&form)).expect("add");
+        let c = super::super::validate::parse(&out);
+        assert!(
+            c.errors.is_empty() && c.warnings.is_empty(),
+            "{:?} {:?}\n{out}",
+            c.errors,
+            c.warnings
+        );
+        let c = c.config.expect("config");
+        let w = &c.workflows[0];
+        assert_eq!(w.name, "Ship it: \"now\"");
+        assert_eq!(w.pin_app.as_deref(), Some("shop"));
+        assert_eq!(w.steps.len(), 3);
+        assert!(matches!(
+            &w.steps[1].kind,
+            crate::config::schema::StepKind::Server { root: true, .. }
+        ));
+        // Replace, then delete.
+        let mut form2 = form;
+        form2.steps.truncate(1);
+        let out2 = set_workflow(&out, Some("ship"), &workflow_yaml(&form2)).expect("replace");
+        let c2 = super::super::validate::parse(&out2).config.expect("c2");
+        assert_eq!(c2.workflows[0].steps.len(), 1);
+        let out3 = delete_workflow(&out2, "ship").expect("delete");
+        assert!(!out3.contains("workflows:"), "{out3}");
+        assert!(super::super::validate::parse(&out3)
+            .config
+            .expect("c3")
+            .workflows
+            .is_empty());
+    }
 }

@@ -16,6 +16,8 @@ import { insertSnippet, useSnippets } from "@/stores/snippets";
 import { snippetVisible, useTeam, useTeamServers } from "@/stores/team";
 import { useStatus } from "@/stores/status";
 import { openLocalShell, openSsh, useTabs, type Tab } from "@/stores/tabs";
+import { useConfig } from "@/stores/config";
+import { useWorkflows } from "@/stores/workflows";
 import { useUi } from "@/stores/ui";
 
 type Item = Searchable & { key: string } & (
@@ -84,6 +86,14 @@ function buildItems(servers: Server[], tabs: Tab[], snippets: Snippet[], close: 
     cmd("Settings…", () => useUi.getState().setOverlay("settings"), "⌘,"),
     cmd("Passwords…", () => useUi.getState().setOverlay("passwords"), "⇧⌘K"),
     cmd("Environment…", () => useUi.getState().setOverlay("environment")),
+    cmd("New workflow…", () => useWorkflows.getState().edit(null)),
+  );
+  // Workflows first among the commands (the run dialog shows the steps).
+  const workflows = useConfig.getState().snapshot?.config?.workflows ?? [];
+  items.splice(
+    items.findIndex((i) => i.type === "command"),
+    0,
+    ...workflows.map((w) => cmd(`Workflow: ${w.name}`, () => useWorkflows.getState().run(w.id), `${w.steps.length} steps`)),
   );
   return items;
 }

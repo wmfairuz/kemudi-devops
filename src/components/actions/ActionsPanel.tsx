@@ -1,4 +1,4 @@
-import { EyeOff, PanelRightClose, Plus } from "lucide-react";
+import { EyeOff, PanelRightClose, Plus, Workflow as WorkflowIcon } from "lucide-react";
 
 import { EnvTag } from "@/components/kit/EnvTag";
 import { Badge } from "@/components/manage/Badge";
@@ -20,6 +20,8 @@ import { useSidebar } from "@/stores/sidebar";
 import { toastError } from "@/stores/toasts";
 import { cn } from "@/lib/utils";
 import { useUi, type PanelTab } from "@/stores/ui";
+import { useWorkflows } from "@/stores/workflows";
+import { pinnedHere } from "@/lib/workflows";
 
 const NO_SERVERS: Server[] = [];
 
@@ -107,6 +109,7 @@ function Groups({ server, app }: { server: Server; app?: App }) {
   const hidden = [...(app?.hidden ?? []).map((a) => ({ a, app })), ...server.hidden.map((a) => ({ a, app: undefined }))];
   return (
     <>
+      <PinnedWorkflows server={server} app={app} />
       {app && (
         <>
           <Group
@@ -280,4 +283,54 @@ function actionTitle(env: Env, a: Action): string {
         ? "Click: confirm, then run."
         : "Click: run · ⌥-click: edit command first.";
   return `${where}${click} Right-click: options`;
+}
+
+/** Workflows pinned to this app (or, for a server, to the server itself). */
+function PinnedWorkflows({ server, app }: { server: Server; app?: App }) {
+  const config = useConfig((s) => s.snapshot?.config);
+  const list = pinnedHere(config, server.id, app?.id ?? null);
+  const add = () => useWorkflows.getState().edit(null, { server: server.id, app: app?.id ?? null });
+  const where = app ? app.name : server.name;
+  return (
+    <section className="px-3.5 pt-4">
+      <div className="mb-2 flex items-center gap-1.5">
+        <span className="truncate text-[11.5px] font-semibold tracking-wide text-subtle-foreground uppercase">Workflows</span>
+        <span className="flex-1" />
+        <button
+          title={`New workflow pinned to ${where}`}
+          aria-label={`New workflow pinned to ${where}`}
+          onClick={add}
+          className="flex size-7 cursor-pointer items-center justify-center rounded-md text-subtle-foreground hover:bg-hover-strong hover:text-foreground"
+        >
+          <Plus className="size-4" strokeWidth={2} />
+        </button>
+      </div>
+      {list.length === 0 ? (
+        <button
+          onClick={add}
+          className="w-full cursor-pointer rounded-lg border border-dashed border-control-border px-3 py-2 text-left text-[12px] text-subtle-foreground hover:border-primary/50 hover:bg-hover hover:text-foreground"
+        >
+          + Add workflow
+        </button>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {list.map((w) => (
+            <button
+              key={w.id}
+              title={`${w.steps.length} step${w.steps.length === 1 ? "" : "s"} · click: run (shows the steps first) · right-click: edit`}
+              onClick={() => useWorkflows.getState().run(w.id)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                useWorkflows.getState().edit(w);
+              }}
+              className="flex h-[30px] cursor-pointer items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/8 px-2.5 text-[12.5px] font-medium text-foreground hover:bg-primary/15"
+            >
+              <WorkflowIcon className="size-4 text-primary" strokeWidth={1.75} />
+              {w.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }

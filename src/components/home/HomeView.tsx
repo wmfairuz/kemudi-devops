@@ -28,6 +28,9 @@ import { useStatus } from "@/stores/status";
 import { openLocalShell, openMonitor, openSsh, useTabs } from "@/stores/tabs";
 import { toastError } from "@/stores/toasts";
 import { useUi } from "@/stores/ui";
+import { useConfig } from "@/stores/config";
+import { useWorkflows } from "@/stores/workflows";
+import type { Workflow } from "@/lib/ipc";
 
 import { SshHostDialog, useSshHostDialog } from "./SshHostDialog";
 
@@ -91,6 +94,7 @@ export function HomeView() {
         </div>
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <WorkflowsCard />
           <Card
             title="Tab configs"
             action={{ label: "New", run: () => useTabConfigs.getState().show({ edit: null }) }}
@@ -324,5 +328,45 @@ function LinkBtn({ children, onClick }: { children: React.ReactNode; onClick: ()
     <button onClick={onClick} className="flex cursor-pointer items-center gap-1.5 hover:text-foreground">
       {children}
     </button>
+  );
+}
+
+const NO_WORKFLOWS: Workflow[] = [];
+
+/** Workflows: click to run (the dialog lists the steps first); ✎ edits. */
+function WorkflowsCard() {
+  const workflows = useConfig((s) => s.snapshot?.config?.workflows ?? NO_WORKFLOWS);
+  const servers = useConfig((s) => s.snapshot?.config?.servers);
+  return (
+    <Card title="Workflows" action={{ label: "New", run: () => useWorkflows.getState().edit(null) }}>
+      {workflows.length === 0 ? (
+        <Empty>None yet: steps that run one after another in one tab, e.g. merge and push here, then deploy on the server as root.</Empty>
+      ) : (
+        workflows.map((w) => {
+          const srv = servers?.find((s) => s.id === w.pinServer);
+          const app = w.pinApp ? srv?.apps.find((a) => a.id === w.pinApp) : undefined;
+          return (
+            <div key={w.id} className="group flex items-center">
+              <div className="min-w-0 flex-1">
+                <Row onClick={() => useWorkflows.getState().run(w.id)} title={`Run ${w.name}`}>
+                  <span className="flex-1 truncate text-[13px] font-medium">{w.name}</span>
+                  <span className="text-[11px] text-subtle-foreground">
+                    {w.steps.length} step{w.steps.length === 1 ? "" : "s"}
+                    {srv ? ` · ${app?.name ?? srv.name}` : ""}
+                  </span>
+                </Row>
+              </div>
+              <button
+                title={`Edit ${w.name}`}
+                onClick={() => useWorkflows.getState().edit(w)}
+                className="mr-2 hidden h-7 cursor-pointer rounded-md px-2 text-[12px] text-subtle-foreground group-hover:block hover:bg-hover-strong hover:text-foreground"
+              >
+                Edit
+              </button>
+            </div>
+          );
+        })
+      )}
+    </Card>
   );
 }

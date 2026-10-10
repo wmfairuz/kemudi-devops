@@ -9,6 +9,8 @@ import { SnippetDialog } from "@/components/snippets/SnippetsPanel";
 import { FileEditorDialog } from "@/components/manage/FileEditor";
 import { VhostGeneratorDialog } from "@/components/manage/VhostGenerator";
 import { NewAppDialog } from "@/components/manage/NewAppDialog";
+import { WorkflowEditor } from "@/components/workflows/WorkflowEditor";
+import { WorkflowRunDialog } from "@/components/workflows/WorkflowRunDialog";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { ParamsDialog } from "@/components/actions/ParamsDialog";
 import { TabConfigDialogs } from "@/components/tabconfigs/TabConfigs";
@@ -137,6 +139,8 @@ export default function App() {
       <FileEditorDialog />
       <VhostGeneratorDialog />
       <NewAppDialog />
+      <WorkflowRunDialog />
+      <WorkflowEditor />
       <ConfirmDialog />
       <ParamsDialog />
       <TabConfigDialogs />

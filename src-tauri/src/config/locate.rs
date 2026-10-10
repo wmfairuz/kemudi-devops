@@ -1275,6 +1275,87 @@ fn rename_entry(block: &mut [String], id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Replace workflow `original` with `item` (lines with the dash at column
+/// 0), or add it at the end of `workflows:` (made at the end of the file
+/// when missing).
+pub fn set_workflow(
+    source: &str,
+    original: Option<&str>,
+    item: &[String],
+) -> Result<String, String> {
+    let doc = Doc::new(source);
+    let mut lines: Vec<String> = doc.lines.iter().map(|l| l.to_string()).collect();
+    let place = |dash: usize| -> Vec<String> {
+        item.iter()
+            .map(|l| {
+                if l.is_empty() {
+                    String::new()
+                } else {
+                    format!("{}{l}", " ".repeat(dash))
+                }
+            })
+            .collect()
+    };
+    match doc.key_at((0, doc.lines.len()), "workflows") {
+        Some((key_at, list)) => {
+            let key_line = doc.lines[key_at];
+            match value_part(key_line) {
+                "" => {}
+                "[]" => lines[key_at] = "workflows:".into(),
+                _ => return Err(format!("the workflow list is written inline; {HAND}")),
+            }
+            let first = (list.0..list.1).find(|&i| is_content(doc.lines[i]));
+            let dash = first.map_or(2, |i| indent(doc.lines[i]));
+            match original.and_then(|id| doc.item(list, id)) {
+                Some((at, body)) => {
+                    let last = doc.last_content(body).unwrap_or(at).max(at);
+                    lines.splice(at..=last, place(dash));
+                }
+                None if original.is_some() => {
+                    return Err(format!(
+                        "workflow `{}` not found",
+                        original.unwrap_or_default()
+                    ))
+                }
+                None => {
+                    let after = doc.last_content(list).unwrap_or(key_at);
+                    let mut block = place(dash);
+                    if first.is_some() {
+                        block.insert(0, String::new());
+                    }
+                    lines.splice(after + 1..after + 1, block);
+                }
+            }
+        }
+        None if original.is_some() => return Err("there are no workflows yet".into()),
+        None => {
+            while lines.last().is_some_and(|l| l.trim().is_empty()) {
+                lines.pop();
+            }
+            if !lines.is_empty() {
+                lines.push(String::new());
+            }
+            lines.push("workflows:".into());
+            lines.extend(place(2));
+        }
+    }
+    Ok(finish(lines, source))
+}
+
+/// Remove a workflow (and `workflows:` with its last one).
+pub fn delete_workflow(source: &str, id: &str) -> Result<String, String> {
+    let doc = Doc::new(source);
+    let mut lines: Vec<String> = doc.lines.iter().map(|l| l.to_string()).collect();
+    let (key_at, list) = doc
+        .key_at((0, doc.lines.len()), "workflows")
+        .ok_or("there are no workflows")?;
+    let (at, body) = doc
+        .item(list, id)
+        .ok_or_else(|| format!("workflow `{id}` not found"))?;
+    remove_list_item(&doc, &mut lines, key_at, list, at, body, true);
+    Ok(finish(lines, source))
+}
+
 /// Remove a team (with its shared actions).
 pub fn delete_team(source: &str, team: &str) -> Result<String, String> {
     let doc = Doc::new(source);

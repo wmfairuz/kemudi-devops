@@ -209,6 +209,41 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   team (shown only there) or every team. Deleting a team keeps its servers,
   with no team. In servers.yaml: `teams: [{ id, name, color, actions: { app,
   server, local } }]` and `team:` on a server.
+- **Workflows** (Home ▸ *Workflows*, ⌘K *Workflow: …*, or pinned to an
+  app/server so they show at the top of its Actions panel): named steps
+  that run one after another **in one terminal tab**, so prompts (git
+  credentials, "run the migrations?") are answered right there. Steps:
+  - **This Mac**: a command, optionally in a folder (`~/…` works), in your
+    own shell (interactive, so your aliases work);
+  - **Server**: a command on a Kemudi server, optionally in a folder and
+    **as root** (directly as root, else `sudo`, else `sudo su -c` where that's
+    the only passwordless way), in an interactive login bash there, so
+    aliases like `deploy` work;
+  - **Action**: one of an app's or server's actions, as written (actions
+    that ask for values can't be steps);
+  - **Pause**: waits for Enter (Ctrl+C stops the run).
+
+  *Run* first shows the steps (click one to start there) and *Show script*
+  the exact bash; a run that reaches a production server asks for its name.
+  Every server it uses is checked to be reachable first. The first failing
+  step stops the run (later steps don't run) and a toast offers *Run from
+  step N*. Each run is in History. Built in the editor (*New* / *Edit*,
+  right-click a pinned button): name, pin, steps by type, drag the handle
+  (or ↑↓) to reorder; saved under `workflows:` in the config:
+
+  ```yaml
+  workflows:
+    - id: deploy-shop
+      name: Deploy shop
+      pin: { server: shop-prod, app: shop }
+      steps:
+        - label: Merge main & push
+          local: git pull && git merge origin/main --no-edit && git push
+          dir: ~/workspace/laravel/shop-production
+        - { server: shop-prod, root: true, run: deploy /opt/www/app }
+        - pause: Check the site, then continue?
+        - { action: clear-cache, server: shop-prod, app: shop }
+  ```
 - **Reorder servers**: drag a server by its row in the sidebar and drop it
   on another server (upper half: before it; lower half: after it). Its apps
   and settings go with it; comments above it in the config stay put.

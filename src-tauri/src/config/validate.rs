@@ -56,6 +56,7 @@ pub fn parse(source: &str) -> Outcome {
             actions: RawActions::default(),
             terminal: TerminalSettings::default(),
             editor: None,
+            workflows: vec![],
         }
     } else {
         match serde_norway::from_str(source) {
@@ -412,12 +413,192 @@ impl Validator<'_> {
             let server_base = merged(&globals_server, &team_servers);
             servers.push(self.resolve_server(rs, &path, &inherited_apps, &server_base));
         }
+        let workflows = self.resolve_workflows(raw.workflows, &servers);
         Config {
             teams,
             servers,
             terminal: raw.terminal,
             editor: raw.editor,
+            workflows,
         }
+    }
+
+    /// Workflows: a bad step shape is an error; a step that names a server,
+    /// app or action that isn't there is a warning (it can't run until fixed,
+    /// but the rest of the config still loads).
+    fn resolve_workflows(&mut self, raw: Vec<RawWorkflow>, servers: &[Server]) -> Vec<Workflow> {
+        let mut out: Vec<Workflow> = Vec::new();
+        for (wi, rw) in raw.into_iter().enumerate() {
+            let path = format!("workflows[{wi}] ({})", rw.id);
+            let line = self.find("id", &rw.id, 0);
+            if !valid_id(&rw.id) {
+                self.error(
+                    Diag::new(format!("invalid workflow id {:?}", rw.id))
+                        .at(line)
+                        .path(&path),
+                );
+            }
+            if out.iter().any(|w| w.id == rw.id) {
+                self.error(
+                    Diag::new(format!("duplicate workflow id `{}`", rw.id))
+                        .at(line)
+                        .path(&path),
+                );
+            }
+            let warn =
+                |this: &mut Self, m: String| this.warnings.push(Diag::new(m).at(line).path(&path));
+            let (pin_server, pin_app) = match rw.pin {
+                Some(p) => (Some(p.server), p.app),
+                None => (None, None),
+            };
+            if let Some(s) = &pin_server {
+                match servers.iter().find(|x| &x.id == s) {
+                    None => warn(
+                        self,
+                        format!(
+                            "workflow `{}` is pinned to `{s}`, which isn't a server",
+                            rw.id
+                        ),
+                    ),
+                    Some(srv) => {
+                        if let Some(a) = &pin_app {
+                            if srv.app(a).is_none() {
+                                warn(
+                                    self,
+                                    format!(
+                                        "workflow `{}` is pinned to app `{a}`, which isn't on {s}",
+                                        rw.id
+                                    ),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            let mut steps = Vec::new();
+            for (si, st) in rw.steps.into_iter().enumerate() {
+                let n = si + 1;
+                let kinds = [
+                    st.local.is_some(),
+                    st.run.is_some(),
+                    st.action.is_some(),
+                    st.pause.is_some(),
+                ]
+                .iter()
+                .filter(|x| **x)
+                .count();
+                if kinds != 1 {
+                    self.error(
+                        Diag::new(format!(
+                            "workflow `{}` step {n}: give exactly one of `local`, `run`, `action` or `pause`",
+                            rw.id
+                        ))
+                        .at(line)
+                        .path(&path),
+                    );
+                    continue;
+                }
+                let server_of = |this: &mut Self, s: &Option<String>| -> Option<String> {
+                    match s {
+                        None => {
+                            this.error(
+                                Diag::new(format!(
+                                    "workflow `{}` step {n}: which `server`?",
+                                    rw.id
+                                ))
+                                .at(line)
+                                .path(&path),
+                            );
+                            None
+                        }
+                        Some(s) => Some(s.clone()),
+                    }
+                };
+                let kind = if let Some(cmd) = st.local {
+                    StepKind::Local {
+                        run: cmd,
+                        dir: st.dir,
+                    }
+                } else if let Some(cmd) = st.run {
+                    let Some(server) = server_of(self, &st.server) else {
+                        continue;
+                    };
+                    if !servers.iter().any(|x| x.id == server) {
+                        warn(
+                            self,
+                            format!("workflow `{}` step {n}: `{server}` isn't a server", rw.id),
+                        );
+                    }
+                    StepKind::Server {
+                        server,
+                        run: cmd,
+                        root: st.root,
+                        dir: st.dir,
+                    }
+                } else if let Some(action) = st.action {
+                    let Some(server) = server_of(self, &st.server) else {
+                        continue;
+                    };
+                    let found = servers
+                        .iter()
+                        .find(|x| x.id == server)
+                        .map(|srv| match &st.app {
+                            Some(a) => srv
+                                .app(a)
+                                .map(|app| app.actions.iter().any(|x| x.id == action)),
+                            None => Some(srv.actions.iter().any(|x| x.id == action)),
+                        });
+                    match found {
+                        None => warn(
+                            self,
+                            format!("workflow `{}` step {n}: `{server}` isn't a server", rw.id),
+                        ),
+                        Some(None) => warn(
+                            self,
+                            format!(
+                                "workflow `{}` step {n}: app `{}` isn't on {server}",
+                                rw.id,
+                                st.app.clone().unwrap_or_default()
+                            ),
+                        ),
+                        Some(Some(false))
+                            if crate::actions::commands::builtin(&action).is_none() =>
+                        {
+                            warn(
+                                self,
+                                format!(
+                                    "workflow `{}` step {n}: there's no action `{action}` there",
+                                    rw.id
+                                ),
+                            )
+                        }
+                        _ => {}
+                    }
+                    StepKind::Action {
+                        server,
+                        app: st.app,
+                        action,
+                    }
+                } else {
+                    StepKind::Pause {
+                        text: st.pause.unwrap_or_default(),
+                    }
+                };
+                steps.push(Step {
+                    label: st.label.filter(|l| !l.trim().is_empty()),
+                    kind,
+                });
+            }
+            out.push(Workflow {
+                name: rw.name.unwrap_or_else(|| rw.id.clone()),
+                id: rw.id,
+                pin_server,
+                pin_app,
+                steps,
+                line,
+            });
+        }
+        out
     }
 
     fn resolve_globals(&mut self, defs: &[ActionDef], kind: ActionKind, path: &str) -> Vec<Action> {

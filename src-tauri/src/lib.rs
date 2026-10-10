@@ -27,6 +27,7 @@ mod tab_configs;
 mod tune;
 mod util;
 mod vault;
+mod workflows;
 
 use std::sync::{Arc, LazyLock};
 
@@ -206,6 +207,10 @@ pub fn run() {
             config::forms::new_app_hook_save,
             config::forms::app_move,
             config::forms::server_move,
+            workflows::workflow_script,
+            workflows::workflow_run,
+            config::forms::workflow_save,
+            config::forms::workflow_delete,
             snippets::snippets_list,
             vault::vault_list,
             vault::vault_save,

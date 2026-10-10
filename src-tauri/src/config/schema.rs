@@ -23,6 +23,51 @@ pub struct RawConfig {
     /// Which editor "Edit in servers.yaml" opens (default: first installed of
     /// Sublime Text, VS Code, PhpStorm; else the system text editor).
     pub editor: Option<Editor>,
+    /// Named lists of steps (local commands, server commands, actions,
+    /// pauses) run one after another in one terminal tab.
+    #[serde(default)]
+    pub workflows: Vec<RawWorkflow>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RawWorkflow {
+    pub id: String,
+    pub name: Option<String>,
+    /// Shown as a button in this server's / app's Actions panel.
+    pub pin: Option<RawPin>,
+    #[serde(default)]
+    pub steps: Vec<RawStep>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RawPin {
+    pub server: String,
+    pub app: Option<String>,
+}
+
+/// One step: exactly one of `local`, `run` (with `server`), `action` (with
+/// `server`, maybe `app`) or `pause`.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RawStep {
+    pub label: Option<String>,
+    /// A command on this Mac.
+    pub local: Option<String>,
+    /// Where it starts (local: `~/…` allowed; server: a path there).
+    pub dir: Option<String>,
+    pub server: Option<String>,
+    pub app: Option<String>,
+    /// A command on `server`.
+    pub run: Option<String>,
+    /// Run it as root (sudo, or `sudo su` where that's the only way).
+    #[serde(default)]
+    pub root: bool,
+    /// An action's id on `server` (and `app`).
+    pub action: Option<String>,
+    /// Wait for Enter (with this message) before going on.
+    pub pause: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -307,6 +352,54 @@ pub struct Config {
     pub servers: Vec<Server>,
     pub terminal: TerminalSettings,
     pub editor: Option<Editor>,
+    pub workflows: Vec<Workflow>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Workflow {
+    pub id: String,
+    pub name: String,
+    pub pin_server: Option<String>,
+    pub pin_app: Option<String>,
+    pub steps: Vec<Step>,
+    /// 1-based line in servers.yaml.
+    pub line: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Step {
+    pub label: Option<String>,
+    #[serde(flatten)]
+    pub kind: StepKind,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum StepKind {
+    Local {
+        run: String,
+        dir: Option<String>,
+    },
+    Server {
+        server: String,
+        run: String,
+        root: bool,
+        dir: Option<String>,
+    },
+    Action {
+        server: String,
+        app: Option<String>,
+        action: String,
+    },
+    Pause {
+        text: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize)]
