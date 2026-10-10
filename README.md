@@ -244,6 +244,17 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
         - pause: Check the site, then continue?
         - { action: clear-cache, server: shop-prod, app: shop }
   ```
+
+  A run opens in the **Steps** view (or the terminal: *Opens in* per
+  workflow, `view: terminal`; switch any time with *Output* / *Steps ▸*):
+  each step pending / running (timer, its last line) / ✓ with its time / ✗
+  with its exit code, its own output a click away, *Run from here* on a
+  failed one, *Continue* / *Stop here* on a pause, and *Stop* (Ctrl+C) for
+  the run. When a step waits for input (its output stops on an unfinished
+  line that reads like a question), an **answer box** shows the question:
+  type and ↵ (hidden for passwords, with *Fill* from your Passwords), or
+  *yes* / *no* for yes/no questions. The script marks each step with an
+  invisible terminal escape (`\e]6973;…`) that the view reads.
 - **Reorder servers**: drag a server by its row in the sidebar and drop it
   on another server (upper half: before it; lower half: after it). Its apps
   and settings go with it; comments above it in the config stay put.
