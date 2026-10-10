@@ -87,7 +87,16 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   vhost(s) and Supervisor programs that mention the path (with status, whole
   config files to show or copy), cron lines, and the .env (secrets hidden until
   clicked; copy one, selected or all entries; APP_DEBUG/APP_ENV warnings on
-  prod). Files only root can read are retried with `sudo -n` (never prompts).
+  prod). Files only root can read (configs, other users' crontabs, git in a
+  folder the login user can't read) are read with sudo, like everywhere else
+  in Kemudi (see below); the Laravel version comes from composer.lock. If
+  there's no working sudo, Inspect says which files it couldn't read instead
+  of reporting them as absent.
+- **How Kemudi gets root** (Inspect, file editing, logs, queues, Discover,
+  certificates, New app): as root, nothing; else passwordless `sudo -n`;
+  else `sudo -n su` when sudoers allows only that (`user ALL = (root)
+  NOPASSWD: /bin/su`); else the server's saved sudo password (askpass, never
+  on a command line). It never prompts.
   Wildcard vhosts (root `…/$app/public`) are found by the app's parent folder
   and labelled *wildcard*; the link becomes the app's real host
   (`billing.staging.example.com`). Configs that don't name the path can be

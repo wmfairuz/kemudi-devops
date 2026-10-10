@@ -305,17 +305,27 @@ elif [ -n "$SU" ]; then S="$SU"; A=sudo
 else S=""; A=none; fi
 "#;
 
-/// Sets `SU` to a working sudo (`sudo -n`, or `sudo -A` with the server's
-/// saved password through an askpass helper that reads it from the
-/// environment), or "" when there's none. The password arrives in this
+/// Sets `SU` to a working sudo (`sudo -n`; else `suq`, root through a
+/// passwordless `sudo su` when sudoers allows only that; else `sudo -A` with
+/// the server's saved password through an askpass helper that reads it from
+/// the environment), or "" when there's none. `$SU -u user cmd…` works with
+/// each. The password arrives in this
 /// script on ssh's stdin and is never on a command line.
 pub(crate) fn sudo_prelude(password: Option<&str>) -> String {
     // NOSUDO: sudo is missing, or this user isn't allowed it (sudoers says
     // so once a password checks out); BADPW: the saved password was refused.
     let mut s = String::from(
         r#"SU=""; BADPW=""; NOSUDO=""
+# `suq [-u user] cmd args…`: the command through `sudo su` (each argument
+# quoted for su's shell), for sudoers like `NOPASSWD: /bin/su`.
+suq() {
+  _ku=root; if [ "$1" = -u ]; then _ku=$2; shift 2; fi
+  _kq=""; for _ka in "$@"; do _kq="$_kq '$(printf '%s' "$_ka" | sed "s/'/'\\''/g")'"; done
+  sudo -n su "$_ku" -s /bin/sh -c "$_kq"
+}
 if ! command -v sudo >/dev/null 2>&1; then NOSUDO=1
 elif sudo -n true 2>/dev/null; then SU="sudo -n"
+elif sudo -n su root -s /bin/sh -c true </dev/null >/dev/null 2>&1; then SU="suq"
 "#,
     );
     if let Some(pw) = password {

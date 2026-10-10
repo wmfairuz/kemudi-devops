@@ -74,8 +74,15 @@ pub struct Inspection {
     /// Every vhost / Supervisor config file on the server, to pin from.
     pub vhost_candidates: Vec<String>,
     pub supervisor_candidates: Vec<String>,
-    /// Pinned files that couldn't be read.
+    /// Pinned files that aren't there.
     pub missing: Vec<String>,
+    /// Config files that are there but only root can read (and Kemudi has
+    /// no working sudo for this server).
+    pub denied: Vec<String>,
+    /// How Kemudi got root here: "root" (logged in as root), "ok" (sudo),
+    /// "needpw" (sudo wants a password and none is saved), "badpw" (the
+    /// saved one was refused), "none" (no sudo for this user).
+    pub sudo: String,
     /// Why the .env secrets couldn't be kept (encrypted) for next launch.
     pub secret_cache_error: Option<String>,
 }
@@ -99,7 +106,12 @@ pub(crate) const SUPCONFS: &str = r#"supconfs() {
 }
 "#;
 
-fn script(path: &str, vhost_files: &[String], supervisor_files: &[String]) -> String {
+fn script(
+    path: &str,
+    vhost_files: &[String],
+    supervisor_files: &[String],
+    password: Option<&str>,
+) -> String {
     let q = crate::actions::render::shell_quote;
     let p = q(path);
     // One `pin '<file>'` line per pinned file (each shell-quoted).
@@ -110,34 +122,51 @@ fn script(path: &str, vhost_files: &[String], supervisor_files: &[String]) -> St
             .collect::<String>()
     };
     let (vf, sf) = (pins(vhost_files), pins(supervisor_files));
-    // `rd f`: print a file, falling back to passwordless sudo when only root
-    // can read it. `scan`: pinned files always, then candidates that mention
-    // the path, or (wildcard vhosts) its parent folder followed by `$`.
+    // `$SU`: sudo with the server's saved password (or passwordless), "" as
+    // root. `rd f`: print a file, with sudo when only root can read it.
+    // `scan`: pinned files always, then candidates that mention the path, or
+    // (wildcard vhosts) its parent folder followed by `$`. Files it can't
+    // read are reported (`@denied`), never silently skipped.
     format!(
         r#"export LC_ALL=C
+{prelude}[ "$(id -u)" = 0 ] && SU=""
 P={p}
 D=$(dirname "$P")
-rd() {{ cat -- "$1" 2>/dev/null || sudo -n cat -- "$1" 2>/dev/null; }}
+ME=$(id -un)
+rd() {{ cat -- "$1" 2>/dev/null || {{ [ -n "$SU" ] && $SU cat -- "$1" 2>/dev/null; }}; }}
 seen=" "
 pin() {{
-  c=$(rd "$1") || {{ echo "@missing $1"; return; }}
-  echo "@file $1"; printf '%s\n' "$c"; seen="$seen$1 "
+  if c=$(rd "$1"); then echo "@file $1"; printf '%s\n' "$c"
+  elif [ -e "$1" ]; then echo "@denied $1"
+  else echo "@missing $1"; fi
+  seen="$seen$1 "
 }}
 scan() {{
   for f in "$@"; do
     [ -f "$f" ] || continue
     case "$seen" in *" $f "*) continue ;; esac
-    c=$(rd "$f") || continue
+    c=$(rd "$f") || {{ echo "@denied $f"; continue; }}
     case "$c" in *"$P"*|*"$D/\$"*) echo "@file $f"; printf '%s\n' "$c" ;; esac
   done
 }}
+# git as yourself, else with sudo (only a run that worked prints).
+G() {{ if _go=$(git -c safe.directory='*' -C "$P" "$@" 2>/dev/null); then printf '%s\n' "$_go"; elif [ -n "$SU" ]; then $SU git -c safe.directory='*' -C "$P" "$@" 2>/dev/null; fi; }}
+# Someone's crontab: your own, or another user's with sudo (or as root).
+cronof() {{ if [ "$1" = "$ME" ]; then crontab -l 2>/dev/null; elif [ -n "$SU" ] || [ "$(id -u)" = 0 ]; then $SU crontab -l -u "$1" 2>/dev/null; fi; }}
+OWNR=$(stat -L -c %U "$P" 2>/dev/null)
+CUSERS=$(printf '%s\n' "$ME" root www-data "$OWNR" | grep . | sort -u)
 VHOSTS="/etc/nginx/sites-enabled/* /etc/nginx/conf.d/*.conf /etc/apache2/sites-enabled/* /etc/httpd/conf.d/*.conf"
 {SUPCONFS}SUPS=$(supconfs)
+echo @@sudo
+if [ "$(id -u)" = 0 ]; then echo root; elif [ -n "$SU" ]; then echo ok; elif [ -n "$NOSUDO" ]; then echo none; elif [ -n "$BADPW" ]; then echo badpw; else echo needpw; fi
 echo @@git
-git -c safe.directory='*' -C "$P" rev-parse --abbrev-ref HEAD 2>/dev/null
-git -c safe.directory='*' -C "$P" log -1 --format='%h · %cr · %s' 2>/dev/null
+G rev-parse --abbrev-ref HEAD
+G log -1 --format='%h · %cr · %s'
 echo @@laravel
-[ -f "$P/artisan" ] && cd "$P" 2>/dev/null && timeout 8 php artisan --version 2>/dev/null | head -1
+# composer.lock says it without running anything; else ask artisan.
+v=$(rd "$P/composer.lock" | grep -A4 '"name": "laravel/framework"' | sed -n 's/.*"version": "v\{{0,1\}}\([^"]*\)".*/\1/p' | head -1)
+if [ -n "$v" ]; then echo "Laravel Framework $v"
+elif [ -f "$P/artisan" ] && cd "$P" 2>/dev/null; then timeout 8 php artisan --version 2>/dev/null | head -1; fi
 cd / 2>/dev/null
 echo @@vhosts
 seen=" "
@@ -150,16 +179,19 @@ seen=" "
 echo @@supfiles
 for f in $SUPS; do echo "$f"; done
 echo @@status
-(supervisorctl status 2>/dev/null || sudo -n supervisorctl status 2>/dev/null) | head -200
+# As yourself first; with sudo when that's refused (socket is root's).
+st=$(supervisorctl status 2>/dev/null)
+case "$st" in ""|*"error:"*|*"refused"*|*"ermission"*) [ -n "$SU" ] && st=$($SU supervisorctl status 2>/dev/null) ;; esac
+printf '%s\n' "$st" | head -200
 echo @@cron
-(cat /etc/crontab /etc/cron.d/* 2>/dev/null; crontab -l 2>/dev/null; sudo -n crontab -l -u www-data 2>/dev/null) | grep -F -- "$P" | grep -v '^[[:space:]]*#' | head -20
+(for f in /etc/crontab /etc/cron.d/*; do [ -f "$f" ] && rd "$f"; done; for u in $CUSERS; do cronof "$u"; done) | grep -F -- "$P" | grep -v '^[[:space:]]*#' | head -20
 echo @@cronsrc
-for f in /etc/crontab /etc/cron.d/*; do [ -f "$f" ] && grep -qF -- "$P" "$f" 2>/dev/null && echo "file:$f"; done
-crontab -l 2>/dev/null | grep -qF -- "$P" && echo "user:$(id -un)"
-[ "$(id -un)" != www-data ] && sudo -n crontab -l -u www-data 2>/dev/null | grep -qF -- "$P" && echo "user:www-data"
+for f in /etc/crontab /etc/cron.d/*; do [ -f "$f" ] && rd "$f" | grep -qF -- "$P" && echo "file:$f"; done
+for u in $CUSERS; do cronof "$u" | grep -qF -- "$P" && echo "user:$u"; done
 echo @@env
 if [ -e "$P/.env" ]; then rd "$P/.env" || echo "@error permission denied (and sudo needs a password)"; else echo "@error no .env in $P"; fi
-"#
+"#,
+        prelude = crate::remote_files::sudo_prelude(password),
     )
 }
 
@@ -267,9 +299,18 @@ pub fn parse(out: &str) -> Inspection {
         .map(|l| l.trim().to_string())
         .find(|l| !l.is_empty());
 
+    ins.sudo = get("sudo")
+        .into_iter()
+        .map(|l| l.trim().to_string())
+        .find(|l| !l.is_empty())
+        .unwrap_or_default();
     for l in get("vhosts").iter().chain(get("supervisor").iter()) {
         if let Some(f) = l.strip_prefix("@missing ") {
             ins.missing.push(f.trim().to_string());
+        } else if let Some(f) = l.strip_prefix("@denied ") {
+            if !ins.denied.iter().any(|d| d == f.trim()) {
+                ins.denied.push(f.trim().to_string());
+            }
         }
     }
     ins.vhost_candidates = get("vhostfiles")
@@ -284,7 +325,7 @@ pub fn parse(out: &str) -> Inspection {
         .collect();
 
     for l in get("vhosts") {
-        if l.starts_with("@missing ") {
+        if l.starts_with("@missing ") || l.starts_with("@denied ") {
             continue;
         }
         if let Some(f) = l.strip_prefix("@file ") {
@@ -346,7 +387,7 @@ pub fn parse(out: &str) -> Inspection {
     for l in get("supervisor") {
         if let Some(f) = l.strip_prefix("@file ") {
             current = f.trim().to_string();
-        } else if l.starts_with("@missing ") {
+        } else if l.starts_with("@missing ") || l.starts_with("@denied ") {
             current.clear();
         } else if !current.is_empty() {
             let c = files.entry(current.clone()).or_default();
@@ -467,10 +508,11 @@ pub async fn app_inspect(
             "set the app's full path first (e.g. /var/www/app)".into(),
         ));
     }
+    let password = crate::remote_files::saved_sudo(&server_id).await;
     let out = crate::monitor::run(
         &state,
         &server_id,
-        &script(path, &vhost_files, &supervisor_files),
+        &script(path, &vhost_files, &supervisor_files, password.as_deref()),
     )
     .await?;
     let mut ins = parse(&out);
@@ -613,7 +655,13 @@ MAIL_FROM_ADDRESS=noreply@example.com # note
             let pinned = std::env::var("KEMUDI_PIN").unwrap_or_default();
             std::fs::write(
                 out,
-                script("/opt/www/staging.example.com/billing", &[pinned], &[]),
+                script(
+                    &std::env::var("KEMUDI_PATH")
+                        .unwrap_or_else(|_| "/opt/www/staging.example.com/billing".into()),
+                    &[pinned],
+                    &[],
+                    None,
+                ),
             )
             .expect("write");
         }
@@ -625,6 +673,7 @@ MAIL_FROM_ADDRESS=noreply@example.com # note
             "/opt/www/app",
             &["/etc/nginx/sites-enabled/wild app".into()],
             &[],
+            None,
         );
         assert!(
             s.contains("pin '/etc/nginx/sites-enabled/wild app'\nscan $VHOSTS"),

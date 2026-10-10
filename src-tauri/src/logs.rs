@@ -14,7 +14,7 @@ use tauri::State;
 
 use crate::actions::render::shell_quote;
 use crate::error::{AppError, AppResult};
-use crate::remote_files::{askpass, errors, lookup, saved_sudo, sudo_prelude, NO_SUDO};
+use crate::remote_files::{errors, lookup, saved_sudo, sudo_prelude, NO_SUDO};
 use crate::AppState;
 
 /// First read and "Load earlier": this much from the end (or before).
@@ -322,25 +322,18 @@ fn read_script(
         before.to_string(),
     ]
     .join(" ");
-    let su = if password.is_some() {
-        "sudo -A"
-    } else {
-        "sudo -n"
-    };
     format!(
         r#"export LC_ALL=C
 READ={read}
 out=$(sh -c "$READ" _ {args}); rc=$?
 if [ "$rc" = 3 ]; then
-{askpass}  if out=$({su} sh -c "$READ" _ {args}); then echo @@sudo
-  else
-{prelude}    echo "@@err can't read {what}: {NO_SUDO}"; exit 0
+{prelude}  if [ -n "$SU" ] && out=$($SU sh -c "$READ" _ {args}); then echo @@sudo
+  else echo "@@err can't read {what}: {NO_SUDO}"; exit 0
   fi
 fi
 printf '%s\n' "$out"
 "#,
         read = shell_quote(READ),
-        askpass = password.map(askpass).unwrap_or_default(),
         prelude = sudo_prelude(password),
         what = format!("{}/{}", dir.trim_end_matches('/'), pin.unwrap_or(base))
             .replace(['"', '$', '`', '\\'], "?"),

@@ -290,6 +290,23 @@ export function InspectPanel({
           version and cron lines. Read-only; nothing is saved.
         </div>
       )}
+      {ins && (ins.denied?.length ?? 0) > 0 && (
+        <div className="rounded-lg border border-env-staging/40 bg-env-staging/8 px-3 py-2 text-[12px] leading-[18px] text-muted-foreground">
+          <span className="font-medium text-env-staging-fg">
+            {ins.denied!.length} config file{ins.denied!.length === 1 ? " is" : "s are"} root-only
+          </span>{" "}
+          and Kemudi has no working sudo on {serverId}
+          {ins.sudo === "badpw"
+            ? ": the saved sudo password was refused."
+            : ins.sudo === "none"
+              ? ": this login user isn't allowed sudo."
+              : ": sudo asks for a password. Save it on the server's page (sudo password), or allow passwordless sudo (or just /bin/su) for this user, then Inspect again."}
+          <div className="selectable mt-1 truncate font-mono text-[11px] text-subtle-foreground" title={ins.denied!.join("\n")}>
+            {ins.denied!.slice(0, 4).join("  ")}
+            {ins.denied!.length > 4 ? `  +${ins.denied!.length - 4} more` : ""}
+          </div>
+        </div>
+      )}
       {ins && (
         <>
           <Section title="Code">

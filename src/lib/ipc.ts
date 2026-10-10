@@ -262,6 +262,10 @@ export interface Inspection {
   vhostCandidates: string[];
   supervisorCandidates: string[];
   missing: string[];
+  /** Config files there that only root can read (no working sudo). */
+  denied?: string[];
+  /** "root" | "ok" | "needpw" | "badpw" | "none": how Kemudi got root. */
+  sudo?: string;
   /** Why the .env secrets couldn't be kept (encrypted) for next launch. */
   secretCacheError: string | null;
 }
