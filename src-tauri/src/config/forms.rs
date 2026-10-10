@@ -7,8 +7,8 @@ use tauri::{AppHandle, State};
 
 use super::commands::save;
 use super::locate::{
-    add_app, add_server, add_team, delete_entity, delete_team, set_entity_field, set_server_block,
-    set_team_block, set_team_field, yaml_quote, yaml_scalar,
+    add_app, add_server, add_team, delete_entity, delete_team, move_app, set_entity_field,
+    set_server_block, set_team_block, set_team_field, yaml_quote, yaml_scalar,
 };
 use super::schema::{Config, Env, HostPort, TabColor, Vpn};
 use super::Snapshot;
@@ -513,4 +513,60 @@ pub async fn new_app_hook_save(
         })
     })?;
     save(&app, &state, state.config.path(), &edited)
+}
+
+/// Move an app within its server's list (before `before`, or to the end), or
+/// to another server. Only Kemudi's record moves; nothing on either server
+/// changes. Returns its id (renamed `-2`… when the other server has it).
+#[tauri::command]
+pub async fn app_move(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    server_id: String,
+    app_id: String,
+    to_server: String,
+    before: Option<String>,
+) -> AppResult<String> {
+    let source = read(&state)?;
+    let current = super::validate::parse(&source)
+        .config
+        .ok_or_else(|| AppError::Invalid("fix the config's errors first".into()))?;
+    let target = current
+        .server(&to_server)
+        .ok_or_else(|| AppError::NotFound(format!("server `{to_server}` isn't in Kemudi")))?;
+    let new_id = (to_server != server_id && target.app(&app_id).is_some()).then(|| {
+        (2..)
+            .map(|n| format!("{app_id}-{n}"))
+            .find(|id| target.app(id).is_none())
+            .unwrap_or_default()
+    });
+    let edited = move_app(
+        &source,
+        &server_id,
+        &app_id,
+        &to_server,
+        before.as_deref(),
+        new_id.as_deref(),
+    )
+    .map_err(AppError::Invalid)?;
+    let id = new_id.unwrap_or_else(|| app_id.clone());
+    checked(&edited, |c| {
+        let Some(t) = c.server(&to_server) else {
+            return false;
+        };
+        let ids: Vec<&str> = t.apps.iter().map(|a| a.id.as_str()).collect();
+        let Some(at) = ids.iter().position(|x| *x == id) else {
+            return false;
+        };
+        let placed = match before.as_deref().filter(|b| *b != app_id) {
+            Some(b) => ids.get(at + 1) == Some(&b),
+            None => at + 1 == ids.len() || before.as_deref() == Some(app_id.as_str()),
+        };
+        placed
+            && (to_server == server_id
+                || c.server(&server_id)
+                    .is_some_and(|s| s.app(&app_id).is_none()))
+    })?;
+    save(&app, &state, state.config.path(), &edited)?;
+    Ok(id)
 }

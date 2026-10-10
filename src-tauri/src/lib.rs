@@ -204,6 +204,7 @@ pub fn run() {
             newapp::newapp_script,
             newapp::newapp_run,
             config::forms::new_app_hook_save,
+            config::forms::app_move,
             snippets::snippets_list,
             vault::vault_list,
             vault::vault_save,

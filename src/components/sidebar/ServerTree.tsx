@@ -1,11 +1,15 @@
 import { ChevronRight, Plus, SquareTerminal } from "lucide-react";
 import { useMemo } from "react";
+import { create } from "zustand";
 
 import { EnvTag, StaleBadge, VpnBadge } from "@/components/kit/EnvTag";
 import { envBar } from "@/components/kit/env";
 import { Glyph, Spinner } from "@/components/kit/Spinner";
 import { StatusDot } from "@/components/kit/StatusDot";
-import type { App, Server } from "@/lib/ipc";
+import { appMove, errorMessage, type App, type Server } from "@/lib/ipc";
+import { findServer } from "@/stores/config";
+import { askConfirm } from "@/stores/confirm";
+import { toastError, useToasts } from "@/stores/toasts";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/manage/Badge";
 import { DiskBadge } from "@/components/monitor/DiskBadge";
@@ -22,6 +26,106 @@ interface Props {
 
 function matches(text: string, q: string) {
   return text.toLowerCase().includes(q);
+}
+
+// ------------------------------------------------------------ drag apps
+
+interface Drag {
+  serverId: string;
+  appId: string;
+  name: string;
+  x: number;
+  y: number;
+  /** Where it would land: before `before` on `serverId` (null: the end). */
+  over: { serverId: string; before: string | null } | null;
+}
+
+const useDrag = create<{ drag: Drag | null }>(() => ({ drag: null }));
+/** Set right after a drop, so the row's click that follows is ignored. */
+let justDropped = false;
+
+/** Press on an app row and move: drag it (to another place in its server's
+ *  list, or onto another server). A plain click still opens it. */
+function startDrag(e: React.PointerEvent, server: Server, app: App) {
+  if (e.button !== 0 || useSidebar.getState().filter.trim()) return;
+  const start = { x: e.clientX, y: e.clientY };
+  let dragging = false;
+  const move = (ev: PointerEvent) => {
+    if (!dragging && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 6) return;
+    dragging = true;
+    document.body.style.userSelect = "none";
+    useDrag.setState({ drag: { serverId: server.id, appId: app.id, name: app.name, x: ev.clientX, y: ev.clientY, over: dropAt(ev.clientX, ev.clientY) } });
+  };
+  const up = () => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+    document.body.style.userSelect = "";
+    const d = useDrag.getState().drag;
+    useDrag.setState({ drag: null });
+    if (!dragging || !d) return;
+    justDropped = true;
+    setTimeout(() => (justDropped = false), 0);
+    if (d.over) void drop(d.serverId, d.appId, d.over.serverId, d.over.before);
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+}
+
+/** The drop target under the pointer: an app row (its upper half: before it;
+ *  lower half: before the next one) or a server row (the end of its list). */
+function dropAt(x: number, y: number): Drag["over"] {
+  const el = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-drop-server]");
+  if (!el) return null;
+  const serverId = el.dataset.dropServer!;
+  const appId = el.dataset.dropApp;
+  if (!appId) return { serverId, before: null };
+  const r = el.getBoundingClientRect();
+  return { serverId, before: y < r.top + r.height / 2 ? appId : (el.dataset.dropNext ?? null) };
+}
+
+async function drop(from: string, appId: string, to: string, before: string | null) {
+  const src = findServer(from);
+  const dst = findServer(to);
+  const app = src?.apps.find((a) => a.id === appId);
+  if (!src || !dst || !app) return;
+  if (from === to) {
+    const ids = src.apps.map((a) => a.id);
+    const next = ids[ids.indexOf(appId) + 1] ?? null;
+    if (before === appId || before === next) return; // where it already is
+  } else if (
+    !(await askConfirm(
+      `Move ${app.name} to ${dst.name}?`,
+      `Only Kemudi's record moves (with its own actions and settings): nothing on ${src.name} or ${dst.name} changes. Its path, vhost and Supervisor files stay as they are, so check they match ${dst.name}.`,
+      "Move",
+    ))
+  ) {
+    return;
+  }
+  try {
+    const id = await appMove(from, appId, to, before);
+    const sel = useSidebar.getState().selected;
+    if (sel?.serverId === from && sel.appId === appId) useSidebar.getState().follow(to, id);
+    if (from !== to) {
+      if (!useSidebar.getState().expanded[to]) useSidebar.getState().toggle(to);
+      useToasts.getState().push(`Moved ${app.name} to ${dst.name}${id !== appId ? ` (as ${id})` : ""}`, "info");
+    }
+  } catch (e) {
+    toastError(errorMessage(e));
+  }
+}
+
+/** The dragged app's name, following the pointer. */
+function DragGhost() {
+  const drag = useDrag((s) => s.drag);
+  if (!drag) return null;
+  return (
+    <div
+      className="pointer-events-none fixed z-50 rounded-md border border-primary/50 bg-background px-2 py-1 text-[12px] font-medium text-foreground shadow-lg"
+      style={{ left: drag.x + 12, top: drag.y + 8 }}
+    >
+      {drag.name}
+    </div>
+  );
 }
 
 /** Servers → apps → actions (design frame 1a sidebar). */
@@ -58,6 +162,7 @@ export function ServerTree({ servers, stale }: Props) {
             forceOpen={forced || (!!filter && apps.length > 0)}
           />
         ))}
+        <DragGhost />
         {filter && visible.length === 0 && (
           <div className="px-3 py-4 text-[12px] text-subtle-foreground">No servers or apps match “{filter}”.</div>
         )}
@@ -82,10 +187,13 @@ function ServerGroup({ server, apps, forceOpen }: { server: Server; apps: App[];
   const reach = useStatus((s) => s.byServer[server.id]);
   const status = reach?.state ?? "unknown";
   const down = status === "down";
+  const dropHere = useDrag((s) => (s.drag?.over?.serverId === server.id ? s.drag.over.before : undefined));
+  const dragging = useDrag((s) => !!s.drag);
 
   return (
     <div className={cn("mx-2 mb-2 flex flex-col gap-0.5", envBar[server.env])}>
       <div
+        data-drop-server={server.id}
         role="treeitem"
         aria-expanded={expanded}
         aria-selected={selected}
@@ -102,6 +210,7 @@ function ServerGroup({ server, apps, forceOpen }: { server: Server; apps: App[];
         className={cn(
           "group flex h-[54px] cursor-default items-center gap-2.5 rounded-lg pr-2 pl-1.5",
           selected ? "bg-accent" : "hover:bg-hover",
+          dragging && dropHere === null && "ring-2 ring-primary/60",
         )}
       >
         <button
@@ -152,12 +261,38 @@ function ServerGroup({ server, apps, forceOpen }: { server: Server; apps: App[];
         </span>
         <ShellButton server={server} />
       </div>
-      {expanded && apps.map((app) => <AppItem key={app.id} server={server} app={app} down={down} />)}
+      {expanded &&
+        apps.map((app, i) => (
+          <AppItem
+            key={app.id}
+            server={server}
+            app={app}
+            down={down}
+            next={apps[i + 1]?.id ?? null}
+            lineAbove={dropHere === app.id}
+            lineBelow={dropHere === null && i === apps.length - 1}
+          />
+        ))}
     </div>
   );
 }
 
-function AppItem({ server, app, down }: { server: Server; app: App; down: boolean }) {
+function AppItem({
+  server,
+  app,
+  down,
+  next,
+  lineAbove,
+  lineBelow,
+}: {
+  server: Server;
+  app: App;
+  down: boolean;
+  next: string | null;
+  lineAbove: boolean;
+  lineBelow: boolean;
+}) {
+  const lifted = useDrag((s) => s.drag?.serverId === server.id && s.drag.appId === app.id);
   const selected = useSidebar((s) => s.selected?.serverId === server.id && s.selected.appId === app.id);
   // The most recent action tab for this app drives the row's status icon.
   const lastRun = useTabs((s) => {
@@ -171,6 +306,13 @@ function AppItem({ server, app, down }: { server: Server; app: App; down: boolea
   return (
     <div
       id={`app-${server.id}-${app.id}`}
+      data-drop-server={server.id}
+      data-drop-app={app.id}
+      data-drop-next={next ?? undefined}
+      onPointerDown={(e) => startDrag(e, server, app)}
+      onClickCapture={(e) => {
+        if (justDropped) e.stopPropagation();
+      }}
       role="treeitem"
       aria-selected={selected}
       title={`${app.name} · ${server.host}:${app.path}\nClick: details · double-click: ssh into it · right-click: more`}
@@ -181,10 +323,13 @@ function AppItem({ server, app, down }: { server: Server; app: App; down: boolea
         useManage.getState().setMenu({ x: e.clientX, y: e.clientY, server, app });
       }}
       className={cn(
-        "flex h-[48px] cursor-default items-center gap-2.5 rounded-lg pr-2 pl-[38px]",
+        "relative flex h-[48px] cursor-default items-center gap-2.5 rounded-lg pr-2 pl-[38px]",
         selected ? "bg-accent" : "hover:bg-hover",
+        lifted && "opacity-40",
       )}
     >
+      {lineAbove && <span className="pointer-events-none absolute -top-[2px] right-2 left-[38px] h-[3px] rounded bg-primary" />}
+      {lineBelow && <span className="pointer-events-none absolute right-2 -bottom-[2px] left-[38px] h-[3px] rounded bg-primary" />}
       <Badge id={`${server.id}/${app.id}`} name={app.name} size={30} className={cn(down && "opacity-55")} />
       <span className="flex min-w-0 flex-1 flex-col">
         <span className={cn("truncate text-[13px] font-medium", selected ? "text-foreground" : down ? "text-dim-foreground" : "text-sidebar-foreground")}>

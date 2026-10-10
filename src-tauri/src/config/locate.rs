@@ -1093,6 +1093,134 @@ pub fn set_team_block(
     set_block(&doc, source, at, body, key, text)
 }
 
+/// Move app `app` of server `from` to server `to` (it may be the same),
+/// before app `before` there, or at the end. The entry moves as written
+/// (comments, its own actions); only its indentation changes. `new_id`
+/// renames it on the way (its id is taken on `to`).
+pub fn move_app(
+    source: &str,
+    from: &str,
+    app: &str,
+    to: &str,
+    before: Option<&str>,
+    new_id: Option<&str>,
+) -> Result<String, String> {
+    if from == to && before == Some(app) {
+        return Ok(source.to_string());
+    }
+    let doc = Doc::new(source);
+    let (_, srv) = scope_of(&doc, from, None)?;
+    let (key_at, list) = doc
+        .key_at(srv, "apps")
+        .ok_or_else(|| format!("`{from}` has no apps"))?;
+    let (at, body) = doc
+        .item(list, app)
+        .ok_or_else(|| format!("app `{app}` not found on `{from}`"))?;
+    // The entry, relative to its dash (blank lines inside kept, trailing ones not).
+    let dash = indent(doc.lines[at]);
+    let last = doc.last_content(body).unwrap_or(at).max(at);
+    let mut block: Vec<String> = doc.lines[at..=last]
+        .iter()
+        .map(|l| {
+            if l.trim().is_empty() {
+                String::new()
+            } else {
+                l.get(dash.min(indent(l))..).unwrap_or(l).to_string()
+            }
+        })
+        .collect();
+    if let Some(id) = new_id {
+        rename_entry(&mut block, id)?;
+    }
+    let mut lines: Vec<String> = doc.lines.iter().map(|l| l.to_string()).collect();
+    remove_list_item(&doc, &mut lines, key_at, list, at, body, true);
+    let mid = finish(lines, source);
+
+    let doc = Doc::new(&mid);
+    let mut lines: Vec<String> = doc.lines.iter().map(|l| l.to_string()).collect();
+    let (srv_at, srv) = scope_of(&doc, to, None)?;
+    if doc.lines[srv_at].trim_start().starts_with("- {") {
+        return Err(format!("`{to}` is written on one line; {HAND}"));
+    }
+    let place = |block: &[String], dash: usize| -> Vec<String> {
+        block
+            .iter()
+            .map(|l| {
+                if l.is_empty() {
+                    String::new()
+                } else {
+                    format!("{}{l}", " ".repeat(dash))
+                }
+            })
+            .collect()
+    };
+    match doc.key_at(srv, "apps") {
+        Some((key_at, list)) => {
+            let key_line = doc.lines[key_at];
+            match value_part(key_line) {
+                "" => {}
+                "[]" => {
+                    lines[key_at] = format!("{}apps:", " ".repeat(indent(key_line)));
+                }
+                _ => return Err(format!("`{to}`'s apps are written inline; {HAND}")),
+            }
+            let first = (list.0..list.1).find(|&i| is_content(doc.lines[i]));
+            let dash = first.map_or(indent(key_line) + 2, |i| indent(doc.lines[i]));
+            let spaced = first.is_some_and(|f| {
+                let end = doc.last_content(list).unwrap_or(f);
+                (f..end).any(|i| doc.lines[i].trim().is_empty())
+            });
+            let mut moved = place(&block, dash);
+            match before.and_then(|b| doc.item(list, b)) {
+                Some((pos, _)) => {
+                    if spaced {
+                        moved.push(String::new());
+                    }
+                    lines.splice(pos..pos, moved);
+                }
+                None => {
+                    let after = doc.last_content(list).unwrap_or(key_at);
+                    if spaced {
+                        moved.insert(0, String::new());
+                    }
+                    lines.splice(after + 1..after + 1, moved);
+                }
+            }
+        }
+        None => {
+            let child = doc.item_indent(srv_at);
+            let pos = doc
+                .key_at(srv, "actions")
+                .map(|(i, _)| i)
+                .unwrap_or_else(|| doc.last_content(srv).map_or(srv_at + 1, |i| i + 1));
+            let mut moved = vec![format!("{}apps:", " ".repeat(child))];
+            moved.extend(place(&block, child + 2));
+            lines.splice(pos..pos, moved);
+        }
+    }
+    Ok(finish(lines, source))
+}
+
+/// Set `id:` in an entry's lines (relative to its dash).
+fn rename_entry(block: &mut [String], id: &str) -> Result<(), String> {
+    let value = yaml_scalar(id);
+    let first = block.first().cloned().unwrap_or_default();
+    if first.starts_with("- {") {
+        block[0] = flow_set(&first, "id", Some(&value)).ok_or(HAND)?;
+        return Ok(());
+    }
+    let i = block
+        .iter()
+        .position(|l| {
+            let t = l.trim_start_matches("- ");
+            l.len() - t.len() <= 2 && starts_with_key(t, "id")
+        })
+        .ok_or(HAND)?;
+    let lead = block[i].len() - block[i].trim_start_matches("- ").len();
+    block[i] = format!("{}id: {value}", &block[i][..lead]);
+    Ok(())
+}
+
 /// Remove a team (with its shared actions).
 pub fn delete_team(source: &str, team: &str) -> Result<String, String> {
     let doc = Doc::new(source);
@@ -1214,6 +1342,75 @@ fn finish(lines: Vec<String>, source: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn moves_apps() {
+        let src = "servers:
+  - id: a
+    host: a
+    env: staging
+    apps:
+      - id: one
+        path: /one
+        # its own
+        actions:
+          - { id: pull, disabled: true }
+
+      - id: two
+        path: /two
+
+      - { id: three, path: /three }
+  - id: b
+    host: b
+    env: prod
+  - id: c
+    host: c
+    env: dev
+    apps:
+      - id: one
+        path: /c-one
+";
+        let ids = |src: &str, server: &str| -> Vec<String> {
+            let c = crate::config::validate::parse(src);
+            assert!(c.errors.is_empty(), "{:?}\n{src}", c.errors);
+            let c = c.config.expect("config");
+            c.server(server)
+                .expect("server")
+                .apps
+                .iter()
+                .map(|a| a.id.clone())
+                .collect()
+        };
+        // Reorder: three before one.
+        let out = move_app(src, "a", "three", "a", Some("one"), None).expect("reorder");
+        assert_eq!(ids(&out, "a"), ["three", "one", "two"], "{out}");
+        // To the end.
+        let out = move_app(src, "a", "one", "a", None, None).expect("to end");
+        assert_eq!(ids(&out, "a"), ["two", "three", "one"], "{out}");
+        assert!(
+            out.contains("        # its own\n        actions:"),
+            "kept as written: {out}"
+        );
+        // To a server with no apps: gets `apps:`, one leaves a.
+        let out = move_app(src, "a", "one", "b", None, None).expect("to b");
+        assert_eq!(ids(&out, "a"), ["two", "three"]);
+        assert_eq!(ids(&out, "b"), ["one"]);
+        let c = crate::config::validate::parse(&out).config.expect("c");
+        let one = c.server("b").expect("b").app("one").expect("one");
+        assert_eq!(one.path, "/one");
+        assert!(
+            one.hidden.iter().any(|h| h.id == "pull") || one.actions.iter().all(|x| x.id != "pull")
+        );
+        // Onto a server that has the id: renamed.
+        let out = move_app(src, "a", "one", "c", None, Some("one-2")).expect("to c");
+        assert_eq!(ids(&out, "c"), ["one", "one-2"]);
+        let out = move_app(src, "a", "three", "c", Some("one"), Some("three")).expect("flow");
+        assert_eq!(ids(&out, "c"), ["three", "one"]);
+        // The last app leaves: `apps:` goes too.
+        let out = move_app(src, "c", "one", "b", None, None).expect("last");
+        assert_eq!(ids(&out, "c"), Vec::<String>::new());
+        assert_eq!(ids(&out, "b"), ["one"]);
+    }
 
     #[test]
     fn hook_blocks_roundtrip() {

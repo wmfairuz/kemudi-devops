@@ -571,6 +571,10 @@ export const appSave = (serverId: string, original: string | null, form: AppForm
   invoke("app_save", { serverId, original, form });
 export const appDelete = (serverId: string, id: string): Promise<ConfigSnapshot> =>
   invoke("app_delete", { serverId, id });
+/** Move an app before `before` (null: to the end), on its server or another
+ *  one. Resolves to its id there (renamed `-2`… if that server has it). */
+export const appMove = (serverId: string, appId: string, toServer: string, before: string | null): Promise<string> =>
+  invoke("app_move", { serverId, appId, toServer, before });
 
 export const actionSetDanger = (action: ActionRef, danger: boolean): Promise<ConfigSnapshot> =>
   invoke("action_set_danger", { action, danger });
