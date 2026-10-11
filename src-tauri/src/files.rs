@@ -274,15 +274,24 @@ t=$(mktemp /tmp/kemudi-dl-XXXXXX) && $SU cp "$f" "$t" && $SU chown "$(id -un)" "
         .find_map(|l| l.strip_prefix("@@copy "))
         .map(str::to_string);
     let source = copy.clone().unwrap_or_else(|| path.clone());
-    let result = scp(
-        &state,
-        &server.host,
-        &[
-            format!("{}:{source}", server.host),
-            dest.display().to_string(),
-        ],
-    )
-    .await;
+    let result = match &server.asg {
+        // From the same instance the check ran on, through Session Manager.
+        Some(asg) => match crate::fleet::read_file(state.env_ready().await, asg, &source).await {
+            Ok(bytes) => std::fs::write(&dest, bytes).map_err(AppError::from),
+            Err(e) => Err(e),
+        },
+        None => {
+            scp(
+                &state,
+                &server.host,
+                &[
+                    format!("{}:{source}", server.host),
+                    dest.display().to_string(),
+                ],
+            )
+            .await
+        }
+    };
     if let Some(t) = copy {
         let _ =
             crate::monitor::run(&state, &server_id, &format!("rm -f {}\n", shell_quote(&t))).await;
@@ -326,15 +335,30 @@ pub async fn files_upload(
         std::process::id(),
         crate::audit::now_ms()
     );
-    scp(
-        &state,
-        &server.host,
-        &[local.clone(), format!("{}:{tmp}", server.host)],
-    )
-    .await?;
+    match &server.asg {
+        // To every instance (they stay alike), in pieces.
+        Some(asg) => {
+            let data = std::fs::read(&src)?;
+            // Session Manager carries uploads in small pieces, slowly.
+            if data.len() > 2 * 1024 * 1024 {
+                return Err(AppError::Invalid(format!(
+                    "{name} is over 2 MB: uploads to an AWS server go through Session Manager in small pieces, too slowly for that"
+                )));
+            }
+            crate::fleet::write_file_all(state.env_ready().await, asg, &data, &tmp).await?;
+        }
+        None => {
+            scp(
+                &state,
+                &server.host,
+                &[local.clone(), format!("{}:{tmp}", server.host)],
+            )
+            .await?
+        }
+    }
     let password = saved_sudo(&server_id).await;
     let place = place_script(&tmp, &target, replace, password.as_deref());
-    let out = crate::monitor::run(&state, &server_id, &place).await?;
+    let out = crate::monitor::run_all(&state, &server_id, &place).await?;
     errors(&out)?;
     if out.lines().any(|l| l == "@@exists") {
         return Err(AppError::Invalid(format!("{target} already exists")));
@@ -503,7 +527,7 @@ pub async fn files_chown(
         ));
     }
     let password = saved_sudo(&server_id).await;
-    let out = crate::monitor::run(
+    let out = crate::monitor::run_all(
         &state,
         &server_id,
         &chown_script(&path, &owner, &group, recursive, password.as_deref()),
@@ -602,7 +626,7 @@ pub async fn files_chmod(
         ));
     }
     let password = saved_sudo(&server_id).await;
-    let out = crate::monitor::run(
+    let out = crate::monitor::run_all(
         &state,
         &server_id,
         &chmod_script(&path, &mode, files_mode.as_deref(), password.as_deref()),
@@ -773,7 +797,7 @@ pub async fn files_rename(
         return Err(AppError::Invalid(why.replace("delete", "rename")));
     }
     let password = saved_sudo(&server_id).await;
-    let out = crate::monitor::run(
+    let out = crate::monitor::run_all(
         &state,
         &server_id,
         &rename_script(&path, &name, password.as_deref()),
@@ -807,7 +831,7 @@ pub async fn files_delete(
         return Err(AppError::Invalid(why));
     }
     let password = saved_sudo(&server_id).await;
-    let out = crate::monitor::run(
+    let out = crate::monitor::run_all(
         &state,
         &server_id,
         &delete_script(&path, password.as_deref()),
@@ -871,7 +895,7 @@ pub async fn files_create(
         ));
     }
     let password = saved_sudo(&server_id).await;
-    let out = crate::monitor::run(
+    let out = crate::monitor::run_all(
         &state,
         &server_id,
         &create_script(&dir, &name, folder, password.as_deref()),
@@ -972,7 +996,7 @@ pub async fn files_paste(
         return Err(AppError::Invalid("it's already in this folder".into()));
     }
     let password = saved_sudo(&server_id).await;
-    let out = crate::monitor::run_for(
+    let out = crate::monitor::run_all_for(
         &state,
         &server_id,
         &paste_script(&src, &dir, cut, same, password.as_deref()),

@@ -115,7 +115,7 @@ function LayoutView({
         ) : tab.kind === "files" && tab.serverId ? (
           <FilesView tab={tab} visible={visible && focused} />
         ) : tab.kind === "logs" && tab.serverId ? (
-          <LogsView tab={tab} visible={visible} />
+          <LogsView key={tab.instance ?? ""} tab={tab} visible={visible} />
         ) : tab.kind === "queues" && tab.serverId ? (
           <QueuesView tab={tab} visible={visible} />
         ) : tab.kind === "health" && tab.serverId ? (

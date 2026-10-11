@@ -18,6 +18,8 @@ import { cn } from "@/lib/utils";
 import { findServer, useConfig } from "@/stores/config";
 import { askConfirm } from "@/stores/confirm";
 import { openLogs, openSsh, useTabs, type Tab } from "@/stores/tabs";
+import { FleetFilesNote } from "@/components/fleet/InstanceSwitch";
+import { openAsgShells } from "@/lib/fleet";
 import { toastError, useToasts } from "@/stores/toasts";
 
 const isDir = (e: FileEntry) => e.kind === "dir" || e.toDir;
@@ -165,6 +167,11 @@ export function FilesView({ tab, visible }: { tab: Tab; visible: boolean }) {
 
   const terminalHere = (at: string) => {
     if (!server) return;
+    if (server.asg) {
+      // A shell in that folder on each instance.
+      void openAsgShells(server, appFor(at) ?? null, at);
+      return;
+    }
     openSsh(server.host, {
       serverId,
       prod: envFor(at) === "prod",
@@ -396,6 +403,7 @@ export function FilesView({ tab, visible }: { tab: Tab; visible: boolean }) {
           />
         </form>
         {server && <EnvTag env={envFor(dir)} />}
+        {server?.asg && <FleetFilesNote server={server} />}
         {listing?.sudo && <span className="rounded bg-env-staging/15 px-1.5 text-[10.5px] text-env-staging-fg" title="This folder needs root: listed with sudo">sudo</span>}
         <Btn size="sm" variant="ghost" title={hidden ? "Show hidden files" : "Hide hidden files"} aria-label="Hidden files" onClick={() => setHidden((h) => !h)}>
           {hidden ? <Eye className="size-4" /> : <EyeOff className="size-4" />}

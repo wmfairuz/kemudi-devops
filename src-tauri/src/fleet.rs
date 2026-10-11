@@ -439,80 +439,259 @@ fn run_shell_commands(script: &str) -> serde_json::Value {
     serde_json::json!({ "commands": [format!("echo {b64} | base64 -d | sh -s")] })
 }
 
-/// Run a script on one of the server's instances (the first running one;
-/// a group's are alike) with `aws ssm send-command` (AWS-RunShellScript, as
-/// root) and return its output: `monitor::run_for` for an AWS server.
-pub async fn run_script(env: &LoginEnv, asg: &Asg, script: &str, secs: u64) -> AppResult<String> {
-    let first = instances(env, asg)
-        .await?
-        .into_iter()
-        .next()
-        .ok_or_else(|| AppError::Invalid("no running instances".into()))?;
+/// Which instances a script runs on.
+#[derive(Debug, Clone, Copy)]
+pub enum Which<'a> {
+    /// The first running one (the oldest; the same one while the list is
+    /// cached): reading.
+    First,
+    One(&'a str),
+    /// Every running one: changes, so a group's instances stay alike.
+    All,
+}
+
+type Cache =
+    std::sync::Mutex<std::collections::HashMap<String, (std::time::Instant, Vec<Instance>)>>;
+static CACHE: std::sync::OnceLock<Cache> = std::sync::OnceLock::new();
+const CACHE_FOR: Duration = Duration::from_secs(60);
+
+/// `instances`, reused for a minute: scripts in a row (list, then copy,
+/// then clean up) land on the same instance, and aren't each a lookup.
+pub async fn instances_cached(env: &LoginEnv, asg: &Asg) -> AppResult<Vec<Instance>> {
+    let key = format!("{asg:?}");
+    let cache = CACHE.get_or_init(Default::default);
+    if let Some((at, list)) = cache.lock().ok().and_then(|c| c.get(&key).cloned()) {
+        if at.elapsed() < CACHE_FOR && !list.is_empty() {
+            return Ok(list);
+        }
+    }
+    let list = instances(env, asg).await?;
+    if let Ok(mut c) = cache.lock() {
+        c.insert(key, (std::time::Instant::now(), list.clone()));
+    }
+    Ok(list)
+}
+
+async fn targets(env: &LoginEnv, asg: &Asg, which: Which<'_>) -> AppResult<Vec<String>> {
+    if let Which::One(id) = which {
+        validate_instance(id)?;
+        return Ok(vec![id.to_string()]);
+    }
+    let list = instances_cached(env, asg).await?;
+    let ids: Vec<String> = match which {
+        Which::All => list.into_iter().map(|i| i.id).collect(),
+        _ => list.into_iter().take(1).map(|i| i.id).collect(),
+    };
+    if ids.is_empty() {
+        return Err(AppError::Invalid("no running instances".into()));
+    }
+    Ok(ids)
+}
+
+/// Run a script with `aws ssm send-command` (AWS-RunShellScript, as root)
+/// and return its output: `monitor::run_for` for an AWS server. On several
+/// instances, the first one's output, once all of them succeeded.
+pub async fn run_script(
+    env: &LoginEnv,
+    asg: &Asg,
+    script: &str,
+    secs: u64,
+    which: Which<'_>,
+) -> AppResult<String> {
+    let ids = targets(env, asg, which).await?;
     let params = run_shell_commands(script).to_string();
     let timeout = secs.max(30).to_string();
-    let id: String = aws_json(
-        env,
-        asg,
-        &[
-            "ssm",
-            "send-command",
-            "--instance-ids",
-            &first.id,
-            "--document-name",
-            "AWS-RunShellScript",
-            "--timeout-seconds",
-            &timeout,
-            "--parameters",
-            &params,
-            "--query",
-            "Command.CommandId",
-        ],
-    )
-    .await?;
+    let mut args: Vec<&str> = vec!["ssm", "send-command", "--instance-ids"];
+    args.extend(ids.iter().map(String::as_str));
+    args.extend([
+        "--document-name",
+        "AWS-RunShellScript",
+        "--timeout-seconds",
+        &timeout,
+        "--parameters",
+        &params,
+        "--query",
+        "Command.CommandId",
+    ]);
+    let id: String = aws_json(env, asg, &args).await?;
     let deadline = std::time::Instant::now() + Duration::from_secs(secs + 10);
+    let mut outputs: Vec<Option<String>> = vec![None; ids.len()];
+    let mut wait = Duration::from_millis(500);
     loop {
-        tokio::time::sleep(Duration::from_millis(1200)).await;
-        // Just after sending, the invocation may not exist yet.
-        let inv: Result<Invocation, _> = aws_json(
-            env,
-            asg,
-            &[
-                "ssm",
-                "get-command-invocation",
-                "--command-id",
-                &id,
-                "--instance-id",
-                &first.id,
-            ],
-        )
-        .await;
-        match inv {
-            Ok(inv) if matches!(inv.status.as_str(), "Pending" | "InProgress" | "Delayed") => {}
-            Ok(inv) => {
-                if inv.stdout.len() >= OUTPUT_LIMIT {
-                    return Err(AppError::Invalid(
-                        "the output is longer than Session Manager keeps (24 KB)".into(),
-                    ));
-                }
-                if inv.status == "Success" || inv.stdout.contains("@@") {
-                    return Ok(inv.stdout);
-                }
-                return Err(AppError::Invalid(format!(
-                    "{} on {}: {}",
-                    inv.status,
-                    first.id,
-                    inv.stderr.trim()
-                )));
+        tokio::time::sleep(wait).await;
+        wait = Duration::from_millis(900);
+        for (k, instance) in ids.iter().enumerate() {
+            if outputs[k].is_some() {
+                continue;
             }
-            Err(e) if !e.to_string().contains("InvocationDoesNotExist") => return Err(e),
-            Err(_) => {}
+            // Just after sending, the invocation may not exist yet.
+            let inv: Result<Invocation, _> = aws_json(
+                env,
+                asg,
+                &[
+                    "ssm",
+                    "get-command-invocation",
+                    "--command-id",
+                    &id,
+                    "--instance-id",
+                    instance,
+                ],
+            )
+            .await;
+            match inv {
+                Ok(inv) if matches!(inv.status.as_str(), "Pending" | "InProgress" | "Delayed") => {}
+                Ok(inv) => {
+                    if inv.stdout.len() >= OUTPUT_LIMIT {
+                        return Err(AppError::Invalid(
+                            "the output is longer than Session Manager keeps (24 KB)".into(),
+                        ));
+                    }
+                    if inv.status != "Success" && !inv.stdout.contains("@@") {
+                        return Err(AppError::Invalid(format!(
+                            "{} on {instance}: {}",
+                            inv.status,
+                            inv.stderr.trim()
+                        )));
+                    }
+                    outputs[k] = Some(inv.stdout);
+                }
+                Err(e) if !e.to_string().contains("InvocationDoesNotExist") => return Err(e),
+                Err(_) => {}
+            }
+        }
+        if outputs.iter().all(Option::is_some) {
+            return Ok(outputs.into_iter().next().flatten().unwrap_or_default());
         }
         if std::time::Instant::now() > deadline {
             return Err(AppError::Invalid(format!(
                 "no answer from {} within {secs} s",
-                first.id
+                ids.join(", ")
             )));
         }
+    }
+}
+
+/// A file's bytes from the first instance, streamed through a Session
+/// Manager session (base64 between markers): downloads, which can be far
+/// bigger than send-command's output.
+pub async fn read_file(env: &LoginEnv, asg: &Asg, path: &str) -> AppResult<Vec<u8>> {
+    let first = targets(env, asg, Which::First).await?.remove(0);
+    let script = format!(
+        "f={}\necho @@KB; base64 -w0 -- \"$f\" 2>/dev/null || echo @@KFAIL; echo; echo @@KE\n",
+        crate::actions::render::shell_quote(path)
+    );
+    let mut cmd = tokio::process::Command::new("aws");
+    cmd.env_clear().envs(env.vars.iter());
+    cmd.args(["ssm", "start-session", "--target", &first]);
+    cmd.args(aws_opts(asg));
+    cmd.args([
+        "--document-name",
+        "AWS-StartInteractiveCommand",
+        "--parameters",
+    ]);
+    cmd.arg(serde_json::json!({ "command": [remote(asg, Some(&script))] }).to_string());
+    // Stdin stays open: at end of input the plugin closes the session, maybe
+    // before all of the file has arrived.
+    cmd.stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| AppError::Invalid(format!("aws: {e}")))?;
+    let _stdin = child.stdin.take();
+    let mut stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| AppError::Invalid("aws: no output".into()))?;
+    let collect = async {
+        use tokio::io::AsyncReadExt;
+        let mut buf = Vec::new();
+        let mut chunk = vec![0u8; 64 * 1024];
+        loop {
+            let n = stdout.read(&mut chunk).await.unwrap_or(0);
+            if n == 0 {
+                break;
+            }
+            buf.extend_from_slice(&chunk[..n]);
+            // Done once the end marker is in (allowing for a split read).
+            let tail = &buf[buf.len().saturating_sub(n + 8)..];
+            if tail.windows(4).any(|w| w == b"@@KE") {
+                break;
+            }
+        }
+        buf
+    };
+    let out = tokio::time::timeout(Duration::from_secs(900), collect)
+        .await
+        .map_err(|_| AppError::Invalid("the download took over 15 min: stopped".into()))?;
+    let _ = child.kill().await;
+    let text = String::from_utf8_lossy(&out);
+    let body = between(&text, "@@KB", "@@KE").ok_or_else(|| {
+        AppError::Invalid(format!(
+            "no file came back from {first}: {}",
+            text.trim().lines().last().unwrap_or_default()
+        ))
+    })?;
+    if body.contains("@@KFAIL") {
+        return Err(AppError::Invalid(format!(
+            "couldn't read {path} on {first}"
+        )));
+    }
+    let clean: String = body.chars().filter(|c| !c.is_whitespace()).collect();
+    base64::engine::general_purpose::STANDARD
+        .decode(clean)
+        .map_err(|e| AppError::Invalid(format!("the download came back damaged: {e}")))
+}
+
+/// The text between the line `from` and the line `to`.
+fn between<'t>(text: &'t str, from: &str, to: &str) -> Option<&'t str> {
+    let start = text
+        .find(&format!("{from}\r"))
+        .or_else(|| text.find(&format!("{from}\n")))?
+        + from.len();
+    let end = text[start..].find(to)? + start;
+    Some(&text[start..end])
+}
+
+/// Write `data` to `path` on every instance (a temp file an upload then
+/// moves into place), in pieces small enough for send-command.
+pub async fn write_file_all(env: &LoginEnv, asg: &Asg, data: &[u8], path: &str) -> AppResult<()> {
+    const PIECE: usize = 24_000;
+    let q = crate::actions::render::shell_quote(path);
+    let b64 = format!("{path}.b64");
+    let qb = crate::actions::render::shell_quote(&b64);
+    run_script(
+        env,
+        asg,
+        &format!("rm -f {q} {qb}; : > {qb}; chmod 600 {qb}\n"),
+        60,
+        Which::All,
+    )
+    .await?;
+    for piece in data.chunks(PIECE) {
+        let enc = base64::engine::general_purpose::STANDARD.encode(piece);
+        run_script(
+            env,
+            asg,
+            &format!("printf '%s\\n' '{enc}' >> {qb}\n"),
+            60,
+            Which::All,
+        )
+        .await?;
+    }
+    let out = run_script(
+        env,
+        asg,
+        &format!("base64 -d {qb} > {q} && chmod 600 {q} && echo @@ok; rm -f {qb}\n"),
+        60,
+        Which::All,
+    )
+    .await?;
+    if out.lines().any(|l| l.trim() == "@@ok") {
+        Ok(())
+    } else {
+        Err(AppError::Invalid("the upload didn't arrive whole".into()))
     }
 }
 
@@ -580,6 +759,13 @@ mod tests {
     }
 
     #[test]
+    fn between_markers() {
+        let out = "Starting session…\r\n@@KB\r\naGk=\r\n@@KE\r\n";
+        assert_eq!(between(out, "@@KB", "@@KE").map(str::trim), Some("aGk="));
+        assert_eq!(between("nothing", "@@KB", "@@KE"), None);
+    }
+
+    #[test]
     fn instance_ids() {
         assert!(validate_instance("i-0123456789abcdef0").is_ok());
         assert!(validate_instance("i-1234abcd").is_ok());
@@ -631,5 +817,53 @@ mod tests {
         let list: Vec<Instance> = serde_json::from_str(json).expect("parse");
         assert_eq!(list.len(), 2);
         assert_eq!(list[1].name, None);
+    }
+}
+
+/// Against a real group: KEMUDI_ASG_TEST="group profile" cargo test
+/// live_transfer -- --ignored. Writes /tmp/kemudi-live-test on every
+/// instance, reads it back, removes it.
+#[cfg(test)]
+mod live {
+    use super::*;
+
+    #[test]
+    #[ignore]
+    fn live_transfer() {
+        let Ok(spec) = std::env::var("KEMUDI_ASG_TEST") else {
+            return;
+        };
+        let mut parts = spec.split_whitespace();
+        let asg = Asg {
+            name: parts.next().unwrap_or_default().into(),
+            instances: Vec::new(),
+            profile: parts.next().map(String::from),
+            region: None,
+            root: true,
+        };
+        let env = LoginEnv::capture();
+        let data: Vec<u8> = (0..60_000u32).map(|i| (i * 7 % 251) as u8).collect();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("rt");
+        rt.block_on(async {
+            let path = "/tmp/kemudi-live-test";
+            write_file_all(&env, &asg, &data, path)
+                .await
+                .expect("write");
+            let back = read_file(&env, &asg, path).await.expect("read");
+            assert_eq!(back, data, "round trip");
+            let all = run_script(
+                &env,
+                &asg,
+                &format!("ls -l {path} | wc -l; rm -f {path}\n"),
+                30,
+                Which::All,
+            )
+            .await
+            .expect("cleanup");
+            println!("cleanup: {all}");
+        });
     }
 }

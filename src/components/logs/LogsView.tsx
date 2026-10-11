@@ -10,6 +10,7 @@ import { familyOf, LEVEL_RANK, parseChunk, prependEntries, shortTime, type Level
 import { cn } from "@/lib/utils";
 import { findServer, useConfig } from "@/stores/config";
 import { openFiles, useTabs, type Tab } from "@/stores/tabs";
+import { InstanceSwitch } from "@/components/fleet/InstanceSwitch";
 import { toastError, useToasts } from "@/stores/toasts";
 
 /** Entries kept in memory; older ones are dropped while following. */
@@ -122,7 +123,7 @@ export function LogsView({ tab, visible }: { tab: Tab; visible: boolean }) {
   const loadSources = async () => {
     setLoading(true);
     try {
-      const list = await logsSources(serverId, appId);
+      const list = await logsSources(serverId, appId, tab.instance ?? null);
       setSources(list);
       setError(null);
       setSourceKey((cur) => {
@@ -190,7 +191,7 @@ export function LogsView({ tab, visible }: { tab: Tab; visible: boolean }) {
     setUnseen(0);
     stickRef.current = true;
     try {
-      const c = await logsRead(serverId, { dir: src.dir, base: src.base, pin: pinned });
+      const c = await logsRead(serverId, { dir: src.dir, base: src.base, pin: pinned }, {}, tab.instance ?? null);
       if (gen !== genRef.current) return;
       setError(null);
       addChunk(c, null);
@@ -218,7 +219,7 @@ export function LogsView({ tab, visible }: { tab: Tab; visible: boolean }) {
       const gen = genRef.current;
       if (cur) {
         try {
-          const c = await logsRead(serverId, { dir: source.dir, base: source.base, pin }, { from: cur.end, inode: cur.inode });
+          const c = await logsRead(serverId, { dir: source.dir, base: source.base, pin }, { from: cur.end, inode: cur.inode }, tab.instance ?? null);
           if (stop || gen !== genRef.current) return;
           if (c.reset || c.end !== cur.end || c.size !== cur.size) addChunk(c, cur);
         } catch (e) {
@@ -258,7 +259,7 @@ export function LogsView({ tab, visible }: { tab: Tab; visible: boolean }) {
     const gen = genRef.current;
     setLoading(true);
     try {
-      const c = await logsRead(serverId, { dir: source.dir, base: source.base, pin: cur.path.split("/").pop() ?? null }, { before: cur.start, inode: cur.inode });
+      const c = await logsRead(serverId, { dir: source.dir, base: source.base, pin: cur.path.split("/").pop() ?? null }, { before: cur.start, inode: cur.inode }, tab.instance ?? null);
       if (gen !== genRef.current) return;
       const { added } = parseChunk(c.text, null, nextId);
       const el = listRef.current;
@@ -385,6 +386,7 @@ export function LogsView({ tab, visible }: { tab: Tab; visible: boolean }) {
           </select>
         )}
         {server && <EnvTag env={envOf(source)} />}
+        {server?.asg && <InstanceSwitch server={server} tab={tab} />}
         {cursor?.sudo && <span className="rounded bg-env-staging/15 px-1.5 text-[10.5px] text-env-staging-fg" title="Only root can read this log: read with sudo">sudo</span>}
         <div className="flex-1" />
         <div className="flex h-7 flex-none items-center rounded-md border border-control-border p-0.5 text-[11.5px]" role="group" aria-label="Level">

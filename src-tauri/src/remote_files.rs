@@ -839,7 +839,7 @@ pub async fn remote_file_write(
         &target,
         &format!("{where_}: {summary}"),
     );
-    let result = match crate::monitor::run(&state, &server_id, &script).await {
+    let result = match crate::monitor::run_all(&state, &server_id, &script).await {
         Ok(out) => parse_write(&out),
         Err(e) => Err(e),
     };
@@ -914,7 +914,7 @@ pub async fn remote_file_restore(
         &target,
         &format!("restored {backup}"),
     );
-    let out = crate::monitor::run(&state, &server_id, &script).await;
+    let out = crate::monitor::run_all(&state, &server_id, &script).await;
     let result = out.and_then(|out| {
         errors(&out)?;
         if out.lines().any(|l| l == "@@restored") {
@@ -1124,7 +1124,7 @@ pub async fn vhost_create(
         .ok()
         .map(|id| (log.clone(), id))
     });
-    let result = match crate::monitor::run(
+    let result = match crate::monitor::run_all(
         &state,
         &server_id,
         &create_script(&name, &content, password.as_deref()),

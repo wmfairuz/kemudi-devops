@@ -242,6 +242,64 @@ pub(crate) async fn run(state: &AppState, server_id: &str, script: &str) -> AppR
     run_for(state, server_id, script, 20).await
 }
 
+/// A change (write, rename, delete…): on an AWS server, on every instance so
+/// they stay alike; else just `run_for`.
+pub(crate) async fn run_all_for(
+    state: &AppState,
+    server_id: &str,
+    script: &str,
+    secs: u64,
+) -> AppResult<String> {
+    match aws_of(state, server_id)? {
+        Some(asg) => {
+            crate::fleet::run_script(
+                state.env_ready().await,
+                &asg,
+                script,
+                secs,
+                crate::fleet::Which::All,
+            )
+            .await
+        }
+        None => run_for(state, server_id, script, secs).await,
+    }
+}
+
+pub(crate) async fn run_all(state: &AppState, server_id: &str, script: &str) -> AppResult<String> {
+    run_all_for(state, server_id, script, 20).await
+}
+
+/// On one instance of an AWS server (`None`: the first); else `run_for`.
+pub(crate) async fn run_on(
+    state: &AppState,
+    server_id: &str,
+    instance: Option<&str>,
+    script: &str,
+    secs: u64,
+) -> AppResult<String> {
+    match (aws_of(state, server_id)?, instance) {
+        (Some(asg), Some(i)) => {
+            crate::fleet::run_script(
+                state.env_ready().await,
+                &asg,
+                script,
+                secs,
+                crate::fleet::Which::One(i),
+            )
+            .await
+        }
+        _ => run_for(state, server_id, script, secs).await,
+    }
+}
+
+fn aws_of(state: &AppState, server_id: &str) -> AppResult<Option<crate::config::schema::Asg>> {
+    let config = state
+        .config
+        .config()
+        .ok_or_else(|| AppError::Config("Kemudi's server list isn't loaded".into()))?;
+    Ok(config.server(server_id).and_then(|s| s.asg.clone()))
+}
+
 /// `run` with a longer limit, for work that takes a while (copying a big
 /// folder, packing one to download, searching).
 pub(crate) async fn run_for(
@@ -259,7 +317,14 @@ pub(crate) async fn run_for(
         .ok_or_else(|| AppError::NotFound(format!("server `{server_id}` isn't in Kemudi")))?;
     // An AWS server: on one of its instances, through Session Manager.
     if let Some(asg) = &server.asg {
-        return crate::fleet::run_script(state.env_ready().await, asg, script, secs).await;
+        return crate::fleet::run_script(
+            state.env_ready().await,
+            asg,
+            script,
+            secs,
+            crate::fleet::Which::First,
+        )
+        .await;
     }
     crate::ssh::validate_host(&server.host)?;
     let control = dirs::home_dir()

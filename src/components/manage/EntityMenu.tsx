@@ -48,6 +48,12 @@ export function EntityMenu() {
         [
           { label: "Shells on all instances", hint: whereOf(server), run: () => void openAsgShells(server, app) },
           { label: "Shell on one instance…", run: () => useFleetUi.getState().openPick(server, app) },
+          app
+            ? { label: "Files", hint: app.path, run: () => void openFiles(server, { appId: app.id, dir: app.path, env: app.env, title: `${app.id} · files` }) }
+            : { label: "Files", hint: "one instance; changes to all", run: () => void openFiles(server) },
+          app
+            ? { label: "Logs", hint: "laravel.log, live", run: () => void openLogs(server, { appId: app.id, env: app.env, title: `${app.id} · logs` }) }
+            : { label: "Logs", hint: "per instance", run: () => void openLogs(server) },
           ...(app ? [] : [{ label: "Forward a database port…", hint: "RDS → 127.0.0.1", run: () => useFleetUi.getState().openForward(server) }]),
           ...(app?.url ? [{ label: "Open site", hint: app.url.replace(/^https?:\/\//, ""), run: () => void openUrl(app.url!).catch((e) => toastError(errorMessage(e))) }] : []),
           app

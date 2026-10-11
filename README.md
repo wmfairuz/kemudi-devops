@@ -714,12 +714,23 @@ default) or as Session Manager's own user, and click **Find instances** to check
   `127.0.0.1:<port>` forwarded to the database
   (`AWS-StartPortForwardingSessionToRemoteHost`); close it or press Ctrl+C to
   stop. Kemudi remembers your last choices for each server.
+- **Files, Logs and Inspect** work on AWS servers too, through Session Manager.
+  Instances in a group are alike, so these read one instance: the oldest
+  running one. Files shows which ("10.0.10.18 · changes to all 2"). Changes
+  (saving a file, uploading, renaming, deleting, new files or folders,
+  permissions, paste) go to **every** instance, so they stay alike. Downloads
+  stream through a Session Manager session. Uploads go to each instance in small
+  pieces (up to 2 MB). Logs has an instance switch, because each instance writes
+  its own logs; a read is capped at 16 KB to fit Session Manager's output, and
+  Load earlier fetches more. Inspect's service actions (restart a worker…) run
+  on every instance, like any action. Expect about 2 seconds per step, since
+  each read is an AWS API call.
 - **Discover apps** works on a group too. It runs its read-only script on one of
   the instances, since a group's instances are alike, through `aws ssm
   send-command` (as root, output back without a terminal). The app form's
   Detect buttons work the same way.
-- Files, Logs, Monitor, Health, Inspect and New app need one ssh host, so they
-  don't appear for a group. Workflows can't run steps on a group yet,
+- Monitor, Health, Fine-tune, Queues and New app are per machine, so they don't
+  appear for a group yet. Workflows can't run steps on a group yet,
   because Session Manager doesn't return the remote command's exit status.
 
 ## Guardrails

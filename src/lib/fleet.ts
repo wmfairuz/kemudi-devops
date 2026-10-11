@@ -41,7 +41,7 @@ export async function lookUp(server: Server): Promise<Instance[] | null> {
 
 /** A shell on every instance, one pane each (in the app's folder for an
  *  app). */
-export async function openAsgShells(server: Server, app?: App | null): Promise<void> {
+export async function openAsgShells(server: Server, app?: App | null, dir?: string): Promise<void> {
   const list = await lookUp(server);
   if (!list) return;
   const prod = (app?.env ?? server.env) === "prod";
@@ -52,9 +52,9 @@ export async function openAsgShells(server: Server, app?: App | null): Promise<v
       serverId: server.id,
       instance: i.id,
       appId: app?.id,
-      cwd: app?.path,
+      cwd: dir ?? app?.path,
       prod,
-      spawn: ptySpawner({ kind: "ssm", serverId: server.id, instance: i.id, cwd: app?.path }),
+      spawn: ptySpawner({ kind: "ssm", serverId: server.id, instance: i.id, cwd: dir ?? app?.path }),
     })),
     { broadcast: list.length > 1 },
   );

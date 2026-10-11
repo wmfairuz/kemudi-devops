@@ -1191,16 +1191,18 @@ export const tuneApply = (serverId: string, changes: [string, TuneChange][]): Pr
   invoke("tune_apply", { serverId, changes });
 export const tuneUndo = (serverId: string): Promise<string[]> => invoke("tune_undo", { serverId });
 
-export const logsSources = (serverId: string, appId: string | null): Promise<LogSource[]> =>
-  invoke("logs_sources", { serverId, appId });
+export const logsSources = (serverId: string, appId: string | null, instance: string | null = null): Promise<LogSource[]> =>
+  invoke("logs_sources", { serverId, appId, instance });
 
 /** No from/before: the last part. `from`: what's new (following). `before`: the part before. */
 export const logsRead = (
   serverId: string,
   src: { dir: string; base: string; pin?: string | null },
   at: { from?: number; before?: number; inode?: number } = {},
+  /** An AWS server's instance (null: the first). */
+  instance: string | null = null,
 ): Promise<LogChunk> =>
-  invoke("logs_read", { serverId, dir: src.dir, base: src.base, pin: src.pin ?? null, from: at.from ?? null, before: at.before ?? null, inode: at.inode ?? null });
+  invoke("logs_read", { serverId, dir: src.dir, base: src.base, pin: src.pin ?? null, from: at.from ?? null, before: at.before ?? null, inode: at.inode ?? null, instance });
 
 // ------------------------------------------------------------------ new app
 

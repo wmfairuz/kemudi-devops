@@ -475,14 +475,14 @@ function ServerDetails({ server }: { server: Server | null }) {
                 <Btn type="submit" variant="outline" disabled={!dirty || !valid || busy}>
                   Save
                 </Btn>
+                <Btn variant="outline" onClick={() => openFiles(server)}>
+                  <FolderOpen className="size-4" /> Files
+                </Btn>
+                <Btn variant="outline" onClick={() => openLogs(server)}>
+                  <ScrollText className="size-4" /> Logs
+                </Btn>
                 {!server.asg && (
                   <>
-                    <Btn variant="outline" onClick={() => openFiles(server)}>
-                      <FolderOpen className="size-4" /> Files
-                    </Btn>
-                    <Btn variant="outline" onClick={() => openLogs(server)}>
-                      <ScrollText className="size-4" /> Logs
-                    </Btn>
                     <Btn variant="outline" onClick={() => openMonitor(server)}>
                       <Activity className="size-4" /> Monitor
                     </Btn>
@@ -1043,21 +1043,19 @@ function AppDetails({ server, app }: { server: Server; app: App | null }) {
                 <Btn type="submit" variant="outline" disabled={!dirty || !valid || busy}>
                   Save
                 </Btn>
+                <Btn
+                  variant="outline"
+                  onClick={() => openFiles(server, { appId: app.id, dir: app.path, env: app.env, title: `${app.id} · files` })}
+                >
+                  <FolderOpen className="size-4" /> Files
+                </Btn>
+                <Btn variant="outline" onClick={() => openLogs(server, { appId: app.id, env: app.env, title: `${app.id} · logs` })}>
+                  <ScrollText className="size-4" /> Logs
+                </Btn>
                 {!server.asg && (
-                  <>
-                    <Btn
-                      variant="outline"
-                      onClick={() => openFiles(server, { appId: app.id, dir: app.path, env: app.env, title: `${app.id} · files` })}
-                    >
-                      <FolderOpen className="size-4" /> Files
-                    </Btn>
-                    <Btn variant="outline" onClick={() => openLogs(server, { appId: app.id, env: app.env, title: `${app.id} · logs` })}>
-                      <ScrollText className="size-4" /> Logs
-                    </Btn>
-                    <Btn variant="outline" onClick={() => openQueues(server, app)}>
-                      <ListChecks className="size-4" /> Queues
-                    </Btn>
-                  </>
+                  <Btn variant="outline" onClick={() => openQueues(server, app)}>
+                    <ListChecks className="size-4" /> Queues
+                  </Btn>
                 )}
                 <Btn variant="primary" className="px-4" onClick={() => shellFor(server, app)}>
                   {server.asg ? "Shells on all instances" : "Open shell"}
@@ -1078,7 +1076,7 @@ function AppDetails({ server, app }: { server: Server; app: App | null }) {
           )
         }
         side={
-          !server.asg && <>
+          <>
             <InspectPanel
               serverId={server.id}
               appId={app?.id ?? null}

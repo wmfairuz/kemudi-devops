@@ -21,6 +21,9 @@ use crate::AppState;
 const TAIL: u64 = 256 * 1024;
 /// Following: at most this much new data per read (the rest is skipped).
 const FOLLOW_MAX: u64 = 1024 * 1024;
+/// Through Session Manager (an AWS server): what fits its 24 KB of output
+/// once base64-encoded.
+const AWS_MAX: u64 = 16 * 1024;
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -220,6 +223,8 @@ pub async fn logs_sources(
     state: State<'_, AppState>,
     server_id: String,
     app_id: Option<String>,
+    // An AWS server's instance (each writes its own logs; None: the first).
+    instance: Option<String>,
 ) -> AppResult<Vec<LogSource>> {
     let server = lookup(&state, &server_id)?;
     let apps: Vec<(String, String)> = server
@@ -236,10 +241,12 @@ pub async fn logs_sources(
         }
     }
     let password = saved_sudo(&server_id).await;
-    let out = crate::monitor::run(
+    let out = crate::monitor::run_on(
         &state,
         &server_id,
+        instance.as_deref(),
         &sources_script(&apps, app_id.is_none(), password.as_deref()),
+        20,
     )
     .await?;
     parse_sources(&out)
@@ -302,6 +309,7 @@ fn read_script(
     pin: Option<&str>,
     mode: Mode,
     password: Option<&str>,
+    aws: bool,
 ) -> String {
     let stem = base.strip_suffix(".log").unwrap_or(base);
     let daily = if base.ends_with(".log") { "1" } else { "0" };
@@ -310,6 +318,7 @@ fn read_script(
         Mode::Follow { from, inode } => (from, inode, FOLLOW_MAX, -1),
         Mode::Before { before, inode } => (0, inode, TAIL, i64::try_from(before).unwrap_or(0)),
     };
+    let max = if aws { max.min(AWS_MAX) } else { max };
     let args = [
         shell_quote(dir),
         shell_quote(base),
@@ -457,8 +466,9 @@ pub async fn logs_read(
     from: Option<u64>,
     before: Option<u64>,
     inode: Option<u64>,
+    instance: Option<String>,
 ) -> AppResult<LogChunk> {
-    lookup(&state, &server_id)?;
+    let server = lookup(&state, &server_id)?;
     check(&dir, &base, pin.as_deref())?;
     let mode = match (from, before) {
         (_, Some(before)) => Mode::Before {
@@ -472,8 +482,15 @@ pub async fn logs_read(
         (None, None) => Mode::Tail,
     };
     let password = saved_sudo(&server_id).await;
-    let script = read_script(&dir, &base, pin.as_deref(), mode, password.as_deref());
-    let out = crate::monitor::run(&state, &server_id, &script).await?;
+    let script = read_script(
+        &dir,
+        &base,
+        pin.as_deref(),
+        mode,
+        password.as_deref(),
+        server.asg.is_some(),
+    );
+    let out = crate::monitor::run_on(&state, &server_id, instance.as_deref(), &script, 20).await?;
     parse_read(&out, mode)
 }
 
@@ -618,6 +635,7 @@ mod tests {
                     None,
                     Mode::Tail,
                     pw.as_deref(),
+                    false,
                 ),
             )
             .expect("write");
@@ -629,6 +647,7 @@ mod tests {
                     None,
                     Mode::Tail,
                     pw.as_deref(),
+                    false,
                 ),
             )
             .expect("write");
