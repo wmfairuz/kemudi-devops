@@ -704,8 +704,10 @@ default) or as Session Manager's own user, and click **Find instances** to check
   with their IPs; click one to open a shell on just that instance.
 - **Database port forwarding.** Right-click ▸ **Forward a database port…** (also
   **Forward DB…**, and in ⌘K) works like an `aws-db-fwdport` script. It lists
-  the RDS databases and Aurora clusters the profile can see; pick one, the
-  instance to go through and a local port (33060 by default). A tab then keeps
+  the RDS databases and Aurora clusters the profile can see and proposes the one
+  whose name fits the server (`shop-web-asg` → `shop-web-mysql`). Pick a local
+  port (33060 by default). The instance is only the tunnel's hop, since any of
+  them can reach the database, so the first one is used unless you change it. A tab then keeps
   `127.0.0.1:<port>` forwarded to the database
   (`AWS-StartPortForwardingSessionToRemoteHost`); close it or press Ctrl+C to
   stop. Kemudi remembers your last choices for each server.

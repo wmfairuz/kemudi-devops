@@ -154,3 +154,16 @@ export function openForward(server: Server, instance: Instance, db: Database, lo
     spawn: ptySpawner({ kind: "ssmForward", serverId: server.id, instance: instance.id, host: db.host, port: db.port, localPort }),
   });
 }
+
+/** The name in `names` that best fits `hint` (e.g. a server's name): the
+ *  only one, else the one sharing the most words with it (none on a tie or
+ *  no match). Words like asg/aws/app/db don't count. */
+export function bestMatch(hint: string, names: string[]): string | null {
+  if (names.length === 1) return names[0]!;
+  const noise = new Set(["asg", "aws", "app", "db", "rds", "server", "mysql", "postgres", "staging", "prod", "qa", "dev"]);
+  const words = (s: string) => new Set(s.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 1 && !noise.has(w)));
+  const mine = words(hint);
+  const scored = names.map((n) => ({ n, k: [...words(n)].filter((w) => mine.has(w)).length })).sort((a, b) => b.k - a.k);
+  const [best, next] = scored;
+  return best && best.k > 0 && best.k !== next?.k ? best.n : null;
+}

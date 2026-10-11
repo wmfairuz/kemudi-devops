@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Btn } from "@/components/kit/Btn";
 import { Hint } from "@/components/kit/Kbd";
 import { Modal, ModalFooter, ModalHeader } from "@/components/kit/Modal";
-import { instanceLabel, openAsgShells, openForward, openInstanceShell, whereOf } from "@/lib/fleet";
+import { bestMatch, instanceLabel, openAsgShells, openForward, openInstanceShell, whereOf } from "@/lib/fleet";
 import { asgInstances, errorMessage, rdsDatabases, type Database, type Instance, type Server } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { useFleetUi } from "@/stores/fleetUi";
@@ -115,6 +115,8 @@ function Forward({ server }: { server: Server }) {
   const [db, setDb] = useState<string | null>(last.db ?? null);
   const [via, setVia] = useState<string | null>(last.instance ?? null);
   const [port, setPort] = useState(String(last.port ?? 33060));
+  // Any instance can carry the tunnel: shown as one line unless changed.
+  const [pickVia, setPickVia] = useState(false);
   const close = () => useFleetUi.getState().close();
   useEffect(() => {
     rdsDatabases(server.id).then(setDbs, (e: unknown) => setDbs({ error: errorMessage(e) }));
@@ -122,8 +124,11 @@ function Forward({ server }: { server: Server }) {
 
   const dbList = Array.isArray(dbs) ? dbs : [];
   const instList = Array.isArray(instances) ? instances : [];
-  // The last ones when they're still there, else the first.
-  const pickedDb = dbList.find((d) => d.id === db) ?? (dbList.length === 1 ? dbList[0] : undefined);
+  // The last ones when they're still there, else the database whose name
+  // fits the server (lks-hub-app-asg → lks-hub-mysql), else the first
+  // instance.
+  const proposed = bestMatch(`${server.name} ${server.asg?.name ?? ""}`, dbList.map((d) => d.id));
+  const pickedDb = dbList.find((d) => d.id === db) ?? dbList.find((d) => d.id === proposed);
   const pickedVia = instList.find((i) => i.id === via) ?? instList[0];
   const localPort = /^\d{1,5}$/.test(port) && Number(port) > 0 && Number(port) < 65536 ? Number(port) : null;
   const ok = !!pickedDb && !!pickedVia && localPort !== null;
@@ -143,8 +148,8 @@ function Forward({ server }: { server: Server }) {
       <ModalHeader>
         <span className="text-[15px] font-semibold">Forward a database port</span>
         <span className="text-[12.5px] text-muted-foreground">
-          127.0.0.1:{localPort ?? "…"} on this Mac reaches the database through one of {server.name}'s instances (Session Manager). The tab
-          keeps it open; close it to stop.
+          Pick the database (RDS runs apart from the instances). 127.0.0.1:{localPort ?? "…"} on this Mac then reaches it, tunnelled through
+          one of {server.name}'s instances; any of them will do. The tab keeps it open; close it to stop.
         </span>
       </ModalHeader>
       <div className="flex max-h-[60vh] flex-col gap-3 overflow-y-auto px-5 pb-4">
@@ -173,12 +178,26 @@ function Forward({ server }: { server: Server }) {
           ))}
         </div>
         <div className="flex flex-col gap-1.5">
-          <span className="text-[11px] font-medium tracking-wide text-faint-foreground uppercase">Through</span>
           {instances === "loading" && <span className="text-[12.5px] text-subtle-foreground">Looking up the running instances…</span>}
           {failed(instances) && <span className="text-[12.5px] whitespace-pre-wrap text-env-prod-fg">{instances.error}</span>}
-          {instList.map((i) => (
-            <InstanceRow key={i.id} i={i} selected={pickedVia?.id === i.id} onClick={() => setVia(i.id)} />
-          ))}
+          {pickedVia && !pickVia && (
+            <span className="text-[12px] text-subtle-foreground">
+              Tunnelled through {instanceLabel(pickedVia)} ({pickedVia.id}).{" "}
+              {instList.length > 1 && (
+                <button type="button" className="cursor-pointer text-primary underline-offset-2 hover:underline" onClick={() => setPickVia(true)}>
+                  Change
+                </button>
+              )}
+            </span>
+          )}
+          {pickVia && (
+            <>
+              <span className="text-[11px] font-medium tracking-wide text-faint-foreground uppercase">Through</span>
+              {instList.map((i) => (
+                <InstanceRow key={i.id} i={i} selected={pickedVia?.id === i.id} onClick={() => setVia(i.id)} />
+              ))}
+            </>
+          )}
         </div>
         <label className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
           Local port

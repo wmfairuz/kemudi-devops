@@ -34,7 +34,7 @@ import {
   type Asg,
   type Instance,
 } from "@/lib/ipc";
-import { openServerShell, whereOf } from "@/lib/fleet";
+import { bestMatch, openServerShell, whereOf } from "@/lib/fleet";
 import { useFleetUi } from "@/stores/fleetUi";
 import { triggerAction } from "@/lib/actions";
 import { cn } from "@/lib/utils";
@@ -196,18 +196,6 @@ function shellFor(server: Server, app?: App) {
   openServerShell(server, app);
 }
 
-/** The group that best fits a server named `name`: the only one, else the
- *  one sharing the most words with it (none on a tie or no match). */
-function proposeGroup(name: string, groups: { name: string }[]): string | null {
-  if (groups.length === 1) return groups[0]!.name;
-  const words = (s: string) => new Set(s.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 1 && w !== "asg" && w !== "aws"));
-  const mine = words(name);
-  const scored = groups
-    .map((g) => ({ g: g.name, n: [...words(g.name)].filter((w) => mine.has(w)).length }))
-    .sort((a, b) => b.n - a.n);
-  const [best, next] = scored;
-  return best && best.n > 0 && best.n !== next?.n ? best.g : null;
-}
 
 // ------------------------------------------------------------------ server
 
@@ -240,7 +228,7 @@ function ServerDetails({ server }: { server: Server | null }) {
           setGroups(g);
           // Nothing typed yet: propose one (the only group, else the one
           // sharing the most words with the server's name).
-          setAsgName((cur) => (cur.trim() ? cur : (proposeGroup(name, g) ?? cur)));
+          setAsgName((cur) => (cur.trim() ? cur : (bestMatch(name, g.map((x) => x.name)) ?? cur)));
         },
         (e) => live && setGroups(errorMessage(e)),
       );
