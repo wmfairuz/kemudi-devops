@@ -111,13 +111,13 @@ function LayoutView({
         }}
       >
         {tab.kind === "monitor" && tab.serverId ? (
-          <MonitorView tab={tab} title={tab.title.replace(/ · monitor$/, "")} visible={visible} />
+          <MonitorView key={tab.instance ?? ""} tab={tab} title={tab.title.replace(/ · monitor$/, "")} visible={visible} />
         ) : tab.kind === "files" && tab.serverId ? (
           <FilesView tab={tab} visible={visible && focused} />
         ) : tab.kind === "logs" && tab.serverId ? (
           <LogsView key={tab.instance ?? ""} tab={tab} visible={visible} />
         ) : tab.kind === "queues" && tab.serverId ? (
-          <QueuesView tab={tab} visible={visible} />
+          <QueuesView key={tab.instance ?? ""} tab={tab} visible={visible} />
         ) : tab.kind === "health" && tab.serverId ? (
           <HealthView tab={tab} visible={visible} />
         ) : tab.kind === "tune" && tab.serverId ? (

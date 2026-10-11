@@ -54,6 +54,9 @@ export function EntityMenu() {
           app
             ? { label: "Logs", hint: "laravel.log, live", run: () => void openLogs(server, { appId: app.id, env: app.env, title: `${app.id} · logs` }) }
             : { label: "Logs", hint: "per instance", run: () => void openLogs(server) },
+          app
+            ? { label: "Queues", hint: "workers, failed jobs", run: () => void openQueues(server, app) }
+            : { label: "Monitor", hint: "CPU, memory, disks, per instance", run: () => void openMonitor(server) },
           ...(app ? [] : [{ label: "Forward a database port…", hint: "RDS → 127.0.0.1", run: () => useFleetUi.getState().openForward(server) }]),
           ...(app?.url ? [{ label: "Open site", hint: app.url.replace(/^https?:\/\//, ""), run: () => void openUrl(app.url!).catch((e) => toastError(errorMessage(e))) }] : []),
           app

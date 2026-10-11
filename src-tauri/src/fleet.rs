@@ -129,6 +129,9 @@ pub async fn asg_instances(
     server_id: Option<String>,
     asg: Option<Asg>,
 ) -> AppResult<Vec<Instance>> {
+    // A saved server's list (pickers, switches): reused for a minute, like
+    // the scripts that follow it. A group from the form: asked afresh.
+    let cached = asg.is_none();
     let asg = match (asg, server_id) {
         (Some(a), _) => {
             if a.name.trim().is_empty() && a.instances.is_empty() {
@@ -146,7 +149,11 @@ pub async fn asg_instances(
             .ok_or_else(|| AppError::Invalid(format!("{id} isn't an Auto Scaling group")))?,
         (None, None) => return Err(AppError::Invalid("which group?".into())),
     };
-    instances(state.env_ready().await, &asg).await
+    if cached {
+        instances_cached(state.env_ready().await, &asg).await
+    } else {
+        instances(state.env_ready().await, &asg).await
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

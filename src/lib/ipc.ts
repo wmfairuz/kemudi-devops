@@ -189,7 +189,8 @@ export interface MonitorSample {
 }
 
 /** One read-only sample over ssh (~1 s of CPU measuring). */
-export const monitorSample = (serverId: string): Promise<MonitorSample> => invoke("monitor_sample", { serverId });
+export const monitorSample = (serverId: string, instance: string | null = null): Promise<MonitorSample> =>
+  invoke("monitor_sample", { serverId, instance });
 /** The git remote (origin) of a folder on a server, read over ssh. */
 export const appDetectRepo = (serverId: string, path: string): Promise<string> =>
   invoke("app_detect_repo", { serverId, path });
@@ -1025,7 +1026,8 @@ export interface QueueStatus {
 
 export type QueueAct = "retry" | "retryAll" | "forget" | "flush" | "restart" | "restartProgram";
 
-export const queuesStatus = (serverId: string, appId: string): Promise<QueueStatus> => invoke("queues_status", { serverId, appId });
+export const queuesStatus = (serverId: string, appId: string, instance: string | null = null): Promise<QueueStatus> =>
+  invoke("queues_status", { serverId, appId, instance });
 export const queuesFailedDetail = (serverId: string, appId: string, id: string): Promise<{ exception: string; payload: string }> =>
   invoke("queues_failed_detail", { serverId, appId, id });
 export const queuesAct = (serverId: string, appId: string, act: QueueAct, args: string[] = []): Promise<string> =>

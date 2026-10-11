@@ -147,19 +147,17 @@ export function HomeView() {
                   <DiskBadge server={s} />
                   <SslBadge server={s} />
                   <EnvTag env={s.env} />
-                  {!s.asg && (
-                    <Btn
-                      size="sm"
-                      variant="outline"
-                      title="Monitor: CPU, memory, disks, top processes"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openMonitor(s);
-                      }}
-                    >
-                      <Activity className="size-3.5" />
-                    </Btn>
-                  )}
+                  <Btn
+                    size="sm"
+                    variant="outline"
+                    title="Monitor: CPU, memory, disks, top processes"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openMonitor(s);
+                    }}
+                  >
+                    <Activity className="size-3.5" />
+                  </Btn>
                   <Btn
                     size="sm"
                     variant="outline"

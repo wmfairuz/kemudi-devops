@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { findServer, useConfig } from "@/stores/config";
 import { askConfirm } from "@/stores/confirm";
 import { openLogs, type Tab } from "@/stores/tabs";
+import { InstanceSwitch } from "@/components/fleet/InstanceSwitch";
 import { toastError, useToasts } from "@/stores/toasts";
 
 /** Refresh every this many ms while shown. */
@@ -78,7 +79,7 @@ export function QueuesView({ tab, visible }: { tab: Tab; visible: boolean }) {
     inFlight.current = true;
     setLoading(true);
     try {
-      const s = await queuesStatus(serverId, appId);
+      const s = await queuesStatus(serverId, appId, tab.instance ?? null);
       setStatus(s);
       setError(null);
       setCheckedAt(Date.now());
@@ -193,6 +194,7 @@ export function QueuesView({ tab, visible }: { tab: Tab; visible: boolean }) {
         <span className="text-[13px] font-semibold">Queues</span>
         <span className="text-[12.5px] text-subtle-foreground">{app?.name ?? appId} on {serverId}</span>
         {server && <EnvTag env={env} />}
+        {server?.asg && <InstanceSwitch server={server} tab={tab} />}
         {L && (
           <span className="rounded bg-muted px-1.5 font-mono text-[11px] text-subtle-foreground" title={`queue.default = ${L.connection}; failed jobs: ${L.failedDriver}`}>
             {L.driver}

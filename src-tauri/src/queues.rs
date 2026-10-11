@@ -468,13 +468,18 @@ pub async fn queues_status(
     state: State<'_, AppState>,
     server_id: String,
     app_id: String,
+    // An AWS server's instance: its workers (queues and failed jobs are
+    // shared). None: the first.
+    instance: Option<String>,
 ) -> AppResult<QueueStatus> {
     let (_, path, php) = app_of(&state, &server_id, &app_id)?;
     let password = saved_sudo(&server_id).await;
-    let out = crate::monitor::run(
+    let out = crate::monitor::run_on(
         &state,
         &server_id,
+        instance.as_deref(),
         &status_script(&path, &php, password.as_deref()),
+        20,
     )
     .await?;
     parse_status(&out)
@@ -562,12 +567,13 @@ pub async fn queues_act(
             format!("supervisorctl restart {}:*", args[0]),
         ),
     };
-    let out = crate::monitor::run(
-        &state,
-        &server_id,
-        &act_script(&path, &php, act, &args, password.as_deref()),
-    )
-    .await;
+    let script = act_script(&path, &php, act, &args, password.as_deref());
+    // Failed jobs and `queue:restart` live in the app's database / cache:
+    // once is enough. A Supervisor program runs on every instance.
+    let out = match act {
+        Act::RestartProgram => crate::monitor::run_all(&state, &server_id, &script).await,
+        _ => crate::monitor::run(&state, &server_id, &script).await,
+    };
     let result = out.and_then(|out| {
         crate::remote_files::errors(&out)?;
         let rc = out

@@ -220,6 +220,8 @@ function ServerDetails({ server }: { server: Server | null }) {
   useEffect(() => {
     if (via !== "asg" || asgMode !== "group") return;
     setGroups(null);
+    // Default credentials only when there are no profiles to pick from.
+    if (!asgProfile.trim() && profiles.length > 0) return;
     let live = true;
     const t = setTimeout(() => {
       asgGroups(asgProfile.trim() || null, asgRegion.trim() || null).then(
@@ -237,7 +239,7 @@ function ServerDetails({ server }: { server: Server | null }) {
       live = false;
       clearTimeout(t);
     };
-  }, [via, asgMode, asgProfile, asgRegion]);
+  }, [via, asgMode, asgProfile, asgRegion, profiles.length]);
   const [env, setEnv] = useState<Env>(server?.env ?? "staging");
   const [vpn, setVpn] = useState<Vpn>(server?.vpn ?? "none");
   const [vpnHost, setVpnHost] = useState(server?.vpnCheck?.host ?? "");
@@ -481,11 +483,11 @@ function ServerDetails({ server }: { server: Server | null }) {
                 <Btn variant="outline" onClick={() => openLogs(server)}>
                   <ScrollText className="size-4" /> Logs
                 </Btn>
+                <Btn variant="outline" onClick={() => openMonitor(server)}>
+                  <Activity className="size-4" /> Monitor
+                </Btn>
                 {!server.asg && (
                   <>
-                    <Btn variant="outline" onClick={() => openMonitor(server)}>
-                      <Activity className="size-4" /> Monitor
-                    </Btn>
                     <Btn variant="outline" onClick={() => openHealth(server)}>
                       <HeartPulse className="size-4" /> Health
                     </Btn>
@@ -531,6 +533,17 @@ function ServerDetails({ server }: { server: Server | null }) {
         </Row>
         {via === "asg" && (
           <>
+            <Row label="AWS profile" hint="From ~/.aws/config (empty: your default credentials)">
+              <TextInput list="kemudi-aws-profiles" value={asgProfile} placeholder="(default)" onChange={(e) => setAsgProfile(e.target.value)} />
+              <datalist id="kemudi-aws-profiles">
+                {profiles.map((p) => (
+                  <option key={p} value={p} />
+                ))}
+              </datalist>
+            </Row>
+            <Row label="Region" hint="Empty: the profile's region">
+              <TextInput value={asgRegion} placeholder="(the profile's)" onChange={(e) => setAsgRegion(e.target.value)} />
+            </Row>
             <Row label="Instances" hint={asgMode === "group" ? "An Auto Scaling group's running instances, whatever they are at the time" : "Fixed EC2 instances (not in a group), by id"}>
               <Segmented
                 label="Instances"
@@ -551,7 +564,11 @@ function ServerDetails({ server }: { server: Server | null }) {
               label="Group"
               hint={
                 groups === null ? (
-                  "The Auto Scaling group's name (looking up the profile's groups…)"
+                  !asgProfile.trim() && profiles.length > 0 ? (
+                    "Pick the AWS profile above: its groups show here"
+                  ) : (
+                    "The Auto Scaling group's name (looking up the profile's groups…)"
+                  )
                 ) : typeof groups === "string" ? (
                   <span className="whitespace-pre-wrap text-env-prod-fg">Couldn't list the groups: {groups}</span>
                 ) : groups.length === 0 ? (
@@ -584,17 +601,6 @@ function ServerDetails({ server }: { server: Server | null }) {
                 {Array.isArray(groups) && groups.map((g) => <option key={g.name} value={g.name} />)}
               </datalist>
             </Row>}
-            <Row label="AWS profile" hint="From ~/.aws/config (empty: your default credentials)">
-              <TextInput list="kemudi-aws-profiles" value={asgProfile} placeholder="(default)" onChange={(e) => setAsgProfile(e.target.value)} />
-              <datalist id="kemudi-aws-profiles">
-                {profiles.map((p) => (
-                  <option key={p} value={p} />
-                ))}
-              </datalist>
-            </Row>
-            <Row label="Region" hint="Empty: the profile's region">
-              <TextInput value={asgRegion} placeholder="(the profile's)" onChange={(e) => setAsgRegion(e.target.value)} />
-            </Row>
             <Row label="Run as" hint="Shells and actions on its instances">
               <Segmented
                 label="Run as"
@@ -1052,11 +1058,9 @@ function AppDetails({ server, app }: { server: Server; app: App | null }) {
                 <Btn variant="outline" onClick={() => openLogs(server, { appId: app.id, env: app.env, title: `${app.id} · logs` })}>
                   <ScrollText className="size-4" /> Logs
                 </Btn>
-                {!server.asg && (
-                  <Btn variant="outline" onClick={() => openQueues(server, app)}>
-                    <ListChecks className="size-4" /> Queues
-                  </Btn>
-                )}
+                <Btn variant="outline" onClick={() => openQueues(server, app)}>
+                  <ListChecks className="size-4" /> Queues
+                </Btn>
                 <Btn variant="primary" className="px-4" onClick={() => shellFor(server, app)}>
                   {server.asg ? "Shells on all instances" : "Open shell"}
                 </Btn>

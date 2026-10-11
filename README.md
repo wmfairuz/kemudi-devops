@@ -682,8 +682,8 @@ servers:
 ```
 
 To add one in the app, open **Add server** and set *Connects with* to **AWS
-Auto Scaling group**. Pick the profile (suggested from `~/.aws/config`) and,
-if it isn't the profile's own, the region. Under Group, Kemudi lists the
+AWS Session Manager**. Pick the AWS profile first (suggested from
+`~/.aws/config`) and, if it isn't the profile's own, the region. Under Group, Kemudi lists the
 groups that profile can see, with their instance counts: click one to use it.
 If the field is empty, Kemudi proposes one: the only group, or the one whose
 name best matches the server's. Then choose whether to run as root (`sudo`, the
@@ -729,8 +729,13 @@ default) or as Session Manager's own user, and click **Find instances** to check
   the instances, since a group's instances are alike, through `aws ssm
   send-command` (as root, output back without a terminal). The app form's
   Detect buttons work the same way.
-- Monitor, Health, Fine-tune, Queues and New app are per machine, so they don't
-  appear for a group yet. Workflows can't run steps on a group yet,
+- **Monitor and Queues** work too, each with an instance switch. Monitor shows
+  one instance's CPU, memory, disks and processes. Queues shows one instance's
+  workers; queue sizes and failed jobs are the app's own, so they're shared.
+  Retrying, forgetting and flushing failed jobs, and `queue:restart`, run once.
+  Restarting a Supervisor program runs on every instance.
+- Health, Fine-tune and New app are per machine, so they don't appear for a
+  group yet. Workflows can't run steps on a group yet,
   because Session Manager doesn't return the remote command's exit status.
 
 ## Guardrails

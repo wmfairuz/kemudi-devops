@@ -9,7 +9,18 @@ import { useTabs, type Tab } from "@/stores/tabs";
 export function InstanceSwitch({ server, tab }: { server: Server; tab: Tab }) {
   const [list, setList] = useState<Instance[]>([]);
   useEffect(() => {
-    asgInstances(server.id).then(setList, () => setList([]));
+    // One retry: AWS sometimes throttles a burst of calls.
+    const look = () => asgInstances(server.id).catch(() => new Promise<Instance[]>((r) => setTimeout(r, 2000)).then(() => asgInstances(server.id)));
+    look().then(
+      (l) => {
+        setList(l);
+        // Pin the one being shown, so shells opened from the view go there.
+        const first = l[0];
+        if (!tab.instance && first) useTabs.getState().update(tab.id, { instance: first.id });
+      },
+      () => setList([]),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [server.id]);
   if (list.length < 2) return null;
   return (

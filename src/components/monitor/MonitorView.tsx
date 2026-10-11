@@ -9,6 +9,8 @@ import { useTabs, type Tab } from "@/stores/tabs";
 import { errorMessage, monitorSample, type MonitorProc, type MonitorSample } from "@/lib/ipc";
 import { LEVEL_BAR, LEVEL_TEXT, levelOf, THRESHOLDS, worst, type Level, type Metric } from "@/lib/thresholds";
 import { cn } from "@/lib/utils";
+import { findServer } from "@/stores/config";
+import { InstanceSwitch } from "@/components/fleet/InstanceSwitch";
 import { useDiskAlerts } from "@/stores/diskAlerts";
 
 const EVERY_MS = 5000;
@@ -43,6 +45,9 @@ const level = (pct: number, metric: Metric = "disk") => levelOf(metric, pct);
  *  every 5 s while visible (read-only; see src-tauri/src/monitor.rs). */
 export function MonitorView({ tab, title, visible }: { tab: Tab; title: string; visible: boolean }) {
   const serverId = tab.serverId ?? "";
+  // An AWS server's instances each have their own history.
+  const histKey = tab.instance ? `${serverId}@${tab.instance}` : serverId;
+  const server = findServer(serverId);
   const [menu, setMenu] = useState<{ x: number; y: number; proc: MonitorProc } | null>(null);
 
   /** A shell on this server in a pane under the monitor, typing `cmds`. */
@@ -50,10 +55,12 @@ export function MonitorView({ tab, title, visible }: { tab: Tab; title: string; 
     const id = useTabs.getState().open({
       kind: "ssh",
       title: `${serverId} · ${what}`,
-      host: tab.host,
+      host: tab.instance ? undefined : tab.host,
+      instance: tab.instance,
       serverId,
       prod: tab.prod,
-      spawn: ptySpawner({ kind: "ssh", host: tab.host ?? "" }),
+      // An AWS server: a shell on the instance being watched.
+      spawn: tab.instance ? ptySpawner({ kind: "ssm", serverId, instance: tab.instance }) : ptySpawner({ kind: "ssh", host: tab.host ?? "" }),
       into: { from: tab.id, dir: "col" },
     });
     useTabs.getState().tabs.find((t) => t.id === id)?.session.typeAtPrompt(cmds, { submit });
@@ -75,13 +82,13 @@ export function MonitorView({ tab, title, visible }: { tab: Tab; title: string; 
       clearTimeout(timer);
       setBusy(true);
       try {
-        const s = await monitorSample(serverId);
+        const s = await monitorSample(serverId, tab.instance ?? null);
         if (!live) return;
-        const h = history.get(serverId) ?? { cpu: [], mem: [] };
+        const h = history.get(histKey) ?? { cpu: [], mem: [] };
         h.cpu = [...h.cpu, s.cpuPct].slice(-KEEP);
         h.mem = [...h.mem, s.memTotalKb ? (1 - s.memAvailableKb / s.memTotalKb) * 100 : 0].slice(-KEEP);
-        history.set(serverId, h);
-        useDiskAlerts.getState().record(serverId, s.disks);
+        history.set(histKey, h);
+        if (!tab.instance) useDiskAlerts.getState().record(serverId, s.disks);
         setSample(s);
         setError(null);
         setAt(Date.now());
@@ -108,7 +115,7 @@ export function MonitorView({ tab, title, visible }: { tab: Tab; title: string; 
     return () => clearInterval(t);
   }, []);
 
-  const h = history.get(serverId);
+  const h = history.get(histKey);
   const memUsedPct = sample && sample.memTotalKb ? (1 - sample.memAvailableKb / sample.memTotalKb) * 100 : 0;
   const procs: MonitorProc[] = sample ? (sort === "cpu" ? sample.topCpu : sample.topMem) : [];
   const cpuLevel = sample ? levelOf("cpu", sample.cpuPct) : "ok";
@@ -133,6 +140,7 @@ export function MonitorView({ tab, title, visible }: { tab: Tab; title: string; 
                 : "Connecting…"}
             </span>
           </div>
+          {server?.asg && <InstanceSwitch server={server} tab={tab} />}
           <span className="text-[11.5px] text-subtle-foreground">
             {paused ? "paused" : busy && !sample ? "measuring…" : at ? `updated ${Math.max(0, Math.round((Date.now() - at) / 1000))}s ago` : ""}
           </span>

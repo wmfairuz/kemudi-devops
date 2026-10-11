@@ -388,8 +388,14 @@ pub(crate) async fn run_for(
 
 /// One sample from a server in servers.yaml.
 #[tauri::command]
-pub async fn monitor_sample(state: State<'_, AppState>, server_id: String) -> AppResult<Sample> {
-    parse(&run(&state, &server_id, SCRIPT).await?).map_err(AppError::Invalid)
+pub async fn monitor_sample(
+    state: State<'_, AppState>,
+    server_id: String,
+    // An AWS server's instance (None: the first).
+    instance: Option<String>,
+) -> AppResult<Sample> {
+    parse(&run_on(&state, &server_id, instance.as_deref(), SCRIPT, 20).await?)
+        .map_err(AppError::Invalid)
 }
 
 /// Just the disks (cheap; for background disk alerts).
