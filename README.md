@@ -716,7 +716,7 @@ default) or as Session Manager's own user, and click **Find instances** to check
   stop. Kemudi remembers your last choices for each server.
 - **Files, Logs and Inspect** work on AWS servers too, through Session Manager.
   Instances in a group are alike, so these read one instance: the oldest
-  running one. Files shows which ("10.0.10.18 · changes to all 2"). Changes
+  running one. Files shows which ("10.0.1.5 · changes to all 2"). Changes
   (saving a file, uploading, renaming, deleting, new files or folders,
   permissions, paste) go to **every** instance, so they stay alike. Downloads
   stream through a Session Manager session. Uploads go to each instance in small
