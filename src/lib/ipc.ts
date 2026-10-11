@@ -6,7 +6,9 @@ export type SpawnSpec =
   | { kind: "local"; cwd?: string }
   | { kind: "ssh"; host: string; cwd?: string }
   /** A Session Manager shell on one instance of an Auto Scaling group server. */
-  | { kind: "ssm"; serverId: string; instance: string; cwd?: string };
+  | { kind: "ssm"; serverId: string; instance: string; cwd?: string }
+  /** 127.0.0.1:localPort forwarded through an instance to host:port. */
+  | { kind: "ssmForward"; serverId: string; instance: string; host: string; port: number; localPort: number };
 
 export type PtyEvent =
   | { type: "actionExit"; code: number; elapsedMs: number }
@@ -305,7 +307,10 @@ export interface HostPort {
 /** An AWS Auto Scaling group server: its instances are looked up when used
  *  and reached through Session Manager. */
 export interface Asg {
+  /** The group's name ("" with `instances`). */
   name: string;
+  /** Fixed EC2 instances instead of a group. */
+  instances: string[];
   profile: string | null;
   region: string | null;
   /** Shells and actions run as root (sudo); else as Session Manager's user. */
@@ -326,6 +331,17 @@ export const asgInstances = (serverId: string | null, asg: Asg | null = null): P
 /** The Auto Scaling groups a profile (and region) can see. */
 export const asgGroups = (profile: string | null, region: string | null): Promise<{ name: string; instances: number }[]> =>
   invoke("asg_groups", { profile, region });
+export interface Database {
+  id: string;
+  host: string;
+  port: number;
+  engine: string | null;
+  status: string | null;
+  /** An Aurora cluster's endpoint. */
+  cluster: boolean;
+}
+/** The RDS databases an AWS server's profile can see. */
+export const rdsDatabases = (serverId: string): Promise<Database[]> => invoke("rds_databases", { serverId });
 /** Profile names from ~/.aws/config and ~/.aws/credentials. */
 export const awsProfiles = (): Promise<string[]> => invoke("aws_profiles");
 

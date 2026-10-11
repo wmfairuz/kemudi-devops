@@ -696,6 +696,19 @@ default) or as Session Manager's own user, and click **Find instances** to check
   their prompts, the action is typed into all of them instead. Prompts such as
   git credentials or a migration's yes/no are answered once, for all instances,
   because Type in all panes is on. The usual confirmations still apply.
+- **Fixed instances.** For instances that aren't in a group, set *Instances*
+  to **Instance ids** and list them (`asg: { instances: [i-0123456789abcdef0],
+  profile: acme-staging }`). Everything else works the same.
+- **One instance.** Right-click ▸ **Shell on one instance…** (also **One
+  instance…** on the server's page, and in ⌘K) lists the running instances
+  with their IPs; click one to open a shell on just that instance.
+- **Database port forwarding.** Right-click ▸ **Forward a database port…** (also
+  **Forward DB…**, and in ⌘K) works like an `aws-db-fwdport` script. It lists
+  the RDS databases and Aurora clusters the profile can see; pick one, the
+  instance to go through and a local port (33060 by default). A tab then keeps
+  `127.0.0.1:<port>` forwarded to the database
+  (`AWS-StartPortForwardingSessionToRemoteHost`); close it or press Ctrl+C to
+  stop. Kemudi remembers your last choices for each server.
 - Files, Logs, Monitor, Health, Inspect, Discover and New app need one ssh host,
   so they don't appear for a group. Workflows can't run steps on a group yet,
   because Session Manager doesn't return the remote command's exit status.

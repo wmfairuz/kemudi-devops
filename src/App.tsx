@@ -11,6 +11,7 @@ import { VhostGeneratorDialog } from "@/components/manage/VhostGenerator";
 import { NewAppDialog } from "@/components/manage/NewAppDialog";
 import { WorkflowEditor } from "@/components/workflows/WorkflowEditor";
 import { UpdateDialog } from "@/components/dialogs/UpdateDialog";
+import { FleetDialogs } from "@/components/fleet/FleetDialogs";
 import { checkAtLaunch } from "@/stores/updates";
 import { WorkflowRunDialog } from "@/components/workflows/WorkflowRunDialog";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
@@ -145,6 +146,7 @@ export default function App() {
       <NewAppDialog />
       <WorkflowRunDialog />
       <UpdateDialog />
+      <FleetDialogs />
       <WorkflowEditor />
       <ConfirmDialog />
       <ParamsDialog />

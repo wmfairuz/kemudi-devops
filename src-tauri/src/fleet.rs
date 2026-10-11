@@ -54,11 +54,17 @@ fn describe_args(asg: &Asg) -> Vec<String> {
     let mut a: Vec<String> = ["ec2", "describe-instances", "--filters"]
         .map(String::from)
         .to_vec();
-    a.push(format!(
-        "Name=tag:aws:autoscaling:groupName,Values={}",
-        asg.name
-    ));
+    if asg.instances.is_empty() {
+        a.push(format!(
+            "Name=tag:aws:autoscaling:groupName,Values={}",
+            asg.name
+        ));
+    }
     a.push("Name=instance-state-name,Values=running".into());
+    if !asg.instances.is_empty() {
+        a.push("--instance-ids".into());
+        a.extend(asg.instances.iter().cloned());
+    }
     a.push("--query".into());
     a.push("Reservations[].Instances[].{id: InstanceId, name: Tags[?Key=='Name'] | [0].Value, ip: PrivateIpAddress, az: Placement.AvailabilityZone, launched: LaunchTime}".into());
     a.extend(["--output".into(), "json".into()]);
@@ -125,10 +131,13 @@ pub async fn asg_instances(
 ) -> AppResult<Vec<Instance>> {
     let asg = match (asg, server_id) {
         (Some(a), _) => {
-            if a.name.trim().is_empty() {
+            if a.name.trim().is_empty() && a.instances.is_empty() {
                 return Err(AppError::Invalid(
-                    "the Auto Scaling group's name is empty".into(),
+                    "give the Auto Scaling group's name or the instance ids".into(),
                 ));
+            }
+            for i in &a.instances {
+                validate_instance(i)?;
             }
             a
         }
@@ -157,6 +166,7 @@ pub async fn asg_groups(
 ) -> AppResult<Vec<Group>> {
     let probe = Asg {
         name: String::new(),
+        instances: Vec::new(),
         profile: profile.filter(|p| !p.trim().is_empty()),
         region: region.filter(|r| !r.trim().is_empty()),
         root: true,
@@ -282,13 +292,169 @@ pub fn session(
     Ok(cmd)
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Database {
+    pub id: String,
+    pub host: String,
+    pub port: u16,
+    pub engine: Option<String>,
+    pub status: Option<String>,
+    /// An Aurora cluster's endpoint (else one DB instance).
+    #[serde(default)]
+    pub cluster: bool,
+}
+
+async fn aws_json<T: serde::de::DeserializeOwned>(
+    env: &LoginEnv,
+    asg: &Asg,
+    args: &[&str],
+) -> AppResult<T> {
+    let mut cmd = tokio::process::Command::new("aws");
+    cmd.env_clear().envs(env.vars.iter());
+    cmd.args(args)
+        .args(["--output", "json"])
+        .args(aws_opts(asg))
+        .kill_on_drop(true);
+    let out = tokio::time::timeout(LOOKUP_TIMEOUT, cmd.output())
+        .await
+        .map_err(|_| AppError::Invalid("the AWS CLI took too long".into()))?
+        .map_err(|e| AppError::Invalid(format!("aws: {e}")))?;
+    if !out.status.success() {
+        return Err(AppError::Invalid(lookup_error(
+            asg,
+            &String::from_utf8_lossy(&out.stderr),
+        )));
+    }
+    serde_json::from_slice(&out.stdout)
+        .map_err(|e| AppError::Invalid(format!("unexpected AWS CLI output: {e}")))
+}
+
+/// The RDS databases the server's profile (and region) can see: Aurora
+/// clusters' writer endpoints, and DB instances outside a cluster.
+#[tauri::command]
+pub async fn rds_databases(
+    state: State<'_, AppState>,
+    server_id: String,
+) -> AppResult<Vec<Database>> {
+    let server = asg_server(&state, &server_id)?;
+    let asg = server
+        .asg
+        .as_ref()
+        .ok_or_else(|| AppError::Invalid(server_id.clone()))?;
+    let env = state.env_ready().await;
+    let mut dbs: Vec<Database> = aws_json(
+        env,
+        asg,
+        &[
+            "rds",
+            "describe-db-instances",
+            "--query",
+            "DBInstances[?DBClusterIdentifier == null && Endpoint != null].{id: DBInstanceIdentifier, host: Endpoint.Address, port: Endpoint.Port, engine: Engine, status: DBInstanceStatus}",
+        ],
+    )
+    .await?;
+    // No Aurora (or no permission to list it): just the instances.
+    if let Ok(clusters) = aws_json::<Vec<Database>>(
+        env,
+        asg,
+        &[
+            "rds",
+            "describe-db-clusters",
+            "--query",
+            "DBClusters[].{id: DBClusterIdentifier, host: Endpoint, port: Port, engine: Engine, status: Status, cluster: `true`}",
+        ],
+    )
+    .await
+    {
+        dbs.extend(clusters);
+    }
+    dbs.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(dbs)
+}
+
+/// A hostname (an RDS endpoint): letters, digits, dots and dashes.
+fn valid_hostname(h: &str) -> bool {
+    !h.is_empty()
+        && h.len() <= 253
+        && !h.starts_with('-')
+        && h.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+}
+
+/// `aws ssm start-session` forwarding `127.0.0.1:local` through `instance`
+/// to `host:port` (a database the instance can reach).
+pub fn forward(
+    env: &LoginEnv,
+    asg: &Asg,
+    instance: &str,
+    host: &str,
+    port: u16,
+    local: u16,
+) -> AppResult<CommandBuilder> {
+    validate_instance(instance)?;
+    if !valid_hostname(host) {
+        return Err(AppError::Invalid(format!("not a host name: {host:?}")));
+    }
+    if port == 0 || local == 0 {
+        return Err(AppError::Invalid("ports must be 1–65535".into()));
+    }
+    let mut cmd = base_command(env, Some("aws"));
+    cmd.args(["ssm", "start-session", "--target", instance]);
+    cmd.args(aws_opts(asg));
+    cmd.args([
+        "--document-name",
+        "AWS-StartPortForwardingSessionToRemoteHost",
+        "--parameters",
+    ]);
+    cmd.arg(
+        serde_json::json!({
+            "host": [host],
+            "portNumber": [port.to_string()],
+            "localPortNumber": [local.to_string()],
+        })
+        .to_string(),
+    );
+    Ok(cmd)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[test]
+    fn fixed_instances_are_described_by_id() {
+        let mut a = asg(true);
+        a.name.clear();
+        a.instances = vec!["i-0123456789abcdef0".into()];
+        let args = describe_args(&a);
+        assert!(!args.iter().any(|x| x.contains("autoscaling")), "{args:?}");
+        assert!(args
+            .windows(2)
+            .any(|w| w == ["--instance-ids", "i-0123456789abcdef0"]));
+    }
+
+    #[test]
+    fn hostnames() {
+        assert!(valid_hostname(
+            "shop-db.abc123.ap-southeast-1.rds.amazonaws.com"
+        ));
+        assert!(!valid_hostname("-oProxy"));
+        assert!(!valid_hostname("a b"));
+        assert!(!valid_hostname(""));
+    }
+
+    #[test]
+    fn database_listing_parses() {
+        let json = r#"[{"id":"shop-db","host":"shop-db.x.rds.amazonaws.com","port":3306,"engine":"mysql","status":"available"}]"#;
+        let dbs: Vec<Database> = serde_json::from_str(json).expect("parse");
+        assert!(!dbs[0].cluster && dbs[0].port == 3306);
+    }
+
     fn asg(root: bool) -> Asg {
         Asg {
             name: "shop-web-asg".into(),
+            instances: Vec::new(),
             profile: Some("acme-staging".into()),
             region: Some("ap-southeast-1".into()),
             root,

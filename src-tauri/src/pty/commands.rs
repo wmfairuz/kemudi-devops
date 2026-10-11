@@ -24,6 +24,16 @@ pub enum SpawnSpec {
         instance: String,
         cwd: Option<String>,
     },
+    /// `127.0.0.1:local_port` forwarded through one of the server's
+    /// instances to `host:port` (a database).
+    #[serde(rename_all = "camelCase")]
+    SsmForward {
+        server_id: String,
+        instance: String,
+        host: String,
+        port: u16,
+        local_port: u16,
+    },
 }
 
 /// Keyboard/paste input is text; a few legacy mouse encodings are raw bytes.
@@ -85,7 +95,7 @@ fn launch_for(spec: SpawnSpec, env: &LoginEnv, integrate: bool) -> AppResult<Lau
             }
             Launch::plain(cmd)
         }
-        SpawnSpec::Ssm { .. } => {
+        SpawnSpec::Ssm { .. } | SpawnSpec::SsmForward { .. } => {
             return Err(AppError::Invalid(
                 "a Session Manager shell needs its server".into(),
             ))
@@ -155,6 +165,22 @@ pub async fn pty_spawn(
                 asg,
                 &instance,
                 script.as_deref(),
+            )?)
+        }
+        SpawnSpec::SsmForward {
+            server_id,
+            instance,
+            host,
+            port,
+            local_port,
+        } => {
+            let server = crate::fleet::asg_server(&state, &server_id)?;
+            let asg = server
+                .asg
+                .as_ref()
+                .ok_or_else(|| AppError::Invalid(server_id.clone()))?;
+            Launch::plain(crate::fleet::forward(
+                env, asg, &instance, &host, port, local_port,
             )?)
         }
         spec => launch_for(spec, env, integrate)?,

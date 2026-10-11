@@ -427,7 +427,7 @@ function ShellButton({ server, app }: { server: Server; app?: App }) {
   const where = app ? `${server.id}:${app.path}` : server.id;
   return (
     <button
-      title={server.asg ? `A shell on each instance of ${server.asg.name} (Session Manager), typing in all of them` : `Open a shell on ${where} (ssh ${server.host})`}
+      title={server.asg ? `A shell on each instance of ${whereOf(server)} (Session Manager), typing in all of them` : `Open a shell on ${where} (ssh ${server.host})`}
       aria-label={`Open a shell on ${where}`}
       onClick={(e) => {
         e.stopPropagation();

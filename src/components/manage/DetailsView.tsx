@@ -35,6 +35,7 @@ import {
   type Instance,
 } from "@/lib/ipc";
 import { openServerShell, whereOf } from "@/lib/fleet";
+import { useFleetUi } from "@/stores/fleetUi";
 import { triggerAction } from "@/lib/actions";
 import { cn } from "@/lib/utils";
 import { useConfig } from "@/stores/config";
@@ -169,7 +170,7 @@ const VPNS: { value: Vpn; label: string }[] = [
 ];
 const VIAS: { value: "ssh" | "asg"; label: string }[] = [
   { value: "ssh", label: "SSH" },
-  { value: "asg", label: "AWS Auto Scaling group" },
+  { value: "asg", label: "AWS Session Manager" },
 ];
 const portOf = (p: string) => (/^\d{1,5}$/.test(p) && Number(p) > 0 && Number(p) < 65536 ? Number(p) : null);
 const done = (msg: string) => useToasts.getState().push(msg, "info");
@@ -218,6 +219,9 @@ function ServerDetails({ server }: { server: Server | null }) {
   const [host, setHost] = useState(server?.host ?? "");
   const [via, setVia] = useState<"ssh" | "asg">(server?.asg ? "asg" : "ssh");
   const [asgName, setAsgName] = useState(server?.asg?.name ?? "");
+  // A group, or fixed instances.
+  const [asgMode, setAsgMode] = useState<"group" | "instances">(server?.asg?.instances.length ? "instances" : "group");
+  const [asgIds, setAsgIds] = useState((server?.asg?.instances ?? []).join(" "));
   const [asgProfile, setAsgProfile] = useState(server?.asg?.profile ?? "");
   const [asgRegion, setAsgRegion] = useState(server?.asg?.region ?? "");
   const [asgRoot, setAsgRoot] = useState(server?.asg?.root ?? true);
@@ -226,7 +230,7 @@ function ServerDetails({ server }: { server: Server | null }) {
   // The profile's groups, to pick from (null: not looked up yet).
   const [groups, setGroups] = useState<{ name: string; instances: number }[] | string | null>(null);
   useEffect(() => {
-    if (via !== "asg") return;
+    if (via !== "asg" || asgMode !== "group") return;
     setGroups(null);
     let live = true;
     const t = setTimeout(() => {
@@ -245,7 +249,7 @@ function ServerDetails({ server }: { server: Server | null }) {
       live = false;
       clearTimeout(t);
     };
-  }, [via, asgProfile, asgRegion]);
+  }, [via, asgMode, asgProfile, asgRegion]);
   const [env, setEnv] = useState<Env>(server?.env ?? "staging");
   const [vpn, setVpn] = useState<Vpn>(server?.vpn ?? "none");
   const [vpnHost, setVpnHost] = useState(server?.vpnCheck?.host ?? "");
@@ -316,7 +320,16 @@ function ServerDetails({ server }: { server: Server | null }) {
   }, [host, infoTick]);
 
   const asgForm: Asg | null =
-    via === "asg" ? { name: asgName.trim(), profile: asgProfile.trim() || null, region: asgRegion.trim() || null, root: asgRoot } : null;
+    via === "asg"
+      ? {
+          name: asgMode === "group" ? asgName.trim() : "",
+          instances: asgMode === "instances" ? asgIds.split(/[\s,]+/).filter(Boolean) : [],
+          profile: asgProfile.trim() || null,
+          region: asgRegion.trim() || null,
+          root: asgRoot,
+        }
+      : null;
+  const idsOk = asgMode === "group" || (asgForm !== null && asgForm.instances.length > 0 && asgForm.instances.every((i) => /^i-[0-9a-f]{8,17}$/.test(i)));
   const alias = via === "asg" ? "" : host.trim();
   const mode: "empty" | "direct" | "loading" | "external" | "managed" | "new" = !alias
     ? "empty"
@@ -388,7 +401,7 @@ function ServerDetails({ server }: { server: Server | null }) {
     form.color !== server.color ||
     form.team !== (server.team ?? null);
   const valid = asgForm
-    ? idOk && asgForm.name !== "" && checkOk
+    ? idOk && (asgMode === "group" ? asgForm.name !== "" : idsOk) && checkOk
     : idOk && form.host !== "" && vpnOk && checkOk && entryOk && mode !== "loading";
 
   const save = async () => {
@@ -445,7 +458,7 @@ function ServerDetails({ server }: { server: Server | null }) {
             <span className="flex items-center gap-1.5">
               <StatusDot status={reach?.state ?? "unknown"} />
               {server.asg
-                ? `AWS Auto Scaling group ${server.asg.name}${server.asg.profile ? ` (${server.asg.profile})` : ""} · Session Manager`
+                ? `AWS ${whereOf(server)}${server.asg.profile ? ` (${server.asg.profile})` : ""} · Session Manager`
                 : reach?.state === "up"
                 ? `reachable · ${reach.latencyMs ?? "?"} ms`
                 : reach?.state === "down"
@@ -488,6 +501,16 @@ function ServerDetails({ server }: { server: Server | null }) {
                     </Btn>
                   </>
                 )}
+                {server.asg && (
+                  <>
+                    <Btn variant="outline" onClick={() => useFleetUi.getState().openForward(server)} title="Forward an RDS database to 127.0.0.1 through an instance">
+                      Forward DB…
+                    </Btn>
+                    <Btn variant="outline" onClick={() => useFleetUi.getState().openPick(server)}>
+                      One instance…
+                    </Btn>
+                  </>
+                )}
                 <Btn variant="primary" className="px-4" onClick={() => openServerShell(server)}>
                   {server.asg ? "Shells on all instances" : "Open shell"}
                 </Btn>
@@ -515,7 +538,23 @@ function ServerDetails({ server }: { server: Server | null }) {
         </Row>
         {via === "asg" && (
           <>
-            <Row
+            <Row label="Instances" hint={asgMode === "group" ? "An Auto Scaling group's running instances, whatever they are at the time" : "Fixed EC2 instances (not in a group), by id"}>
+              <Segmented
+                label="Instances"
+                value={asgMode}
+                options={[
+                  { value: "group", label: "Auto Scaling group" },
+                  { value: "instances", label: "Instance ids" },
+                ]}
+                onChange={setAsgMode}
+              />
+            </Row>
+            {asgMode === "instances" && (
+              <Row label="Instance ids" hint="One or more, separated by spaces or commas (i-0123456789abcdef0)">
+                <TextInput value={asgIds} placeholder="i-0123456789abcdef0" invalid={!idsOk} onChange={(e) => setAsgIds(e.target.value)} />
+              </Row>
+            )}
+            {asgMode === "group" && <Row
               label="Group"
               hint={
                 groups === null ? (
@@ -551,7 +590,7 @@ function ServerDetails({ server }: { server: Server | null }) {
               <datalist id="kemudi-asg-groups">
                 {Array.isArray(groups) && groups.map((g) => <option key={g.name} value={g.name} />)}
               </datalist>
-            </Row>
+            </Row>}
             <Row label="AWS profile" hint="From ~/.aws/config (empty: your default credentials)">
               <TextInput list="kemudi-aws-profiles" value={asgProfile} placeholder="(default)" onChange={(e) => setAsgProfile(e.target.value)} />
               <datalist id="kemudi-aws-profiles">
@@ -578,7 +617,7 @@ function ServerDetails({ server }: { server: Server | null }) {
               <Btn
                 size="sm"
                 variant="outline"
-                disabled={found === "looking" || !asgForm?.name}
+                disabled={found === "looking" || !(asgMode === "group" ? asgForm?.name : idsOk)}
                 onClick={() => {
                   if (!asgForm) return;
                   setFound("looking");

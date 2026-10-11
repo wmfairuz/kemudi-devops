@@ -7,7 +7,8 @@ import { useConfig } from "@/stores/config";
 import { DiscoverDialog } from "./DiscoverDialog";
 import { openFiles, openHealth, openLogs, openMonitor, openQueues, openTune, useTabs } from "@/stores/tabs";
 import { toastError, useToasts } from "@/stores/toasts";
-import { openAsgShells } from "@/lib/fleet";
+import { openAsgShells, whereOf } from "@/lib/fleet";
+import { useFleetUi } from "@/stores/fleetUi";
 
 async function removeServer(server: Server) {
   const n = server.apps.length;
@@ -45,7 +46,9 @@ export function EntityMenu() {
   const groups = server.asg
     ? [
         [
-          { label: "Shells on all instances", hint: server.asg.name, run: () => void openAsgShells(server, app) },
+          { label: "Shells on all instances", hint: whereOf(server), run: () => void openAsgShells(server, app) },
+          { label: "Shell on one instance…", run: () => useFleetUi.getState().openPick(server, app) },
+          ...(app ? [] : [{ label: "Forward a database port…", hint: "RDS → 127.0.0.1", run: () => useFleetUi.getState().openForward(server) }]),
           ...(app?.url ? [{ label: "Open site", hint: app.url.replace(/^https?:\/\//, ""), run: () => void openUrl(app.url!).catch((e) => toastError(errorMessage(e))) }] : []),
           app
             ? { label: "Details…", run: () => openDetails({ kind: "app", serverId: server.id, appId: app.id }) }

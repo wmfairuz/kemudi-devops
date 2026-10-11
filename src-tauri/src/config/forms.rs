@@ -79,7 +79,18 @@ fn host_port(h: &HostPort) -> String {
 
 /// `{ name: g, profile: p, region: r }` (`root: false` only when off).
 fn asg_map(a: &Asg) -> String {
-    let mut parts = vec![format!("name: {}", yaml_scalar(a.name.trim()))];
+    let mut parts = vec![if a.instances.is_empty() {
+        format!("name: {}", yaml_scalar(a.name.trim()))
+    } else {
+        format!(
+            "instances: [{}]",
+            a.instances
+                .iter()
+                .map(|i| yaml_scalar(i.trim()))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    }];
     for (k, v) in [("profile", &a.profile), ("region", &a.region)] {
         if let Some(v) = opt(v) {
             parts.push(format!("{k}: {}", yaml_scalar(&v)));
@@ -93,8 +104,19 @@ fn asg_map(a: &Asg) -> String {
 
 /// The form's group, trimmed (blank profile/region: none).
 fn clean_asg(a: &Asg) -> Asg {
+    let instances: Vec<String> = a
+        .instances
+        .iter()
+        .map(|i| i.trim().to_string())
+        .filter(|i| !i.is_empty())
+        .collect();
     Asg {
-        name: a.name.trim().into(),
+        name: if instances.is_empty() {
+            a.name.trim().into()
+        } else {
+            String::new()
+        },
+        instances,
         profile: opt(&a.profile),
         region: opt(&a.region),
         root: a.root,
@@ -120,7 +142,7 @@ fn server_fields(f: &ServerForm) -> Vec<(&'static str, Option<String>)> {
         ),
         ("team", opt(&f.team).map(|t| yaml_scalar(&t))),
         ("host", f.asg.is_none().then(|| yaml_scalar(f.host.trim()))),
-        ("asg", f.asg.as_ref().map(asg_map)),
+        ("asg", f.asg.as_ref().map(|a| asg_map(&clean_asg(a)))),
         ("env", Some(f.env.as_str().to_string())),
         ("vpn", vpn.then(|| vpn_str(f.vpn).to_string())),
         (
@@ -217,7 +239,10 @@ pub async fn server_save(
 ) -> AppResult<Snapshot> {
     required(&server.id, "An ID")?;
     match &server.asg {
-        Some(a) => required(&a.name, "The Auto Scaling group's name")?,
+        Some(a) if a.instances.iter().all(|i| i.trim().is_empty()) => {
+            required(&a.name, "The Auto Scaling group's name")?
+        }
+        Some(_) => {}
         None => required(&server.host, "The SSH host")?,
     }
     let id = server.id.trim().to_string();
@@ -901,6 +926,7 @@ mod workflow_tests {
             host: "ignored".into(),
             asg: Some(Asg {
                 name: " shop-web-asg ".into(),
+                instances: Vec::new(),
                 profile: Some("acme-staging".into()),
                 region: Some(" ".into()),
                 root: false,

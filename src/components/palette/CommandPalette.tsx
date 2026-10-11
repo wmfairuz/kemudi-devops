@@ -16,7 +16,8 @@ import { insertSnippet, useSnippets } from "@/stores/snippets";
 import { snippetVisible, useTeam, useTeamServers } from "@/stores/team";
 import { useStatus } from "@/stores/status";
 import { openLocalShell, toggleBroadcast, useTabs, type Tab } from "@/stores/tabs";
-import { openServerShell } from "@/lib/fleet";
+import { openServerShell, whereOf } from "@/lib/fleet";
+import { useFleetUi } from "@/stores/fleetUi";
 import { useConfig } from "@/stores/config";
 import { useWorkflows } from "@/stores/workflows";
 import { useUi } from "@/stores/ui";
@@ -90,6 +91,13 @@ function buildItems(servers: Server[], tabs: Tab[], snippets: Snippet[], close: 
     cmd("New workflow…", () => useWorkflows.getState().edit(null)),
     cmd("Type in all panes (on/off)", () => toggleBroadcast(), "⌥⌘I"),
   );
+  // AWS servers: one instance, and database forwarding.
+  for (const server of servers.filter((s) => s.asg)) {
+    items.push(
+      cmd(`Shell on one instance: ${server.name}`, () => useFleetUi.getState().openPick(server)),
+      cmd(`Forward a database port: ${server.name}`, () => useFleetUi.getState().openForward(server), "RDS → 127.0.0.1"),
+    );
+  }
   // Workflows first among the commands (the run dialog shows the steps).
   const workflows = useConfig.getState().snapshot?.config?.workflows ?? [];
   items.splice(
@@ -363,7 +371,7 @@ function Row({
           <div className="min-w-0 flex-1 truncate">
             <Hl text={item.server.id} tokens={tokens} strong={strong} />
           </div>
-          <span className="font-mono text-[11px] text-faint-foreground">{item.server.asg ? `all instances of ${item.server.asg.name}` : `ssh ${item.server.host}`}</span>
+          <span className="font-mono text-[11px] text-faint-foreground">{item.server.asg ? `all instances of ${whereOf(item.server)}` : `ssh ${item.server.host}`}</span>
           <EnvTag env={item.server.env} />
           {enter}
         </>

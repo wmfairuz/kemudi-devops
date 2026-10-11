@@ -368,8 +368,28 @@ impl Validator<'_> {
                         && s.chars()
                             .all(|c| c.is_ascii_alphanumeric() || "-_.:/@+=".contains(c))
                 };
+                if asg.name.is_empty() == asg.instances.is_empty() {
+                    self.error(
+                        Diag::new(
+                            "`asg` needs either a group `name` or `instances: [i-…]`, not both",
+                        )
+                        .at(l)
+                        .path(&path),
+                    );
+                }
+                for i in &asg.instances {
+                    if crate::fleet::validate_instance(i).is_err() {
+                        self.error(
+                            Diag::new(format!(
+                                "`asg` instance {i:?} isn't an EC2 instance id (i-…)"
+                            ))
+                            .at(l)
+                            .path(&path),
+                        );
+                    }
+                }
                 for (what, v) in [
-                    ("name", Some(&asg.name)),
+                    ("name", Some(&asg.name).filter(|n| !n.is_empty())),
                     ("profile", asg.profile.as_ref()),
                     ("region", asg.region.as_ref()),
                 ] {
@@ -994,6 +1014,12 @@ actions:
         );
         let neither = parse("servers:\n  - id: web\n    env: dev\n");
         assert!(!neither.errors.is_empty());
+        let fixed = parse("servers:\n  - id: web\n    env: dev\n    asg: { instances: [i-0123456789abcdef0], profile: p }\n");
+        assert!(fixed.errors.is_empty(), "{:?}", fixed.errors);
+        let wrong_id = parse("servers:\n  - id: web\n    env: dev\n    asg: { instances: [web-1] }\n");
+        assert!(wrong_id.errors.iter().any(|d| d.message.contains("EC2 instance id")), "{:?}", wrong_id.errors);
+        let none = parse("servers:\n  - id: web\n    env: dev\n    asg: { profile: p }\n");
+        assert!(none.errors.iter().any(|d| d.message.contains("either a group")), "{:?}", none.errors);
         let bad = parse("servers:\n  - id: web\n    env: dev\n    asg: { name: \"a b\" }\n");
         assert!(
             bad.errors.iter().any(|d| d.message.contains("isn't valid")),

@@ -1,11 +1,15 @@
 // AWS Auto Scaling group servers: their running instances are looked up
 // when used, and each gets a Session Manager pane in one tab, with Type in
 // all panes on (⌥⌘I), so one command or answer goes to all of them.
+import { blockIntro } from "@/lib/actions";
+import { localHms } from "@/lib/time";
 import {
   actionRun,
   asgInstances,
   errorMessage,
   type App,
+  type Asg,
+  type Database,
   type Instance,
   type RenderedAction,
   type Server,
@@ -21,11 +25,11 @@ export const isAsg = (server: Server | null | undefined): boolean => !!server?.a
 export const instanceLabel = (i: Instance) => i.ip ?? i.id;
 
 /** The group's running instances, or null (told why). */
-async function lookUp(server: Server): Promise<Instance[] | null> {
+export async function lookUp(server: Server): Promise<Instance[] | null> {
   try {
     const list = await asgInstances(server.id);
     if (list.length === 0) {
-      toastError(`${server.name}: no running instances in ${server.asg?.name ?? "the group"}`);
+      toastError(`${server.name}: no running instances${server.asg ? ` (${targetOf(server.asg)})` : ""}`);
       return null;
     }
     return list;
@@ -108,4 +112,45 @@ export async function runOnAsg(a: RenderedAction, override: string | null, intro
 }
 
 /** Where a server is, for display: its ssh host, or its group. */
-export const whereOf = (server: Pick<Server, "host" | "asg">): string => (server.asg ? `ASG ${server.asg.name}` : server.host);
+export const whereOf = (server: Pick<Server, "host" | "asg">): string => (server.asg ? targetOf(server.asg) : server.host);
+
+/** An AWS server's target: `ASG name`, or its fixed instances. */
+export function targetOf(asg: Asg): string {
+  if (asg.instances.length === 0) return `ASG ${asg.name}`;
+  return asg.instances.length === 1 ? (asg.instances[0] ?? "") : `${asg.instances.length} EC2 instances`;
+}
+
+/** A shell on one instance (in the app's folder for an app). */
+export function openInstanceShell(server: Server, instance: Instance, app?: App | null): void {
+  useTabs.getState().open({
+    kind: "ssh",
+    title: `${app?.name ?? server.name} · ${instanceLabel(instance)}`,
+    serverId: server.id,
+    instance: instance.id,
+    appId: app?.id,
+    cwd: app?.path,
+    prod: (app?.env ?? server.env) === "prod",
+    spawn: ptySpawner({ kind: "ssm", serverId: server.id, instance: instance.id, cwd: app?.path }),
+  });
+}
+
+/** Forward 127.0.0.1:`localPort` to a database through an instance, in a
+ *  tab of its own (close it, or Ctrl+C, to stop). */
+export function openForward(server: Server, instance: Instance, db: Database, localPort: number): void {
+  const client = /postgres/i.test(db.engine ?? "") ? `psql -h 127.0.0.1 -p ${localPort}` : `mysql -h 127.0.0.1 -P ${localPort} -u …`;
+  useTabs.getState().open({
+    kind: "action",
+    title: `${server.name} · ${db.id} → :${localPort}`,
+    serverId: server.id,
+    instance: instance.id,
+    actionId: "forward",
+    local: true,
+    prod: server.env === "prod",
+    state: "running",
+    intro: blockIntro(
+      `${db.id} on 127.0.0.1:${localPort} (through ${instanceLabel(instance)}) · ${localHms()}`,
+      `# ${db.host}:${db.port} → 127.0.0.1:${localPort}; connect with: ${client}\n# close this tab (or Ctrl+C) to stop`,
+    ),
+    spawn: ptySpawner({ kind: "ssmForward", serverId: server.id, instance: instance.id, host: db.host, port: db.port, localPort }),
+  });
+}

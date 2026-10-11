@@ -316,11 +316,15 @@ pub enum Vpn {
 
 /// `asg: { name, profile, region, root }`: the group, the AWS CLI profile
 /// and region it's in, and whether shells and actions run as root (`sudo`,
-/// the default) or as Session Manager's own user.
+/// the default) or as Session Manager's own user. Instead of a group's
+/// `name`, `instances: [i-…]` names fixed EC2 instances.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Asg {
+    #[serde(default)]
     pub name: String,
+    #[serde(default)]
+    pub instances: Vec<String>,
     pub profile: Option<String>,
     pub region: Option<String>,
     #[serde(default = "yes")]
