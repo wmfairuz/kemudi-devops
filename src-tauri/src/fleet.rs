@@ -140,6 +140,55 @@ pub async fn asg_instances(
     instances(state.env_ready().await, &asg).await
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Group {
+    pub name: String,
+    pub instances: u32,
+}
+
+/// The Auto Scaling groups a profile (and region) can see, for the server
+/// form's Group field.
+#[tauri::command]
+pub async fn asg_groups(
+    state: State<'_, AppState>,
+    profile: Option<String>,
+    region: Option<String>,
+) -> AppResult<Vec<Group>> {
+    let probe = Asg {
+        name: String::new(),
+        profile: profile.filter(|p| !p.trim().is_empty()),
+        region: region.filter(|r| !r.trim().is_empty()),
+        root: true,
+    };
+    let env = state.env_ready().await;
+    let mut cmd = tokio::process::Command::new("aws");
+    cmd.env_clear().envs(env.vars.iter());
+    cmd.args([
+        "autoscaling",
+        "describe-auto-scaling-groups",
+        "--query",
+        "AutoScalingGroups[].{name: AutoScalingGroupName, instances: length(Instances)}",
+        "--output",
+        "json",
+    ]);
+    cmd.args(aws_opts(&probe)).kill_on_drop(true);
+    let out = tokio::time::timeout(LOOKUP_TIMEOUT, cmd.output())
+        .await
+        .map_err(|_| AppError::Invalid("the AWS CLI took too long to list the groups".into()))?
+        .map_err(|e| AppError::Invalid(format!("aws: {e}")))?;
+    if !out.status.success() {
+        return Err(AppError::Invalid(lookup_error(
+            &probe,
+            &String::from_utf8_lossy(&out.stderr),
+        )));
+    }
+    let mut groups: Vec<Group> = serde_json::from_slice(&out.stdout)
+        .map_err(|e| AppError::Invalid(format!("unexpected AWS CLI output: {e}")))?;
+    groups.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(groups)
+}
+
 /// Profile names in ~/.aws/config and ~/.aws/credentials (for the server
 /// form's suggestions). Only the section names are read.
 #[tauri::command]

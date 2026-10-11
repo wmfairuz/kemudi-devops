@@ -28,6 +28,7 @@ import {
   type Env,
   type Server,
   type Vpn,
+  asgGroups,
   asgInstances,
   awsProfiles,
   type Asg,
@@ -194,6 +195,19 @@ function shellFor(server: Server, app?: App) {
   openServerShell(server, app);
 }
 
+/** The group that best fits a server named `name`: the only one, else the
+ *  one sharing the most words with it (none on a tie or no match). */
+function proposeGroup(name: string, groups: { name: string }[]): string | null {
+  if (groups.length === 1) return groups[0]!.name;
+  const words = (s: string) => new Set(s.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 1 && w !== "asg" && w !== "aws"));
+  const mine = words(name);
+  const scored = groups
+    .map((g) => ({ g: g.name, n: [...words(g.name)].filter((w) => mine.has(w)).length }))
+    .sort((a, b) => b.n - a.n);
+  const [best, next] = scored;
+  return best && best.n > 0 && best.n !== next?.n ? best.g : null;
+}
+
 // ------------------------------------------------------------------ server
 
 function ServerDetails({ server }: { server: Server | null }) {
@@ -209,6 +223,29 @@ function ServerDetails({ server }: { server: Server | null }) {
   const [asgRoot, setAsgRoot] = useState(server?.asg?.root ?? true);
   const [profiles, setProfiles] = useState<string[]>([]);
   const [found, setFound] = useState<Instance[] | string | "looking" | null>(null);
+  // The profile's groups, to pick from (null: not looked up yet).
+  const [groups, setGroups] = useState<{ name: string; instances: number }[] | string | null>(null);
+  useEffect(() => {
+    if (via !== "asg") return;
+    setGroups(null);
+    let live = true;
+    const t = setTimeout(() => {
+      asgGroups(asgProfile.trim() || null, asgRegion.trim() || null).then(
+        (g) => {
+          if (!live) return;
+          setGroups(g);
+          // Nothing typed yet: propose one (the only group, else the one
+          // sharing the most words with the server's name).
+          setAsgName((cur) => (cur.trim() ? cur : (proposeGroup(name, g) ?? cur)));
+        },
+        (e) => live && setGroups(errorMessage(e)),
+      );
+    }, 400);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [via, asgProfile, asgRegion]);
   const [env, setEnv] = useState<Env>(server?.env ?? "staging");
   const [vpn, setVpn] = useState<Vpn>(server?.vpn ?? "none");
   const [vpnHost, setVpnHost] = useState(server?.vpnCheck?.host ?? "");
@@ -416,7 +453,7 @@ function ServerDetails({ server }: { server: Server | null }) {
                   : "not checked yet"}
             </span>
           ) : (
-            "SSH uses your ~/.ssh/config."
+            via === "asg" ? "Reached through AWS Session Manager." : "SSH uses your ~/.ssh/config."
           )
         }
         footer={
@@ -478,8 +515,42 @@ function ServerDetails({ server }: { server: Server | null }) {
         </Row>
         {via === "asg" && (
           <>
-            <Row label="Group" hint="The Auto Scaling group's name">
-              <TextInput value={asgName} placeholder="shop-web-asg" invalid={asgName.trim() === ""} onChange={(e) => setAsgName(e.target.value)} />
+            <Row
+              label="Group"
+              hint={
+                groups === null ? (
+                  "The Auto Scaling group's name (looking up the profile's groups…)"
+                ) : typeof groups === "string" ? (
+                  <span className="whitespace-pre-wrap text-env-prod-fg">Couldn't list the groups: {groups}</span>
+                ) : groups.length === 0 ? (
+                  `No Auto Scaling groups in ${asgProfile.trim() || "the default profile"}${asgRegion.trim() ? ` (${asgRegion.trim()})` : "'s region"}: another profile or region?`
+                ) : (
+                  <span className="flex flex-wrap items-center gap-1">
+                    <span>In {asgProfile.trim() || "the default profile"}:</span>
+                    {groups.map((g) => (
+                      <button
+                        key={g.name}
+                        type="button"
+                        onClick={() => setAsgName(g.name)}
+                        className={cn(
+                          "cursor-pointer rounded-md border px-1.5 font-mono text-[11px] hover:border-primary/60 hover:text-foreground",
+                          g.name === asgName.trim() ? "border-primary/60 bg-primary/10 text-foreground" : "border-control-border",
+                        )}
+                      >
+                        {g.name} ({g.instances})
+                      </button>
+                    ))}
+                    {asgName.trim() && !groups.some((g) => g.name === asgName.trim()) && (
+                      <span className="text-env-prod-fg">{asgName.trim()} isn't one of them.</span>
+                    )}
+                  </span>
+                )
+              }
+            >
+              <TextInput list="kemudi-asg-groups" value={asgName} placeholder="shop-web-asg" invalid={asgName.trim() === ""} onChange={(e) => setAsgName(e.target.value)} />
+              <datalist id="kemudi-asg-groups">
+                {Array.isArray(groups) && groups.map((g) => <option key={g.name} value={g.name} />)}
+              </datalist>
             </Row>
             <Row label="AWS profile" hint="From ~/.aws/config (empty: your default credentials)">
               <TextInput list="kemudi-aws-profiles" value={asgProfile} placeholder="(default)" onChange={(e) => setAsgProfile(e.target.value)} />

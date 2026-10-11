@@ -323,6 +323,9 @@ export interface Instance {
 /** A server's running instances (`asg` instead: a group not saved yet). */
 export const asgInstances = (serverId: string | null, asg: Asg | null = null): Promise<Instance[]> =>
   invoke("asg_instances", { serverId, asg });
+/** The Auto Scaling groups a profile (and region) can see. */
+export const asgGroups = (profile: string | null, region: string | null): Promise<{ name: string; instances: number }[]> =>
+  invoke("asg_groups", { profile, region });
 /** Profile names from ~/.aws/config and ~/.aws/credentials. */
 export const awsProfiles = (): Promise<string[]> => invoke("aws_profiles");
 

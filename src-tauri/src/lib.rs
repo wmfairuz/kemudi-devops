@@ -215,6 +215,7 @@ pub fn run() {
             updates::update_check,
             fleet::asg_instances,
             fleet::aws_profiles,
+            fleet::asg_groups,
             updates::update_install,
             workflows::workflow_branch_run,
             workflows::workflow_watch_run,

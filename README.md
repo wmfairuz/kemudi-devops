@@ -679,9 +679,12 @@ servers:
 ```
 
 To add one in the app, open **Add server** and set *Connects with* to **AWS
-Auto Scaling group**. Fill in the group, the profile (suggested from
-`~/.aws/config`) and the region, choose whether to run as root (`sudo`, the
-default) or as Session Manager's own user, then click **Find instances**.
+Auto Scaling group**. Pick the profile (suggested from `~/.aws/config`) and,
+if it isn't the profile's own, the region. Under Group, Kemudi lists the
+groups that profile can see, with their instance counts: click one to use it.
+If the field is empty, Kemudi proposes one: the only group, or the one whose
+name best matches the server's. Then choose whether to run as root (`sudo`, the
+default) or as Session Manager's own user, and click **Find instances** to check.
 
 - **Shells.** The server's `all` button (also double-click, or **Shells on all
   instances**) opens one tab with a pane per instance: side by side, or in two
