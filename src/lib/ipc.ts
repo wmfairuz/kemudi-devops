@@ -2,7 +2,11 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { TabColor } from "@/lib/tabColors";
 
-export type SpawnSpec = { kind: "local"; cwd?: string } | { kind: "ssh"; host: string; cwd?: string };
+export type SpawnSpec =
+  | { kind: "local"; cwd?: string }
+  | { kind: "ssh"; host: string; cwd?: string }
+  /** A Session Manager shell on one instance of an Auto Scaling group server. */
+  | { kind: "ssm"; serverId: string; instance: string; cwd?: string };
 
 export type PtyEvent =
   | { type: "actionExit"; code: number; elapsedMs: number }
@@ -298,6 +302,30 @@ export interface HostPort {
   port: number;
 }
 
+/** An AWS Auto Scaling group server: its instances are looked up when used
+ *  and reached through Session Manager. */
+export interface Asg {
+  name: string;
+  profile: string | null;
+  region: string | null;
+  /** Shells and actions run as root (sudo); else as Session Manager's user. */
+  root: boolean;
+}
+
+export interface Instance {
+  id: string;
+  name: string | null;
+  ip: string | null;
+  az: string | null;
+  launched: string | null;
+}
+
+/** A server's running instances (`asg` instead: a group not saved yet). */
+export const asgInstances = (serverId: string | null, asg: Asg | null = null): Promise<Instance[]> =>
+  invoke("asg_instances", { serverId, asg });
+/** Profile names from ~/.aws/config and ~/.aws/credentials. */
+export const awsProfiles = (): Promise<string[]> => invoke("aws_profiles");
+
 /** How much to ask before running: run on click / show the command / type the server name. */
 export type Confirm = "none" | "warn" | "type";
 
@@ -355,7 +383,9 @@ export interface Server {
   name: string;
   /** Its team's id (null: no team). */
   team: string | null;
+  /** Empty for an Auto Scaling group. */
   host: string;
+  asg: Asg | null;
   env: Env;
   vpn: Vpn;
   vpnCheck: HostPort | null;
@@ -560,6 +590,7 @@ export interface ServerForm {
   name: string | null;
   team: string | null;
   host: string;
+  asg: Asg | null;
   env: Env;
   vpn: Vpn;
   vpnCheck: HostPort | null;
@@ -617,12 +648,14 @@ export function actionRun(
   rows: number,
   onData: (bytes: Uint8Array) => void,
   onEvent: (event: PtyEvent) => void,
+  /** An Auto Scaling group server's instance to run it on. */
+  instance: string | null = null,
 ): Promise<RunInfo> {
   const data = new Channel<ArrayBuffer>();
   data.onmessage = (buf) => onData(new Uint8Array(buf));
   const events = new Channel<PtyEvent>();
   events.onmessage = onEvent;
-  return invoke("action_run", { action, commandOverride, cols, rows, onData: data, onEvent: events });
+  return invoke("action_run", { action, commandOverride, instance, cols, rows, onData: data, onEvent: events });
 }
 
 export const actionSend = (ptyId: number, action: ActionRef, commandOverride: string | null): Promise<RenderedAction> =>

@@ -180,6 +180,11 @@ pub async fn check_server(server: &Server, env: &LoginEnv) -> Status {
         error: None,
         checked_at: Some(crate::util::local_hms()),
     };
+    if server.asg.is_some() {
+        status.error =
+            Some("an AWS Auto Scaling group: its instances are looked up when you use it".into());
+        return status;
+    }
     match resolve_target(server, env).await {
         Err(e) => status.error = Some(e),
         Ok(None) => status.error = Some("reached through a ProxyCommand; not probed".into()),

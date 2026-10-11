@@ -6,7 +6,8 @@ keep typing. It uses the system `ssh`, so `~/.ssh/config`, ProxyJump, keys
 and ssh-agent work exactly as they do in your terminal.
 
 No accounts, no cloud, no telemetry. Kemudi only talks to your servers (ssh
-and the reachability/VPN probes), plus GitHub when you check for updates.
+and the reachability/VPN probes). It also asks AWS for an Auto Scaling group's
+instances when you use one, and checks GitHub for updates when you ask.
 
 ## Install
 
@@ -657,6 +658,45 @@ to change for this run only (servers.yaml is untouched), whatever the
 confirmation level; in the staging/dev dialog ⌘↵ runs and ⌥↵ types it into
 the current tab.
 
+### AWS Auto Scaling groups
+
+A server can be an Auto Scaling group instead of one ssh host. Kemudi doesn't
+store its instances: it asks the AWS CLI for the running ones each time you use
+the group, and reaches each instance through Session Manager
+(`aws ssm start-session`). You need the AWS CLI and `session-manager-plugin`
+(`brew install awscli session-manager-plugin`); your AWS profiles (SSO
+included) work as they do in a terminal. Nothing is looked up in the
+background.
+
+```yaml
+servers:
+  - id: shop-web
+    name: Shop web
+    env: staging
+    asg: { name: shop-web-asg, profile: acme-staging }   # region: …, root: false
+    apps:
+      - { id: shop, path: /var/www/shop }
+```
+
+To add one in the app, open **Add server** and set *Connects with* to **AWS
+Auto Scaling group**. Fill in the group, the profile (suggested from
+`~/.aws/config`) and the region, choose whether to run as root (`sudo`, the
+default) or as Session Manager's own user, then click **Find instances**.
+
+- **Shells.** The server's `all` button (also double-click, or **Shells on all
+  instances**) opens one tab with a pane per instance: side by side, or in two
+  rows when there are four or more. **Type in all panes** is on, so what you type
+  goes to every instance. An app's shells start in the app's folder.
+- **Actions.** An action on the group, or on one of its apps, runs on every
+  instance at once, one pane each. Each pane shows its own ✓/✗, and History
+  gets one row per instance. If the tab in front is the group's shells, idle at
+  their prompts, the action is typed into all of them instead. Prompts such as
+  git credentials or a migration's yes/no are answered once, for all instances,
+  because Type in all panes is on. The usual confirmations still apply.
+- Files, Logs, Monitor, Health, Inspect, Discover and New app need one ssh host,
+  so they don't appear for a group. Workflows can't run steps on a group yet,
+  because Session Manager doesn't return the remote command's exit status.
+
 ## Guardrails
 
 Each action has a confirmation level, set per action with `confirm:` or with
@@ -760,7 +800,7 @@ would seem to stop working). Tabs come back through session restore.
 | ⇧⌘K | Passwords |
 | ⌘D / ⇧⌘D | Split the pane right / down (same server and folder; an action pane gives a shell there) |
 | ⌥⌘ ← → ↑ ↓ | Move between panes |
-| ⇧⌘I | Type in all panes of the tab (on/off): what you type goes to every terminal pane, like iTerm's broadcast input. The panes get a pink outline, and the tab gets a ⌨ badge. Answers the focused pane's terminal queries only, and never carries over to a restored tab |
+| ⇧⌘I | Type in all panes of the tab (on/off): what you type goes to every terminal pane, like iTerm's broadcast input. The panes get a pink outline and the tab a ⌨ badge; it's off again when Kemudi restarts |
 | ⇧⌘C / ⌥⇧⌘C | Copy last command / its output |
 | ⌘, | Settings (terminal font, size, line height, scrollback, ⌥ as Meta, shell integration, editor) |
 | ⌘Y | History |

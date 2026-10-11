@@ -39,6 +39,15 @@ fn login_shell(fallback: &str) -> String {
     format!("${{K_EXEC-exec}} \"${{SHELL:-{fallback}}}\" -l; exit $?\n")
 }
 
+/// The shell a remote action falls through to.
+pub fn remote_then(integrate: bool) -> String {
+    if integrate {
+        shell_integration::remote_shell()
+    } else {
+        login_shell("/bin/bash")
+    }
+}
+
 /// `ssh -t <host> <wrapped>` or `<login shell> -l -c <wrapped>`.
 pub fn command_for(
     kind: ActionKind,
@@ -49,11 +58,7 @@ pub fn command_for(
 ) -> CommandBuilder {
     match kind {
         ActionKind::Ssh => {
-            let then = if integrate {
-                shell_integration::remote_shell()
-            } else {
-                login_shell("/bin/bash")
-            };
+            let then = remote_then(integrate);
             let mut cmd = base_command(env, Some("ssh"));
             let hc = crate::ssh::host_config(host, env);
             cmd.args(&hc.connect_opts);

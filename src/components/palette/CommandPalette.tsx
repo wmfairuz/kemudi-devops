@@ -15,7 +15,8 @@ import { useSidebar } from "@/stores/sidebar";
 import { insertSnippet, useSnippets } from "@/stores/snippets";
 import { snippetVisible, useTeam, useTeamServers } from "@/stores/team";
 import { useStatus } from "@/stores/status";
-import { openLocalShell, openSsh, toggleBroadcast, useTabs, type Tab } from "@/stores/tabs";
+import { openLocalShell, toggleBroadcast, useTabs, type Tab } from "@/stores/tabs";
+import { openServerShell } from "@/lib/fleet";
 import { useConfig } from "@/stores/config";
 import { useWorkflows } from "@/stores/workflows";
 import { useUi } from "@/stores/ui";
@@ -197,7 +198,7 @@ export function CommandPalette() {
         break;
       case "server":
         close();
-        openSsh(item.server.host, { serverId: item.server.id, prod: item.server.env === "prod", title: `${item.server.id} · ssh` });
+        openServerShell(item.server);
         break;
       case "command":
         item.run();
@@ -362,7 +363,7 @@ function Row({
           <div className="min-w-0 flex-1 truncate">
             <Hl text={item.server.id} tokens={tokens} strong={strong} />
           </div>
-          <span className="font-mono text-[11px] text-faint-foreground">ssh {item.server.host}</span>
+          <span className="font-mono text-[11px] text-faint-foreground">{item.server.asg ? `all instances of ${item.server.asg.name}` : `ssh ${item.server.host}`}</span>
           <EnvTag env={item.server.env} />
           {enter}
         </>

@@ -7,6 +7,7 @@ import { useConfig } from "@/stores/config";
 import { DiscoverDialog } from "./DiscoverDialog";
 import { openFiles, openHealth, openLogs, openMonitor, openQueues, openTune, useTabs } from "@/stores/tabs";
 import { toastError, useToasts } from "@/stores/toasts";
+import { openAsgShells } from "@/lib/fleet";
 
 async function removeServer(server: Server) {
   const n = server.apps.length;
@@ -40,7 +41,20 @@ export function EntityMenu() {
   const menu = useManage((s) => s.menu);
   if (!menu) return null;
   const { server, app } = menu;
-  const groups = app
+  // An Auto Scaling group has no one host to browse or inspect.
+  const groups = server.asg
+    ? [
+        [
+          { label: "Shells on all instances", hint: server.asg.name, run: () => void openAsgShells(server, app) },
+          ...(app?.url ? [{ label: "Open site", hint: app.url.replace(/^https?:\/\//, ""), run: () => void openUrl(app.url!).catch((e) => toastError(errorMessage(e))) }] : []),
+          app
+            ? { label: "Details…", run: () => openDetails({ kind: "app", serverId: server.id, appId: app.id }) }
+            : { label: "Details…", run: () => openDetails({ kind: "server", serverId: server.id }) },
+          ...(app ? [] : [{ label: "Add app…", run: () => openDetails({ kind: "app", serverId: server.id, appId: null }) }]),
+        ],
+        [app ? { label: "Delete app…", run: () => removeApp(server, app) } : { label: "Delete server…", run: () => removeServer(server) }],
+      ]
+    : app
     ? [
         [
           {

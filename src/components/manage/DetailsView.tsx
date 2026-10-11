@@ -28,7 +28,12 @@ import {
   type Env,
   type Server,
   type Vpn,
+  asgInstances,
+  awsProfiles,
+  type Asg,
+  type Instance,
 } from "@/lib/ipc";
+import { openServerShell, whereOf } from "@/lib/fleet";
 import { triggerAction } from "@/lib/actions";
 import { cn } from "@/lib/utils";
 import { useConfig } from "@/stores/config";
@@ -39,7 +44,7 @@ import { useTeam } from "@/stores/team";
 
 const NO_TEAMS: import("@/lib/ipc").Team[] = [];
 import { useStatus } from "@/stores/status";
-import { openFiles, openHealth, openLogs, openMonitor, openQueues, openSsh, openTune, useTabs } from "@/stores/tabs";
+import { openFiles, openHealth, openLogs, openMonitor, openQueues, openTune, useTabs } from "@/stores/tabs";
 import { toastError, useToasts } from "@/stores/toasts";
 import { useUi } from "@/stores/ui";
 import { useVault } from "@/stores/vault";
@@ -161,6 +166,10 @@ const VPNS: { value: Vpn; label: string }[] = [
   { value: "openfortivpn", label: "openfortivpn" },
   { value: "globalprotect", label: "GlobalProtect" },
 ];
+const VIAS: { value: "ssh" | "asg"; label: string }[] = [
+  { value: "ssh", label: "SSH" },
+  { value: "asg", label: "AWS Auto Scaling group" },
+];
 const portOf = (p: string) => (/^\d{1,5}$/.test(p) && Number(p) > 0 && Number(p) < 65536 ? Number(p) : null);
 const done = (msg: string) => useToasts.getState().push(msg, "info");
 
@@ -182,13 +191,7 @@ function useBusy() {
 }
 
 function shellFor(server: Server, app?: App) {
-  openSsh(server.host, {
-    serverId: server.id,
-    prod: (app?.env ?? server.env) === "prod",
-    title: app ? `${server.id} · ${app.id}` : `${server.id} · ssh`,
-    cwd: app?.path,
-    appId: app?.id,
-  });
+  openServerShell(server, app);
 }
 
 // ------------------------------------------------------------------ server
@@ -199,6 +202,13 @@ function ServerDetails({ server }: { server: Server | null }) {
   // Kemudi's own key for it, from the name when it's added; never changed.
   const id = server ? server.id : freeId(name, servers.map((s) => s.id), "server");
   const [host, setHost] = useState(server?.host ?? "");
+  const [via, setVia] = useState<"ssh" | "asg">(server?.asg ? "asg" : "ssh");
+  const [asgName, setAsgName] = useState(server?.asg?.name ?? "");
+  const [asgProfile, setAsgProfile] = useState(server?.asg?.profile ?? "");
+  const [asgRegion, setAsgRegion] = useState(server?.asg?.region ?? "");
+  const [asgRoot, setAsgRoot] = useState(server?.asg?.root ?? true);
+  const [profiles, setProfiles] = useState<string[]>([]);
+  const [found, setFound] = useState<Instance[] | string | "looking" | null>(null);
   const [env, setEnv] = useState<Env>(server?.env ?? "staging");
   const [vpn, setVpn] = useState<Vpn>(server?.vpn ?? "none");
   const [vpnHost, setVpnHost] = useState(server?.vpnCheck?.host ?? "");
@@ -227,6 +237,7 @@ function ServerDetails({ server }: { server: Server | null }) {
   useEffect(() => {
     sshHosts().then(setHosts, () => setHosts([]));
     sshKeys().then(setKeys, () => setKeys([]));
+    awsProfiles().then(setProfiles, () => setProfiles([]));
   }, []);
 
   useEffect(() => {
@@ -267,7 +278,9 @@ function ServerDetails({ server }: { server: Server | null }) {
     };
   }, [host, infoTick]);
 
-  const alias = host.trim();
+  const asgForm: Asg | null =
+    via === "asg" ? { name: asgName.trim(), profile: asgProfile.trim() || null, region: asgRegion.trim() || null, root: asgRoot } : null;
+  const alias = via === "asg" ? "" : host.trim();
   const mode: "empty" | "direct" | "loading" | "external" | "managed" | "new" = !alias
     ? "empty"
     : alias.includes("@")
@@ -313,9 +326,10 @@ function ServerDetails({ server }: { server: Server | null }) {
   const form = {
     id,
     name: name.trim() && name.trim() !== id ? name.trim() : null,
-    host: host.trim(),
+    host: alias,
+    asg: asgForm,
     env,
-    vpn,
+    vpn: asgForm ? ("none" as const) : vpn,
     vpnCheck: vpn !== "none" && vpnHost.trim() && portOf(vpnPort) ? { host: vpnHost.trim(), port: portOf(vpnPort)! } : null,
     vpnConnect: vpn === "openfortivpn" ? vpnConnect.trim() || null : null,
     check: checkHost.trim() && portOf(checkPort) ? { host: checkHost.trim(), port: portOf(checkPort)! } : null,
@@ -328,6 +342,7 @@ function ServerDetails({ server }: { server: Server | null }) {
     form.id !== server.id ||
     (form.name ?? form.id) !== server.name ||
     form.host !== server.host ||
+    JSON.stringify(form.asg) !== JSON.stringify(server.asg) ||
     form.env !== server.env ||
     form.vpn !== server.vpn ||
     JSON.stringify(form.vpnCheck) !== JSON.stringify(server.vpnCheck) ||
@@ -335,7 +350,9 @@ function ServerDetails({ server }: { server: Server | null }) {
     JSON.stringify(form.check) !== JSON.stringify(server.check) ||
     form.color !== server.color ||
     form.team !== (server.team ?? null);
-  const valid = idOk && form.host !== "" && vpnOk && checkOk && entryOk && mode !== "loading";
+  const valid = asgForm
+    ? idOk && asgForm.name !== "" && checkOk
+    : idOk && form.host !== "" && vpnOk && checkOk && entryOk && mode !== "loading";
 
   const save = async () => {
     if (!valid || busy) return;
@@ -390,7 +407,9 @@ function ServerDetails({ server }: { server: Server | null }) {
           server ? (
             <span className="flex items-center gap-1.5">
               <StatusDot status={reach?.state ?? "unknown"} />
-              {reach?.state === "up"
+              {server.asg
+                ? `AWS Auto Scaling group ${server.asg.name}${server.asg.profile ? ` (${server.asg.profile})` : ""} · Session Manager`
+                : reach?.state === "up"
                 ? `reachable · ${reach.latencyMs ?? "?"} ms`
                 : reach?.state === "down"
                   ? `unreachable · ${reach.error ?? ""}`
@@ -413,23 +432,27 @@ function ServerDetails({ server }: { server: Server | null }) {
                 <Btn type="submit" variant="outline" disabled={!dirty || !valid || busy}>
                   Save
                 </Btn>
-                <Btn variant="outline" onClick={() => openFiles(server)}>
-                  <FolderOpen className="size-4" /> Files
-                </Btn>
-                <Btn variant="outline" onClick={() => openLogs(server)}>
-                  <ScrollText className="size-4" /> Logs
-                </Btn>
-                <Btn variant="outline" onClick={() => openMonitor(server)}>
-                  <Activity className="size-4" /> Monitor
-                </Btn>
-                <Btn variant="outline" onClick={() => openHealth(server)}>
-                  <HeartPulse className="size-4" /> Health
-                </Btn>
-                <Btn variant="outline" onClick={() => openTune(server)}>
-                  <Gauge className="size-4" /> Fine-tune
-                </Btn>
-                <Btn variant="primary" className="px-4" onClick={() => shellFor(server)}>
-                  Open shell
+                {!server.asg && (
+                  <>
+                    <Btn variant="outline" onClick={() => openFiles(server)}>
+                      <FolderOpen className="size-4" /> Files
+                    </Btn>
+                    <Btn variant="outline" onClick={() => openLogs(server)}>
+                      <ScrollText className="size-4" /> Logs
+                    </Btn>
+                    <Btn variant="outline" onClick={() => openMonitor(server)}>
+                      <Activity className="size-4" /> Monitor
+                    </Btn>
+                    <Btn variant="outline" onClick={() => openHealth(server)}>
+                      <HeartPulse className="size-4" /> Health
+                    </Btn>
+                    <Btn variant="outline" onClick={() => openTune(server)}>
+                      <Gauge className="size-4" /> Fine-tune
+                    </Btn>
+                  </>
+                )}
+                <Btn variant="primary" className="px-4" onClick={() => openServerShell(server)}>
+                  {server.asg ? "Shells on all instances" : "Open shell"}
                 </Btn>
               </>
             ) : (
@@ -450,14 +473,70 @@ function ServerDetails({ server }: { server: Server | null }) {
             onChange={(e) => setName(e.target.value)}
           />
         </Row>
-        <Row label="SSH host" hint="Pick one from your SSH config, or type a new name to create it">
+        <Row label="Connects with" hint={via === "asg" ? "Its running instances are looked up when you use it; each gets a Session Manager pane (aws ssm start-session, with your AWS CLI and its session-manager-plugin)" : undefined}>
+          <Segmented label="Connects with" value={via} options={VIAS} onChange={setVia} />
+        </Row>
+        {via === "asg" && (
+          <>
+            <Row label="Group" hint="The Auto Scaling group's name">
+              <TextInput value={asgName} placeholder="shop-web-asg" invalid={asgName.trim() === ""} onChange={(e) => setAsgName(e.target.value)} />
+            </Row>
+            <Row label="AWS profile" hint="From ~/.aws/config (empty: your default credentials)">
+              <TextInput list="kemudi-aws-profiles" value={asgProfile} placeholder="(default)" onChange={(e) => setAsgProfile(e.target.value)} />
+              <datalist id="kemudi-aws-profiles">
+                {profiles.map((p) => (
+                  <option key={p} value={p} />
+                ))}
+              </datalist>
+            </Row>
+            <Row label="Region" hint="Empty: the profile's region">
+              <TextInput value={asgRegion} placeholder="(the profile's)" onChange={(e) => setAsgRegion(e.target.value)} />
+            </Row>
+            <Row label="Run as" hint="Shells and actions on its instances">
+              <Segmented
+                label="Run as"
+                value={asgRoot ? "root" : "ssm"}
+                options={[
+                  { value: "root", label: "root (sudo)" },
+                  { value: "ssm", label: "Session Manager's user" },
+                ]}
+                onChange={(v) => setAsgRoot(v === "root")}
+              />
+            </Row>
+            <div className="ml-[144px] flex flex-col items-start gap-1.5">
+              <Btn
+                size="sm"
+                variant="outline"
+                disabled={found === "looking" || !asgForm?.name}
+                onClick={() => {
+                  if (!asgForm) return;
+                  setFound("looking");
+                  asgInstances(null, asgForm).then(setFound, (e) => setFound(errorMessage(e)));
+                }}
+              >
+                {found === "looking" ? "Looking…" : "Find instances"}
+              </Btn>
+              {typeof found === "string" && found !== "looking" && (
+                <span className="text-[11.5px] leading-4 whitespace-pre-wrap text-env-prod-fg">✗ {found}</span>
+              )}
+              {Array.isArray(found) && (
+                <span className="text-[11.5px] leading-4 text-status-up">
+                  {found.length === 0
+                    ? "No running instances right now."
+                    : `✓ ${found.length} running: ${found.map((i) => `${i.ip ?? i.id}${i.az ? ` (${i.az})` : ""}`).join(", ")}`}
+                </span>
+              )}
+            </div>
+          </>
+        )}
+        {via === "ssh" && <Row label="SSH host" hint="Pick one from your SSH config, or type a new name to create it">
           <TextInput list="kemudi-ssh-hosts" value={host} placeholder="nova-gw" onChange={(e) => setHost(e.target.value)} />
           <datalist id="kemudi-ssh-hosts">
             {hosts.map((h) => (
               <option key={h} value={h} />
             ))}
           </datalist>
-        </Row>
+        </Row>}
         {mode !== "empty" && (
           <div className="ml-[144px] flex flex-col gap-2.5 rounded-lg border border-divider bg-background px-4 py-3">
             {mode === "external" && info && (
@@ -558,7 +637,7 @@ function ServerDetails({ server }: { server: Server | null }) {
             )}
           </div>
         )}
-        {server && (
+        {server && via === "ssh" && (
           <Row
             label="SSH key"
             hint="So ssh stops asking for a password: copies one of your public keys to the server (ssh-copy-id, in a tab; it asks for the server's password once). Then Test connection."
@@ -596,10 +675,10 @@ function ServerDetails({ server }: { server: Server | null }) {
         >
           <Segmented label="Environment" value={env} options={ENVS} onChange={setEnv} />
         </Row>
-        <Row label="VPN">
+        {via === "ssh" && <Row label="VPN">
           <Segmented label="VPN" value={vpn} options={VPNS} onChange={setVpn} />
-        </Row>
-        {vpn !== "none" && (
+        </Row>}
+        {via === "ssh" && vpn !== "none" && (
           <>
             <Row label="VPN check" hint="Something only reachable over the VPN; Kemudi tries a TCP connect">
               <div className="flex gap-2">
@@ -622,7 +701,7 @@ function ServerDetails({ server }: { server: Server | null }) {
         <Row label="Tab colour" hint="New tabs for this server (its apps can pick their own)">
           <ColorPicker value={color} onChange={setColor} />
         </Row>
-        <Row label="Reachability" hint="Optional: probe this instead of what ssh resolves the host to">
+        {via === "ssh" && <Row label="Reachability" hint="Optional: probe this instead of what ssh resolves the host to">
           <div className="flex gap-2">
             <TextInput value={checkHost} placeholder="(from ssh -G)" onChange={(e) => setCheckHost(e.target.value)} />
             <TextInput
@@ -632,8 +711,8 @@ function ServerDetails({ server }: { server: Server | null }) {
               onChange={(e) => setCheckPort(e.target.value)}
             />
           </div>
-        </Row>
-        {server && (
+        </Row>}
+        {server && via === "ssh" && (
           <Row label="sudo password" hint="Used when saving root-owned files here, and suggested at sudo's prompt in its tabs">
             <SudoPassword serverId={server.id} />
           </Row>
@@ -732,12 +811,16 @@ function AppsList({ server }: { server: Server }) {
           <Btn size="sm" variant="outline" onClick={() => openDetails({ kind: "app", serverId: server.id, appId: null })}>
             + Add app
           </Btn>
-          <Btn size="sm" variant="primary" onClick={() => useManage.getState().setDiscover(server.id)} title="Look around the server for Laravel apps and add the ones you pick">
-            <ScanSearch className="size-3.5" /> Discover apps…
-          </Btn>
-          <Btn size="sm" variant="outline" onClick={() => useNewApp.getState().open(server.id)} title="Set up a new Laravel app on this server: clone, .env, database, nginx, queue worker, HTTPS">
-            <PackagePlus className="size-3.5" /> New app…
-          </Btn>
+          {!server.asg && (
+            <>
+              <Btn size="sm" variant="primary" onClick={() => useManage.getState().setDiscover(server.id)} title="Look around the server for Laravel apps and add the ones you pick">
+                <ScanSearch className="size-3.5" /> Discover apps…
+              </Btn>
+              <Btn size="sm" variant="outline" onClick={() => useNewApp.getState().open(server.id)} title="Set up a new Laravel app on this server: clone, .env, database, nginx, queue worker, HTTPS">
+                <PackagePlus className="size-3.5" /> New app…
+              </Btn>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -838,7 +921,7 @@ function AppDetails({ server, app }: { server: Server; app: App | null }) {
             className="cursor-pointer hover:text-foreground"
             onClick={() => openDetails({ kind: "server", serverId: server.id })}
           >
-            on {server.name} ({server.host})
+            on {server.name} ({whereOf(server)})
           </button>
         }
         footer={
@@ -854,20 +937,24 @@ function AppDetails({ server, app }: { server: Server; app: App | null }) {
                 <Btn type="submit" variant="outline" disabled={!dirty || !valid || busy}>
                   Save
                 </Btn>
-                <Btn
-                  variant="outline"
-                  onClick={() => openFiles(server, { appId: app.id, dir: app.path, env: app.env, title: `${app.id} · files` })}
-                >
-                  <FolderOpen className="size-4" /> Files
-                </Btn>
-                <Btn variant="outline" onClick={() => openLogs(server, { appId: app.id, env: app.env, title: `${app.id} · logs` })}>
-                  <ScrollText className="size-4" /> Logs
-                </Btn>
-                <Btn variant="outline" onClick={() => openQueues(server, app)}>
-                  <ListChecks className="size-4" /> Queues
-                </Btn>
+                {!server.asg && (
+                  <>
+                    <Btn
+                      variant="outline"
+                      onClick={() => openFiles(server, { appId: app.id, dir: app.path, env: app.env, title: `${app.id} · files` })}
+                    >
+                      <FolderOpen className="size-4" /> Files
+                    </Btn>
+                    <Btn variant="outline" onClick={() => openLogs(server, { appId: app.id, env: app.env, title: `${app.id} · logs` })}>
+                      <ScrollText className="size-4" /> Logs
+                    </Btn>
+                    <Btn variant="outline" onClick={() => openQueues(server, app)}>
+                      <ListChecks className="size-4" /> Queues
+                    </Btn>
+                  </>
+                )}
                 <Btn variant="primary" className="px-4" onClick={() => shellFor(server, app)}>
-                  Open shell
+                  {server.asg ? "Shells on all instances" : "Open shell"}
                 </Btn>
               </>
             ) : (
@@ -885,7 +972,7 @@ function AppDetails({ server, app }: { server: Server; app: App | null }) {
           )
         }
         side={
-          <>
+          !server.asg && <>
             <InspectPanel
               serverId={server.id}
               appId={app?.id ?? null}

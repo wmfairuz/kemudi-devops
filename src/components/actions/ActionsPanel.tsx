@@ -1,5 +1,6 @@
 import { EyeOff, PanelRightClose, Plus, Workflow as WorkflowIcon } from "lucide-react";
 
+import { whereOf } from "@/lib/fleet";
 import { EnvTag } from "@/components/kit/EnvTag";
 import { Badge } from "@/components/manage/Badge";
 import { ActionButton } from "@/components/sidebar/ActionButton";
@@ -47,8 +48,8 @@ export function ActionsPanel() {
                 <span className="truncate text-[13.5px] font-semibold text-foreground">{app ? app.name : server.name}</span>
                 <EnvTag env={app?.env ?? server.env} />
               </span>
-              <span className="mt-0.5 truncate text-[11px] text-subtle-foreground" title={app ? `${server.host}:${app.path}` : server.host}>
-                {app ? `on ${server.name}` : server.host}
+              <span className="mt-0.5 truncate text-[11px] text-subtle-foreground" title={app ? `${whereOf(server)}:${app.path}` : whereOf(server)}>
+                {app ? `on ${server.name}` : whereOf(server)}
               </span>
             </span>
           </>
@@ -66,7 +67,7 @@ export function ActionsPanel() {
       </div>
       {server && (
         <div className="selectable truncate border-b border-divider px-3.5 py-2 font-mono text-[11.5px] text-subtle-foreground">
-          {server.host}
+          {whereOf(server)}
           {app ? `:${app.path}` : ""}
         </div>
       )}

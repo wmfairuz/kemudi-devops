@@ -92,10 +92,12 @@ fn parse_marker(rest: &[u8]) -> Parse {
     if digits == 0 {
         return Parse::NotMarker;
     }
-    let term = match (rest.get(digits), rest.get(digits + 1)) {
-        (Some(b'\n'), _) => 1,
-        (Some(b'\r'), Some(b'\n')) => 2,
-        (Some(b'\r'), None) => return Parse::Incomplete,
+    // `\n`, `\r\n`, or `\r\r\n` (Session Manager's terminal adds a `\r`
+    // on top of the local one's).
+    let crs = rest[digits..].iter().take_while(|&&b| b == b'\r').count();
+    let term = match rest.get(digits + crs) {
+        Some(b'\n') if crs <= 2 => crs + 1,
+        None if crs <= 2 => return Parse::Incomplete,
         _ => return Parse::NotMarker,
     };
     let code = std::str::from_utf8(&rest[..digits])
@@ -127,6 +129,13 @@ fn suffix_prefix_len(buf: &[u8], needle: &[u8]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn session_manager_line_endings() {
+        let (data, codes) = run(&[b"out\r\r\n__KEMUDI_EXIT:0\r", b"\r\nprompt# "]);
+        assert_eq!(codes, [0]);
+        assert_eq!(data, b"out\r\r\nprompt# ");
+    }
 
     fn run(chunks: &[&[u8]]) -> (Vec<u8>, Vec<i32>) {
         let mut s = MarkerScanner::new();

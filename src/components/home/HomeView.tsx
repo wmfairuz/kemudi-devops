@@ -25,7 +25,8 @@ import { cn } from "@/lib/utils";
 import { openDetails } from "@/stores/manage";
 import { useCurrentTeam, useTeamServers } from "@/stores/team";
 import { useStatus } from "@/stores/status";
-import { openLocalShell, openMonitor, openSsh, useTabs } from "@/stores/tabs";
+import { openLocalShell, openMonitor, useTabs } from "@/stores/tabs";
+import { openServerShell, whereOf } from "@/lib/fleet";
 import { toastError } from "@/stores/toasts";
 import { useUi } from "@/stores/ui";
 import { useConfig } from "@/stores/config";
@@ -140,32 +141,34 @@ export function HomeView() {
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate text-[13px] font-medium">{s.name}</span>
                     <span className="truncate text-[11px] text-subtle-foreground">
-                      {s.host} · {s.apps.length} app{s.apps.length === 1 ? "" : "s"}
+                      {whereOf(s)} · {s.apps.length} app{s.apps.length === 1 ? "" : "s"}
                     </span>
                   </span>
                   <DiskBadge server={s} />
                   <SslBadge server={s} />
                   <EnvTag env={s.env} />
+                  {!s.asg && (
+                    <Btn
+                      size="sm"
+                      variant="outline"
+                      title="Monitor: CPU, memory, disks, top processes"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openMonitor(s);
+                      }}
+                    >
+                      <Activity className="size-3.5" />
+                    </Btn>
+                  )}
                   <Btn
                     size="sm"
                     variant="outline"
-                    title="Monitor: CPU, memory, disks, top processes"
                     onClick={(e) => {
                       e.stopPropagation();
-                      openMonitor(s);
+                      openServerShell(s);
                     }}
                   >
-                    <Activity className="size-3.5" />
-                  </Btn>
-                  <Btn
-                    size="sm"
-                    variant="outline"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openSsh(s.host, { serverId: s.id, prod: s.env === "prod", title: `${s.id} · ssh` });
-                    }}
-                  >
-                    ssh
+                    {s.asg ? "all" : "ssh"}
                   </Btn>
                 </Row>
               ))

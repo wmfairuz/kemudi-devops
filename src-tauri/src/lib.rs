@@ -7,6 +7,7 @@ mod discover;
 mod env;
 mod error;
 mod files;
+mod fleet;
 mod health;
 mod logs;
 mod menu;
@@ -212,6 +213,8 @@ pub fn run() {
             workflows::workflow_script,
             workflows::workflow_run,
             updates::update_check,
+            fleet::asg_instances,
+            fleet::aws_profiles,
             updates::update_install,
             workflows::workflow_branch_run,
             workflows::workflow_watch_run,

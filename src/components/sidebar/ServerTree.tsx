@@ -17,7 +17,8 @@ import { SslBadge } from "@/components/health/SslBadge";
 import { openDetails, useManage } from "@/stores/manage";
 import { useSidebar } from "@/stores/sidebar";
 import { useStatus } from "@/stores/status";
-import { openSsh, useTabs } from "@/stores/tabs";
+import { useTabs } from "@/stores/tabs";
+import { openServerShell, whereOf } from "@/lib/fleet";
 
 interface Props {
   servers: Server[];
@@ -253,7 +254,7 @@ function ServerGroup({ server, apps, forceOpen, next }: { server: Server; apps: 
         role="treeitem"
         aria-expanded={expanded}
         aria-selected={selected}
-        title={`${server.name} · ${server.host}\nClick: details · double-click: ssh · right-click: more`}
+        title={`${server.name} · ${whereOf(server)}\nClick: details · double-click: ${server.asg ? "shells on all instances" : "ssh"} · right-click: more`}
         onClick={() => {
           openDetails({ kind: "server", serverId: server.id });
           if (!expanded) toggle(server.id);
@@ -306,7 +307,7 @@ function ServerGroup({ server, apps, forceOpen, next }: { server: Server; apps: 
             {server.vpn !== "none" && <VpnBadge />}
           </span>
           <span className="mt-0.5 truncate text-[11.5px] text-subtle-foreground">
-            {server.host}
+            {whereOf(server)}
             {!expanded && server.apps.length > 0 ? ` · ${server.apps.length} app${server.apps.length === 1 ? "" : "s"}` : ""}
           </span>
         </span>
@@ -371,7 +372,7 @@ function AppItem({
       }}
       role="treeitem"
       aria-selected={selected}
-      title={`${app.name} · ${server.host}:${app.path}\nClick: details · double-click: ssh into it · right-click: more`}
+      title={`${app.name} · ${whereOf(server)}:${app.path}\nClick: details · double-click: ${server.asg ? "shells on all instances" : "ssh into it"} · right-click: more`}
       onClick={() => openDetails({ kind: "app", serverId: server.id, appId: app.id })}
       onDoubleClick={() => openShell(server, app)}
       onContextMenu={(e) => {
@@ -405,13 +406,7 @@ function AppItem({
 }
 
 function openShell(server: Server, app?: App) {
-  openSsh(server.host, {
-    serverId: server.id,
-    prod: (app?.env ?? server.env) === "prod",
-    title: app ? `${server.id} · ${app.id}` : `${server.id} · ssh`,
-    cwd: app?.path,
-    appId: app?.id,
-  });
+  openServerShell(server, app);
 }
 
 export function AddServerButton() {
@@ -432,7 +427,7 @@ function ShellButton({ server, app }: { server: Server; app?: App }) {
   const where = app ? `${server.id}:${app.path}` : server.id;
   return (
     <button
-      title={`Open a shell on ${where} (ssh ${server.host})`}
+      title={server.asg ? `A shell on each instance of ${server.asg.name} (Session Manager), typing in all of them` : `Open a shell on ${where} (ssh ${server.host})`}
       aria-label={`Open a shell on ${where}`}
       onClick={(e) => {
         e.stopPropagation();
@@ -442,7 +437,7 @@ function ShellButton({ server, app }: { server: Server; app?: App }) {
       className="flex h-5 flex-none cursor-pointer items-center gap-1 rounded-md border border-control-border bg-secondary px-1.5 text-[10.5px] text-soft-foreground shadow-[0_1px_1px_rgb(0_0_0/0.08)] transition-colors hover:border-primary/60 hover:bg-hover-strong hover:text-foreground active:translate-y-px"
     >
       <SquareTerminal className="size-3" strokeWidth={1.75} aria-hidden />
-      ssh
+      {server.asg ? "all" : "ssh"}
     </button>
   );
 }

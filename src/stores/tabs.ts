@@ -44,6 +44,9 @@ export interface Tab {
   serverId?: string;
   /** SSH host alias, for ssh and action tabs. */
   host?: string;
+  /** An Auto Scaling group server's instance this pane is a Session
+   *  Manager session to (no `host`). */
+  instance?: string;
   /** For action tabs: which app/action ran. */
   appId?: string | null;
   actionId?: string;
@@ -78,7 +81,7 @@ export interface Group {
   broadcast?: boolean;
 }
 
-export interface OpenOptions extends Pick<Tab, "title" | "kind">, Partial<Pick<Tab, "serverId" | "host" | "cwd" | "appId" | "actionId" | "local" | "prod" | "state">> {
+export interface OpenOptions extends Pick<Tab, "title" | "kind">, Partial<Pick<Tab, "serverId" | "host" | "instance" | "cwd" | "appId" | "actionId" | "local" | "prod" | "state">> {
   spawn: Spawner;
   intro?: string;
   /** Open without switching to it. */
@@ -115,6 +118,9 @@ interface TabsState {
   closeGroup(groupId: string): void;
   /** Split the focused pane (⌘D right, ⇧⌘D down). */
   splitActive(dir: Dir): void;
+  /** Open panes as one new tab: side by side, in two rows from four on.
+   *  `broadcast`: with Type in all panes on. Returns the pane ids. */
+  openGrid(panes: OpenOptions[], opts?: { broadcast?: boolean }): string[];
   /** Move focus to the pane on that side (⌥⌘ arrows). */
   focusSide(side: Side): void;
   setRatio(groupId: string, splitId: string, ratio: number): void;
@@ -144,6 +150,19 @@ export function groupOf(state: Pick<TabsState, "groups">, paneId: string | null)
 /** What a new pane next to `t` should open: the same place, never re-running
  *  an action (an action pane gives a shell where it ran). */
 function likeOptions(t: Tab): OpenOptions {
+  // Next to a Session Manager pane: another session to that instance.
+  if (t.instance && t.serverId && !t.local) {
+    return {
+      kind: "ssh",
+      title: t.kind === "ssh" && !t.renamed ? t.title : `${t.serverId} · ${t.instance}`,
+      serverId: t.serverId,
+      instance: t.instance,
+      cwd: t.cwd,
+      appId: t.cwd ? t.appId : undefined,
+      prod: t.prod,
+      spawn: ptySpawner({ kind: "ssm", serverId: t.serverId, instance: t.instance, cwd: t.cwd }),
+    };
+  }
   const local = t.kind === "local" || t.local || !t.host;
   if (local) return { kind: "local", title: "local · zsh", spawn: ptySpawner({ kind: "local" }) };
   const cwd = t.cwd;
@@ -186,6 +205,15 @@ export const useTabs = create<TabsState>((set, get) => {
         get().update(id, { state: code === 0 ? "ok" : "failed", exitCode: code ?? undefined, finishedAt: Date.now() });
       }
     });
+
+  const make = ({ spawn, intro, prod = false, state = "shell", background: _b, into: _i, ...meta }: OpenOptions): Tab => {
+    const options: SessionOptions = {
+      intro,
+      settings: useConfig.getState().snapshot?.config?.terminal,
+      restartable: meta.kind === "local" || meta.kind === "ssh",
+    };
+    return { ...meta, id: `t${nextId++}`, renamed: false, prod, state, session: new TerminalSession(spawn, options), groupId: "" };
+  };
 
   const insert = (tab: Tab, background?: boolean, into?: OpenOptions["into"]) => {
     // Watched first: if something reacting to the update below throws, the
@@ -272,13 +300,28 @@ export const useTabs = create<TabsState>((set, get) => {
     },
 
     open({ spawn, intro, background, into, prod = false, state = "shell", ...meta }) {
-      const options: SessionOptions = {
-        intro,
-        settings: useConfig.getState().snapshot?.config?.terminal,
-        restartable: meta.kind === "local" || meta.kind === "ssh",
-      };
-      const session = new TerminalSession(spawn, options);
-      return insert({ ...meta, id: `t${nextId++}`, renamed: false, prod, state, session, groupId: "" }, background, into);
+      return insert(make({ spawn, intro, prod, state, ...meta }), background, into);
+    },
+
+    openGrid(panes, { broadcast = false } = {}) {
+      const made = panes.map(make);
+      const first = made[0];
+      if (!first) return [];
+      const row = (xs: Tab[]): Layout =>
+        xs.length === 1
+          ? { pane: xs[0]!.id }
+          : { id: `c${nextId++}`, dir: "row", ratio: 1 / xs.length, a: { pane: xs[0]!.id }, b: row(xs.slice(1)) };
+      const top = made.length >= 4 ? made.slice(0, Math.ceil(made.length / 2)) : made;
+      const bottom = made.slice(top.length);
+      const layout: Layout = bottom.length ? { id: `c${nextId++}`, dir: "col", ratio: 0.5, a: row(top), b: row(bottom) } : row(top);
+      const group: Group = { id: `g${nextGroup++}`, layout, focus: first.id, color: defaultColor(first), broadcast: broadcast || undefined };
+      for (const t of made) watch(t.id, t.session);
+      set((s) => ({
+        tabs: [...s.tabs, ...made.map((t) => ({ ...t, groupId: group.id }))],
+        groups: [...s.groups, group],
+        activeId: first.id,
+      }));
+      return made.map((t) => t.id);
     },
 
     /** Close one pane (⌘W); the tab goes with its last pane. */

@@ -354,7 +354,44 @@ impl Validator<'_> {
                         .path(&path),
                 );
             }
-            if crate::ssh::validate_host(&rs.host).is_err() {
+            if let Some(asg) = &rs.asg {
+                let l = line;
+                if !rs.host.is_empty() {
+                    self.error(
+                        Diag::new("a server has either `host` (ssh) or `asg` (an AWS Auto Scaling group), not both")
+                            .at(l)
+                            .path(&path),
+                    );
+                }
+                let ok = |s: &str| {
+                    !s.is_empty()
+                        && s.chars()
+                            .all(|c| c.is_ascii_alphanumeric() || "-_.:/@+=".contains(c))
+                };
+                for (what, v) in [
+                    ("name", Some(&asg.name)),
+                    ("profile", asg.profile.as_ref()),
+                    ("region", asg.region.as_ref()),
+                ] {
+                    if v.is_some_and(|v| !ok(v)) {
+                        self.error(
+                            Diag::new(format!(
+                                "`asg` {what} {:?} isn't valid",
+                                v.map(String::as_str).unwrap_or_default()
+                            ))
+                            .at(l)
+                            .path(&path),
+                        );
+                    }
+                }
+                if rs.vpn != Vpn::None {
+                    self.error(
+                        Diag::new("`vpn` isn't used with `asg` (Session Manager goes through AWS)")
+                            .at(l)
+                            .path(&path),
+                    );
+                }
+            } else if crate::ssh::validate_host(&rs.host).is_err() {
                 let l = self.find("host", &rs.host, 0);
                 self.error(
                     Diag::new(format!(
@@ -771,6 +808,7 @@ impl Validator<'_> {
             team: rs.team.clone(),
             id: rs.id,
             host: rs.host,
+            asg: rs.asg,
             env: rs.env,
             vpn: rs.vpn,
             vpn_check: rs.vpn_check,
@@ -936,6 +974,32 @@ actions:
             })
         );
         assert_eq!(prod.actions.len(), 2);
+    }
+
+    #[test]
+    fn asg_servers() {
+        let ok = parse("servers:\n  - id: web\n    env: staging\n    asg: { name: shop-web-asg, profile: acme-staging }\n    apps:\n      - { id: shop, path: /var/www/shop }\n");
+        assert!(ok.errors.is_empty(), "{:?}", ok.errors);
+        let c = ok.config.expect("config");
+        let web = c.server("web").expect("web");
+        assert_eq!(web.host, "");
+        let asg = web.asg.as_ref().expect("asg");
+        assert!(asg.root && asg.region.is_none());
+        let both =
+            parse("servers:\n  - id: web\n    host: web\n    env: dev\n    asg: { name: g }\n");
+        assert!(
+            both.errors.iter().any(|d| d.message.contains("not both")),
+            "{:?}",
+            both.errors
+        );
+        let neither = parse("servers:\n  - id: web\n    env: dev\n");
+        assert!(!neither.errors.is_empty());
+        let bad = parse("servers:\n  - id: web\n    env: dev\n    asg: { name: \"a b\" }\n");
+        assert!(
+            bad.errors.iter().any(|d| d.message.contains("isn't valid")),
+            "{:?}",
+            bad.errors
+        );
     }
 
     #[test]

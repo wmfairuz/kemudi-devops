@@ -11,7 +11,7 @@ use super::locate::{
     move_server, set_entity_field, set_server_block, set_team_block, set_team_field, set_workflow,
     yaml_quote, yaml_scalar,
 };
-use super::schema::{Config, Env, HostPort, TabColor, Vpn};
+use super::schema::{Asg, Config, Env, HostPort, TabColor, Vpn};
 use super::Snapshot;
 use crate::error::{AppError, AppResult};
 use crate::AppState;
@@ -24,7 +24,11 @@ pub struct ServerForm {
     /// Its team (None: no team).
     #[serde(default)]
     pub team: Option<String>,
+    /// Empty for an Auto Scaling group.
+    #[serde(default)]
     pub host: String,
+    #[serde(default)]
+    pub asg: Option<Asg>,
     pub env: Env,
     pub vpn: Vpn,
     pub vpn_check: Option<HostPort>,
@@ -73,6 +77,30 @@ fn host_port(h: &HostPort) -> String {
     )
 }
 
+/// `{ name: g, profile: p, region: r }` (`root: false` only when off).
+fn asg_map(a: &Asg) -> String {
+    let mut parts = vec![format!("name: {}", yaml_scalar(a.name.trim()))];
+    for (k, v) in [("profile", &a.profile), ("region", &a.region)] {
+        if let Some(v) = opt(v) {
+            parts.push(format!("{k}: {}", yaml_scalar(&v)));
+        }
+    }
+    if !a.root {
+        parts.push("root: false".into());
+    }
+    format!("{{ {} }}", parts.join(", "))
+}
+
+/// The form's group, trimmed (blank profile/region: none).
+fn clean_asg(a: &Asg) -> Asg {
+    Asg {
+        name: a.name.trim().into(),
+        profile: opt(&a.profile),
+        region: opt(&a.region),
+        root: a.root,
+    }
+}
+
 fn vpn_str(v: Vpn) -> &'static str {
     match v {
         Vpn::None => "none",
@@ -84,14 +112,15 @@ fn vpn_str(v: Vpn) -> &'static str {
 /// The server's keys as they should be in the file (`None` = absent).
 fn server_fields(f: &ServerForm) -> Vec<(&'static str, Option<String>)> {
     let id = f.id.trim();
-    let vpn = f.vpn != Vpn::None;
+    let vpn = f.vpn != Vpn::None && f.asg.is_none();
     vec![
         (
             "name",
             opt(&f.name).filter(|n| n != id).map(|n| yaml_scalar(&n)),
         ),
         ("team", opt(&f.team).map(|t| yaml_scalar(&t))),
-        ("host", Some(yaml_scalar(f.host.trim()))),
+        ("host", f.asg.is_none().then(|| yaml_scalar(f.host.trim()))),
+        ("asg", f.asg.as_ref().map(asg_map)),
         ("env", Some(f.env.as_str().to_string())),
         ("vpn", vpn.then(|| vpn_str(f.vpn).to_string())),
         (
@@ -187,7 +216,10 @@ pub async fn server_save(
     server: ServerForm,
 ) -> AppResult<Snapshot> {
     required(&server.id, "An ID")?;
-    required(&server.host, "The SSH host")?;
+    match &server.asg {
+        Some(a) => required(&a.name, "The Auto Scaling group's name")?,
+        None => required(&server.host, "The SSH host")?,
+    }
     let id = server.id.trim().to_string();
     let source = read(&state)?;
     let fields = server_fields(&server);
@@ -212,12 +244,19 @@ pub async fn server_save(
             }),
     }
     .map_err(AppError::Invalid)?;
-    let vpn = server.vpn != Vpn::None;
+    let vpn = server.vpn != Vpn::None && server.asg.is_none();
+    let asg = server.asg.as_ref().map(clean_asg);
+    let host = if asg.is_some() {
+        ""
+    } else {
+        server.host.trim()
+    };
     checked(&edited, |c| {
         c.server(&id).is_some_and(|s| {
-            s.host == server.host.trim()
+            s.host == host
+                && s.asg == asg
                 && s.env == server.env
-                && s.vpn == server.vpn
+                && s.vpn == if vpn { server.vpn } else { Vpn::None }
                 && s.name == opt(&server.name).unwrap_or_else(|| id.clone())
                 && s.check
                     == server.check.clone().map(|h| HostPort {
@@ -852,6 +891,42 @@ pub async fn workflow_delete(
 #[cfg(test)]
 mod workflow_tests {
     use super::*;
+
+    #[test]
+    fn asg_server_form_round_trips() {
+        let form = ServerForm {
+            id: "web".into(),
+            name: Some("Shop web".into()),
+            team: None,
+            host: "ignored".into(),
+            asg: Some(Asg {
+                name: " shop-web-asg ".into(),
+                profile: Some("acme-staging".into()),
+                region: Some(" ".into()),
+                root: false,
+            }),
+            env: Env::Staging,
+            vpn: Vpn::Openfortivpn,
+            vpn_check: None,
+            vpn_connect: None,
+            check: None,
+            color: None,
+        };
+        let mut all = vec![("id", "web".to_string())];
+        all.extend(
+            server_fields(&form)
+                .into_iter()
+                .filter_map(|(k, v)| v.map(|v| (k, v))),
+        );
+        let src = add_server("servers: []\n", &all).expect("add");
+        assert!(!src.contains("host:") && !src.contains("vpn"), "{src}");
+        let out = super::super::validate::parse(&src);
+        assert!(out.errors.is_empty(), "{src}\n{:?}", out.errors);
+        let c = out.config.expect("config");
+        let web = c.server("web").expect("web");
+        assert_eq!(web.asg, form.asg.as_ref().map(clean_asg));
+        assert_eq!(web.asg.as_ref().map(|a| a.region.is_none()), Some(true));
+    }
 
     #[test]
     fn workflow_yaml_round_trips() {

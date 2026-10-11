@@ -427,20 +427,31 @@ pub async fn action_run(
     state: State<'_, AppState>,
     action: ActionRef,
     command_override: Option<String>,
+    // For an `asg:` server: the instance it runs on (one tab pane each).
+    instance: Option<String>,
     cols: u16,
     rows: u16,
     on_data: Channel<InvokeResponseBody>,
     on_event: Channel<PtyEvent>,
 ) -> AppResult<RunInfo> {
     let size: PtySize = pty_size(cols, rows)?;
-    let rendered = ready(render_action(
-        &current_config(&state)?,
-        &action,
-        command_override,
-    )?)?;
+    let config = current_config(&state)?;
+    let rendered = ready(render_action(&config, &action, command_override)?)?;
     let edited = rendered.command != rendered.rendered;
+    let asg = match rendered.kind {
+        ActionKind::Ssh => config
+            .server(&rendered.server_id)
+            .and_then(|s| s.asg.clone()),
+        ActionKind::Local => None,
+    };
+    if asg.is_some() && instance.is_none() {
+        return Err(AppError::Invalid(format!(
+            "{} is an Auto Scaling group: the action runs on each instance",
+            rendered.server_id
+        )));
+    }
     // The VPN gate is enforced here, not just in the UI.
-    if rendered.kind == ActionKind::Ssh {
+    if rendered.kind == ActionKind::Ssh && asg.is_none() {
         crate::preflight::commands::ensure_reachable(&app, &rendered.server_id).await?;
     }
     let audit_id = record(
@@ -468,15 +479,34 @@ pub async fn action_run(
         _ => ExitHooks::default(),
     };
     let env = state.env_ready().await;
-    let cmd = invocation::command_for(
-        rendered.kind,
-        &rendered.host,
-        &rendered.command,
-        env,
-        state.shell_integration(),
-    );
+    let cmd = match (&asg, &instance) {
+        (Some(asg), Some(i)) => {
+            let then = invocation::remote_then(state.shell_integration());
+            match crate::fleet::session(
+                env,
+                asg,
+                i,
+                Some(&invocation::wrap(&rendered.command, &then)),
+            ) {
+                Ok(cmd) => cmd,
+                Err(e) => {
+                    if let (Some(id), Ok(log)) = (audit_id, state.audit.as_ref()) {
+                        let _ = log.finish(id, None);
+                    }
+                    return Err(e);
+                }
+            }
+        }
+        _ => invocation::command_for(
+            rendered.kind,
+            &rendered.host,
+            &rendered.command,
+            env,
+            state.shell_integration(),
+        ),
+    };
     let launch = Launch::tracked(cmd).with_hooks(hooks);
-    let launch = if rendered.kind == ActionKind::Ssh {
+    let launch = if rendered.kind == ActionKind::Ssh && asg.is_none() {
         launch.on_host(rendered.host.clone())
     } else {
         launch

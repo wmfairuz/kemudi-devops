@@ -15,7 +15,8 @@ import { findServer } from "@/stores/config";
 import { askParams } from "@/stores/params";
 import { useStatus } from "@/stores/status";
 import { useActionFlow, type FlowDialog } from "@/stores/actionFlow";
-import { activeTab, useTabs, type Tab } from "@/stores/tabs";
+import { activeTab, groupOf, terminalPanes, useTabs, type Tab } from "@/stores/tabs";
+import { instanceLabel, isAsg, runOnAsg } from "@/lib/fleet";
 import { toastError, useToasts } from "@/stores/toasts";
 import { escapeCommand } from "@/lib/blocks";
 import { localHms } from "@/lib/time";
@@ -122,8 +123,8 @@ export function blockIntro(header: string, command: string): string {
   );
 }
 
-function intro(a: RenderedAction, command: string): string {
-  const where = a.kind === "local" ? `${a.serverId} (local)` : `${a.serverId} (${a.host})`;
+function intro(a: RenderedAction, command: string, on?: string): string {
+  const where = a.kind === "local" ? `${a.serverId} (local)` : `${a.serverId} (${on ?? a.host})`;
   return blockIntro([where, a.appId, a.label, localHms()].filter(Boolean).join(" · "), command);
 }
 
@@ -162,6 +163,19 @@ function reusableTab(a: RenderedAction): Tab | undefined {
   );
 }
 
+/** For an Auto Scaling group's action: the tab in front when it's this
+ *  group's shells (one per instance, opened from the same app for an app's
+ *  action), all idle at the prompt; the action is typed into each. */
+function asgShellsInFront(a: RenderedAction): Tab[] | undefined {
+  const state = useTabs.getState();
+  const group = groupOf(state, state.activeId);
+  if (!group) return undefined;
+  const panes = terminalPanes(state, group.id);
+  const ours = (t: Tab) =>
+    t.kind === "ssh" && !!t.instance && t.serverId === a.serverId && (a.appId === null || (t.appId ?? null) === a.appId) && idle(t);
+  return panes.length > 0 && panes.every(ours) ? panes : undefined;
+}
+
 /** Type the action at that tab's prompt (audited like "send") and follow
  *  it to its exit code, so the tab shows ✓/✗ for this run. */
 async function rerunInTab(tab: Tab, a: RenderedAction, override: string | null): Promise<void> {
@@ -197,6 +211,17 @@ async function rerunInTab(tab: Tab, a: RenderedAction, override: string | null):
  *  prompt, else in a new tab. `command` is the (possibly edited) command. */
 export function runAction(a: RenderedAction, command?: string): string {
   const override = command !== undefined && command.trim() !== a.rendered ? command : null;
+  // An Auto Scaling group: in its shells in front, else a new pane per
+  // instance.
+  if (a.kind === "ssh" && isAsg(findServer(a.serverId))) {
+    const shells = asgShellsInFront(a);
+    if (shells) {
+      for (const t of shells) void rerunInTab(t, a, override);
+      return shells[0]!.id;
+    }
+    void runOnAsg(a, override, (i) => intro(a, override ?? a.rendered, `${instanceLabel(i)}, ${i.id}`));
+    return useTabs.getState().activeId ?? "";
+  }
   const again = reusableTab(a);
   if (again) {
     void rerunInTab(again, a, override);
@@ -256,7 +281,13 @@ export async function sendAction(a: RenderedAction, command: string): Promise<bo
   }
   try {
     const override = command.trim() !== a.rendered ? command : null;
-    await actionSend(ptyId, refOf(a), override);
+    // Typing in all panes: into each of them.
+    const state = useTabs.getState();
+    const group = groupOf(state, tab.id);
+    const panes = group?.broadcast ? terminalPanes(state, group.id) : [tab];
+    for (const p of panes) {
+      if (p.session.ptyId !== null && p.session.status === "running") await actionSend(p.session.ptyId, refOf(a), override);
+    }
     useTabs.getState().activate(tab.id);
     tab.session.focus();
     return true;

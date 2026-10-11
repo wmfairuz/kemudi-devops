@@ -124,6 +124,12 @@ fn title_of(config: &Config, step: &Step) -> String {
         .unwrap_or_else(|| step_title(config, &step.kind))
 }
 
+/// Session Manager doesn't hand back the remote exit status, so a step on an
+/// Auto Scaling group couldn't stop the run when it fails.
+fn asg_step(n: &str, server: &str) -> String {
+    format!("step {n}: {server} is an AWS Auto Scaling group, which workflows can't run steps on yet; run its actions from the sidebar (they open a pane per instance)")
+}
+
 /// The shell line for a command step (this Mac, a server, an action), or a
 /// watch's command. `n` names the step in errors.
 fn command_line(config: &Config, kind: &StepKind, n: &str, ssh: &SshFor) -> Result<String, String> {
@@ -137,6 +143,9 @@ fn command_line(config: &Config, kind: &StepKind, n: &str, ssh: &SshFor) -> Resu
         let srv = config
             .server(server)
             .ok_or_else(|| format!("step {n}: `{server}` isn't a server in Kemudi"))?;
+        if srv.asg.is_some() {
+            return Err(asg_step(n, &srv.name));
+        }
         // An interactive login bash, so aliases (e.g. `deploy`) work.
         let shell = format!("bash -lic {}", shell_quote(inner));
         let cmd = if root {
@@ -186,6 +195,9 @@ fn command_line(config: &Config, kind: &StepKind, n: &str, ssh: &SshFor) -> Resu
                     r.label,
                     r.missing.join(", ")
                 ));
+            }
+            if r.kind == ActionKind::Ssh && config.server(server).is_some_and(|s| s.asg.is_some()) {
+                return Err(asg_step(n, server));
             }
             Ok(match r.kind {
                 ActionKind::Ssh => ssh(&r.host, &r.command),

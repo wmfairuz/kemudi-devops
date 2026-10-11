@@ -12,6 +12,7 @@ interface SavedTab {
   title: string;
   renamed: boolean;
   host?: string;
+  instance?: string;
   cwd?: string;
   serverId?: string;
   appId?: string;
@@ -61,6 +62,23 @@ function restoreTab(t: SavedTab): string {
   }
   if (t.kind === "tune" && t.serverId && t.host) {
     return openTune({ id: t.serverId, name: t.title.replace(/ · tune$/, ""), host: t.host, env: t.prod ? "prod" : "dev" });
+  }
+  // A Session Manager pane (or an action that ran on an instance) comes
+  // back as a shell on that instance; if it's gone, ↵ in the pane retries.
+  if (t.instance && t.serverId && t.kind !== "local" && !t.local) {
+    const id = open({
+      kind: "ssh",
+      title: t.renamed || t.kind === "ssh" ? t.title : `${t.serverId} · ${t.instance}`,
+      serverId: t.serverId,
+      instance: t.instance,
+      appId: t.cwd && t.appId ? t.appId : undefined,
+      cwd: t.cwd,
+      prod: t.prod,
+      background: true,
+      spawn: ptySpawner({ kind: "ssm", serverId: t.serverId, instance: t.instance, cwd: t.cwd }),
+    });
+    if (t.renamed) rename(id, t.title);
+    return id;
   }
   // Action tabs come back as a shell where they ran, never re-running.
   const local = t.kind === "local" || t.local || !t.host;
@@ -127,6 +145,7 @@ export async function initSession(): Promise<void> {
           title: t.title,
           renamed: t.renamed,
           host: t.host,
+          instance: t.instance,
           cwd: t.cwd,
           serverId: t.serverId,
           appId: t.appId ?? undefined,

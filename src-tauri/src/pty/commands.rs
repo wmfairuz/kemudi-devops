@@ -17,6 +17,13 @@ pub enum SpawnSpec {
     /// `ssh <host>` using ~/.ssh/config, keys and the agent as-is,
     /// optionally starting in `cwd` on the server (an app's path).
     Ssh { host: String, cwd: Option<String> },
+    /// A Session Manager shell on one instance of an `asg:` server.
+    #[serde(rename_all = "camelCase")]
+    Ssm {
+        server_id: String,
+        instance: String,
+        cwd: Option<String>,
+    },
 }
 
 /// Keyboard/paste input is text; a few legacy mouse encodings are raw bytes.
@@ -78,6 +85,11 @@ fn launch_for(spec: SpawnSpec, env: &LoginEnv, integrate: bool) -> AppResult<Lau
             }
             Launch::plain(cmd)
         }
+        SpawnSpec::Ssm { .. } => {
+            return Err(AppError::Invalid(
+                "a Session Manager shell needs its server".into(),
+            ))
+        }
         SpawnSpec::Ssh { host, cwd } => {
             crate::ssh::validate_host(&host)?;
             let mut cmd = base_command(env, Some("ssh"));
@@ -124,7 +136,29 @@ pub async fn pty_spawn(
     on_event: Channel<PtyEvent>,
 ) -> AppResult<PtyId> {
     let size = pty_size(cols, rows)?;
-    let launch = launch_for(spec, state.env_ready().await, state.shell_integration())?;
+    let env = state.env_ready().await;
+    let integrate = state.shell_integration();
+    let launch = match spec {
+        SpawnSpec::Ssm {
+            server_id,
+            instance,
+            cwd,
+        } => {
+            let server = crate::fleet::asg_server(&state, &server_id)?;
+            let asg = server
+                .asg
+                .as_ref()
+                .ok_or_else(|| AppError::Invalid(server_id.clone()))?;
+            let script = remote_command(cwd.as_deref(), integrate);
+            Launch::plain(crate::fleet::session(
+                env,
+                asg,
+                &instance,
+                script.as_deref(),
+            )?)
+        }
+        spec => launch_for(spec, env, integrate)?,
+    };
     state.ptys.spawn(launch, size, on_data, on_event)
 }
 

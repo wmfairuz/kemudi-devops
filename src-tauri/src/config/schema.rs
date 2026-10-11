@@ -123,8 +123,12 @@ pub struct RawServer {
     pub name: Option<String>,
     /// The team it belongs to (a `teams:` id).
     pub team: Option<String>,
-    /// An ~/.ssh/config alias (or user@host).
+    /// An ~/.ssh/config alias (or user@host). Not with `asg`.
+    #[serde(default)]
     pub host: String,
+    /// An AWS Auto Scaling group instead of one host: its running instances,
+    /// looked up when used and reached through Session Manager.
+    pub asg: Option<Asg>,
     pub env: Env,
     #[serde(default)]
     pub vpn: Vpn,
@@ -310,6 +314,23 @@ pub enum Vpn {
     Globalprotect,
 }
 
+/// `asg: { name, profile, region, root }`: the group, the AWS CLI profile
+/// and region it's in, and whether shells and actions run as root (`sudo`,
+/// the default) or as Session Manager's own user.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Asg {
+    pub name: String,
+    pub profile: Option<String>,
+    pub region: Option<String>,
+    #[serde(default = "yes")]
+    pub root: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HostPort {
@@ -455,7 +476,9 @@ pub struct Server {
     pub id: String,
     pub name: String,
     pub team: Option<String>,
+    /// Empty for an `asg` server.
     pub host: String,
+    pub asg: Option<Asg>,
     pub env: Env,
     pub vpn: Vpn,
     pub vpn_check: Option<HostPort>,
