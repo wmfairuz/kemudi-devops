@@ -7,9 +7,9 @@ use tauri::{AppHandle, State};
 
 use super::commands::save;
 use super::locate::{
-    add_app, add_server, add_team, delete_entity, delete_team, delete_workflow, move_app,
-    move_server, set_entity_field, set_server_block, set_team_block, set_team_field, set_workflow,
-    yaml_quote, yaml_scalar,
+    add_app, add_server, add_team, delete_entity, delete_team, delete_workflow, duplicate_server,
+    move_app, move_server, set_entity_field, set_server_block, set_team_block, set_team_field,
+    set_workflow, yaml_quote, yaml_scalar,
 };
 use super::schema::{Asg, Config, Env, HostPort, TabColor, Vpn};
 use super::Snapshot;
@@ -299,6 +299,33 @@ pub async fn server_save(
         }) && original
             .as_ref()
             .is_none_or(|o| o == &id || c.server(o).is_none())
+    })?;
+    save(&app, &state, state.config.path(), &edited)
+}
+
+/// Copy a server (with its apps and actions) as `id`, named `name`, right
+/// after it.
+#[tauri::command]
+pub async fn server_duplicate(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    original: String,
+    id: String,
+    name: String,
+) -> AppResult<Snapshot> {
+    required(&id, "An ID")?;
+    let id = id.trim().to_string();
+    let name = name.trim().to_string();
+    let edited = duplicate_server(&read(&state)?, &original, &id)
+        .and_then(|src| {
+            let n = (!name.is_empty() && name != id).then(|| yaml_scalar(&name));
+            set_entity_field(&src, &id, None, "name", n.as_deref())
+        })
+        .map_err(AppError::Invalid)?;
+    checked(&edited, |c| {
+        c.server(&original).is_some()
+            && c.server(&id)
+                .is_some_and(|s| name.is_empty() || s.name == name)
     })?;
     save(&app, &state, state.config.path(), &edited)
 }

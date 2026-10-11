@@ -40,7 +40,7 @@ import { triggerAction } from "@/lib/actions";
 import { cn } from "@/lib/utils";
 import { useConfig } from "@/stores/config";
 import { askConfirm } from "@/stores/confirm";
-import { freeId, openDetails, useManage } from "@/stores/manage";
+import { duplicateServer, freeId, openDetails, useManage } from "@/stores/manage";
 import { useNewApp } from "@/stores/newApp";
 import { useTeam } from "@/stores/team";
 
@@ -460,9 +460,14 @@ function ServerDetails({ server }: { server: Server | null }) {
         footer={
           <>
             {server && (
-              <Btn variant="ghost" className="px-2.5 text-env-prod-fg" disabled={busy} onClick={() => void remove()}>
-                Delete…
-              </Btn>
+              <>
+                <Btn variant="ghost" className="px-2.5 text-env-prod-fg" disabled={busy} onClick={() => void remove()}>
+                  Delete…
+                </Btn>
+                <Btn variant="ghost" className="px-2.5" disabled={busy} onClick={() => void duplicateServer(server)} title="A copy of this server with its apps and actions, to change what differs">
+                  Duplicate
+                </Btn>
+              </>
             )}
             <span className="flex-1" />
             {server ? (

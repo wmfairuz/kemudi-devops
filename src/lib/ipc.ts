@@ -643,6 +643,9 @@ export const teamDelete = (id: string): Promise<ConfigSnapshot> => invoke("team_
 export const serverSave = (original: string | null, server: ServerForm): Promise<ConfigSnapshot> =>
   invoke("server_save", { original, server });
 export const serverDelete = (id: string): Promise<ConfigSnapshot> => invoke("server_delete", { id });
+/** Copy a server (apps and actions too) as `id`, named `name`, right after it. */
+export const serverDuplicate = (original: string, id: string, name: string): Promise<ConfigSnapshot> =>
+  invoke("server_duplicate", { original, id, name });
 export const appSave = (serverId: string, original: string | null, form: AppForm): Promise<ConfigSnapshot> =>
   invoke("app_save", { serverId, original, form });
 export const appDelete = (serverId: string, id: string): Promise<ConfigSnapshot> =>

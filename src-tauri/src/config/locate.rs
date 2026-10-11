@@ -1255,6 +1255,54 @@ pub fn move_server(source: &str, id: &str, before: Option<&str>) -> Result<Strin
     Ok(finish(lines, source))
 }
 
+/// Copy server `id` as `new_id`, right after it: everything in its entry
+/// (connection, apps, actions, comments) comes along.
+pub fn duplicate_server(source: &str, id: &str, new_id: &str) -> Result<String, String> {
+    let doc = Doc::new(source);
+    let (key_at, list) = doc
+        .key_at((0, doc.lines.len()), "servers")
+        .ok_or("the server list is missing (no `servers:`)")?;
+    if !value_part(doc.lines[key_at]).is_empty() {
+        return Err(format!("the server list is written inline; {HAND}"));
+    }
+    if doc.item(list, new_id).is_some() {
+        return Err(format!("there's already a server `{new_id}`"));
+    }
+    let (at, body) = doc
+        .item(list, id)
+        .ok_or_else(|| format!("server `{id}` not found"))?;
+    let dash = indent(doc.lines[at]);
+    let last = doc.last_content(body).unwrap_or(at).max(at);
+    let mut block: Vec<String> = doc.lines[at..=last]
+        .iter()
+        .map(|l| {
+            if l.trim().is_empty() {
+                String::new()
+            } else {
+                l.get(dash.min(indent(l))..).unwrap_or(l).to_string()
+            }
+        })
+        .collect();
+    rename_entry(&mut block, new_id)?;
+    let pad = " ".repeat(dash);
+    let mut copy: Vec<String> = block
+        .into_iter()
+        .map(|l| if l.is_empty() { l } else { format!("{pad}{l}") })
+        .collect();
+    // Spaced like the list around it.
+    let first = (list.0..list.1).find(|&i| is_content(doc.lines[i]));
+    let spaced = first.is_some_and(|f| {
+        let end = doc.last_content(list).unwrap_or(f);
+        (f..end).any(|i| doc.lines[i].trim().is_empty())
+    });
+    if spaced {
+        copy.insert(0, String::new());
+    }
+    let mut lines: Vec<String> = doc.lines.iter().map(|l| l.to_string()).collect();
+    lines.splice(last + 1..last + 1, copy);
+    Ok(finish(lines, source))
+}
+
 /// Set `id:` in an entry's lines (relative to its dash).
 fn rename_entry(block: &mut [String], id: &str) -> Result<(), String> {
     let value = yaml_scalar(id);
@@ -2379,6 +2427,19 @@ actions:
 /// `KEMUDI_VALIDATE=<file> KEMUDI_EDIT=server/app/action cargo test confirm_roundtrip -- --ignored`
 #[cfg(test)]
 mod file_check {
+    #[test]
+    fn duplicates_a_server_after_itself() {
+        let src = "servers:\n  - id: web\n    name: Shop web\n    env: qa\n    asg: { name: shop-web-asg, profile: acme-staging }\n    apps:\n      - id: shop\n        path: /var/www/shop\n  - id: db\n    host: db\n    env: dev\n";
+        let out = super::duplicate_server(src, "web", "web-2").expect("dup");
+        assert!(out.contains("  - id: web\n"), "{out}");
+        let at = out.find("  - id: web-2\n").expect("copy");
+        assert!(at < out.find("  - id: db\n").expect("db"), "{out}");
+        assert!(out[at..].contains("        path: /var/www/shop\n"), "{out}");
+        assert!(super::duplicate_server(src, "web", "db").is_err());
+        let parsed = crate::config::validate::parse(&out);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    }
+
     #[test]
     #[ignore]
     fn confirm_roundtrip() {

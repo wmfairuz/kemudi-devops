@@ -2,7 +2,9 @@
 // and the right-click menu on sidebar rows.
 import { create } from "zustand";
 
-import type { App, Server } from "@/lib/ipc";
+import { errorMessage, serverDuplicate, type App, type Server } from "@/lib/ipc";
+import { useConfig } from "@/stores/config";
+import { toastError, useToasts } from "@/stores/toasts";
 import { useSidebar } from "@/stores/sidebar";
 import { useTabs } from "@/stores/tabs";
 
@@ -48,6 +50,22 @@ export function freeId(name: string, taken: string[], fallback: string): string 
   const base = slug(name) || fallback;
   if (!taken.includes(base)) return base;
   for (let n = 2; ; n++) if (!taken.includes(`${base}-${n}`)) return `${base}-${n}`;
+}
+
+/** Copy a server (its connection, apps and actions) as "<name> copy" right
+ *  after it, then open the copy to change what differs (its group, profile,
+ *  host…). */
+export async function duplicateServer(server: Server): Promise<void> {
+  const taken = useConfig.getState().snapshot?.config?.servers.map((s) => s.id) ?? [];
+  const name = `${server.name} copy`;
+  const id = freeId(name, taken, "server");
+  try {
+    await serverDuplicate(server.id, id, name);
+    useToasts.getState().push(`Duplicated ${server.name}: change what differs, then Save`, "info");
+    openDetails({ kind: "server", serverId: id });
+  } catch (e) {
+    toastError(errorMessage(e));
+  }
 }
 
 /** Lower-case id from a display name: "NovaOS Staging" → "novaos-staging". */

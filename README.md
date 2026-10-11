@@ -89,7 +89,10 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   **click** one for its details page in the main area (edit the fields, Save,
   **Open shell**, Delete…; a server's page lists its apps with + Add app),
   **double-click** to ssh straight in (into the app's path for an app),
-  **right-click** for Details… / Add app… / Delete…. The **+** next to
+  **right-click** for Details… / Add app… / Duplicate / Delete…. **Duplicate**
+  (also on the server's page) copies a server right after itself, with its
+  connection, apps and actions, as "<name> copy" and opens it, so you change
+  only what differs (say, the AWS profile for production). The **+** next to
   *Servers* adds one. Kemudi edits only the lines it must, keeps your
   comments, and checks the result before writing it; with no servers.yaml
   yet, the first server creates it.

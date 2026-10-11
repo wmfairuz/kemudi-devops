@@ -1,7 +1,7 @@
 import { PopupMenu } from "@/components/kit/PopupMenu";
 import { appDelete, errorMessage, openUrl, serverDelete, type App, type Server } from "@/lib/ipc";
 import { askConfirm } from "@/stores/confirm";
-import { openDetails, useManage } from "@/stores/manage";
+import { duplicateServer, openDetails, useManage } from "@/stores/manage";
 import { useNewApp } from "@/stores/newApp";
 import { useConfig } from "@/stores/config";
 import { DiscoverDialog } from "./DiscoverDialog";
@@ -60,7 +60,12 @@ export function EntityMenu() {
                 { label: "Discover apps…", hint: "on one instance", run: () => useManage.getState().setDiscover(server.id) },
               ]),
         ],
-        [app ? { label: "Delete app…", run: () => removeApp(server, app) } : { label: "Delete server…", run: () => removeServer(server) }],
+        app
+          ? [{ label: "Delete app…", run: () => removeApp(server, app) }]
+          : [
+              { label: "Duplicate", hint: "group, profile, apps, actions", run: () => void duplicateServer(server) },
+              { label: "Delete server…", run: () => removeServer(server) },
+            ],
       ]
     : app
     ? [
@@ -89,7 +94,10 @@ export function EntityMenu() {
           { label: "Discover apps…", hint: "find Laravel apps on it", run: () => useManage.getState().setDiscover(server.id) },
           { label: "New app…", hint: "set one up from git", run: () => useNewApp.getState().open(server.id) },
         ],
-        [{ label: "Delete server…", run: () => removeServer(server) }],
+        [
+          { label: "Duplicate", hint: "host, apps, actions", run: () => void duplicateServer(server) },
+          { label: "Delete server…", run: () => removeServer(server) },
+        ],
       ];
   return (
     <PopupMenu

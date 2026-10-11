@@ -140,6 +140,7 @@ pub fn run() {
             config::commands::action_set_danger,
             config::forms::server_save,
             config::forms::server_delete,
+            config::forms::server_duplicate,
             config::forms::team_save,
             config::forms::team_delete,
             config::forms::app_save,
