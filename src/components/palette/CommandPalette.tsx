@@ -15,7 +15,7 @@ import { useSidebar } from "@/stores/sidebar";
 import { insertSnippet, useSnippets } from "@/stores/snippets";
 import { snippetVisible, useTeam, useTeamServers } from "@/stores/team";
 import { useStatus } from "@/stores/status";
-import { openLocalShell, openSsh, useTabs, type Tab } from "@/stores/tabs";
+import { openLocalShell, openSsh, toggleBroadcast, useTabs, type Tab } from "@/stores/tabs";
 import { useConfig } from "@/stores/config";
 import { useWorkflows } from "@/stores/workflows";
 import { useUi } from "@/stores/ui";
@@ -87,6 +87,7 @@ function buildItems(servers: Server[], tabs: Tab[], snippets: Snippet[], close: 
     cmd("Passwords…", () => useUi.getState().setOverlay("passwords"), "⇧⌘K"),
     cmd("Environment…", () => useUi.getState().setOverlay("environment")),
     cmd("New workflow…", () => useWorkflows.getState().edit(null)),
+    cmd("Type in all panes (on/off)", () => toggleBroadcast(), "⇧⌘I"),
   );
   // Workflows first among the commands (the run dialog shows the steps).
   const workflows = useConfig.getState().snapshot?.config?.workflows ?? [];

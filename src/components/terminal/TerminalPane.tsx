@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from "react";
 
 import type { Layout } from "@/lib/layout";
 import { cn } from "@/lib/utils";
-import { groupOf, isViewTab, useTabs, type Group, type Tab } from "@/stores/tabs";
+import { groupOf, isViewTab, terminalPanes, useTabs, type Group, type Tab } from "@/stores/tabs";
 import { useUi } from "@/stores/ui";
 
 import { TerminalContextMenu, type MenuState } from "./TerminalContextMenu";
@@ -102,6 +102,7 @@ function LayoutView({
     if (!tab) return <div className="flex-1" />;
     const split = !("pane" in group.layout);
     const focused = tab.id === activeId;
+    const typingInAll = group.broadcast && !isViewTab(tab.kind) ? terminalPanes({ tabs }, group.id).length : 0;
     return (
       <div
         className={cn("relative min-h-0 min-w-0 flex-1 border-t", tab.prod ? "border-env-prod" : "border-terminal")}
@@ -138,6 +139,20 @@ function LayoutView({
           </>
         )}
         {split && !focused && <div className="pointer-events-none absolute inset-0 bg-black/20" />}
+        {typingInAll > 1 && (
+          <>
+            <div className="pointer-events-none absolute inset-0 z-10 border-2 border-broadcast/70" />
+            {focused && (
+              <button
+                onClick={() => useTabs.getState().setBroadcast(group.id, false)}
+                className="absolute right-4 bottom-3 z-20 flex h-7 cursor-pointer items-center gap-1.5 rounded-md bg-broadcast px-2.5 font-mono text-[12px] font-semibold text-[#282a36] shadow hover:brightness-110"
+                title="Stop typing in all panes"
+              >
+                Typing in all {typingInAll} panes · ⇧⌘I to stop
+              </button>
+            )}
+          </>
+        )}
       </div>
     );
   }

@@ -5,7 +5,7 @@
 // xterm passes every ⌘ chord through (see TerminalSession's key handler);
 // everything else stays in the PTY.
 import { copyCommand, copyOutput } from "@/lib/blockActions";
-import { DETAILS_ID, HISTORY_ID, isViewTab, openLocalShell, useTabs } from "@/stores/tabs";
+import { DETAILS_ID, HISTORY_ID, isViewTab, openLocalShell, toggleBroadcast, useTabs } from "@/stores/tabs";
 import { useVault } from "@/stores/vault";
 import { useUpdates } from "@/stores/updates";
 import { useUi } from "@/stores/ui";
@@ -75,6 +75,7 @@ const COMMANDS: Record<string, () => void> = {
   "pane.right": () => useTabs.getState().focusSide("right"),
   "pane.up": () => useTabs.getState().focusSide("up"),
   "pane.down": () => useTabs.getState().focusSide("down"),
+  "pane.broadcast": () => toggleBroadcast(),
 };
 // ⌘1–8 jump to that tab, ⌘9 to the last one (browser/Warp convention).
 for (let n = 1; n <= 9; n++) {
@@ -110,6 +111,7 @@ function commandFor(e: KeyboardEvent): string | null {
   if (e.shiftKey && e.code === "KeyT") return "tab.ssh";
   if (e.shiftKey && e.code === "KeyP") return "vault.fill";
   if (e.shiftKey && e.code === "KeyK") return "passwords";
+  if (e.shiftKey && e.code === "KeyI") return "pane.broadcast";
   if (e.shiftKey) return null;
   const byCode: Record<string, string> = {
     KeyA: "edit.selectAll",

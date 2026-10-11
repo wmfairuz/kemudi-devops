@@ -1,4 +1,4 @@
-import { Activity, ChevronDown, Columns2, FolderOpen, Gauge, HeartPulse, House, ListChecks, ScrollText, SquareTerminal } from "lucide-react";
+import { Activity, ChevronDown, Columns2, Keyboard, FolderOpen, Gauge, HeartPulse, House, ListChecks, ScrollText, SquareTerminal } from "lucide-react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -14,7 +14,7 @@ import { TAB_COLORS, type TabColor } from "@/lib/tabColors";
 import { ColorDot, openTabConfig, useTabConfigs } from "@/components/tabconfigs/TabConfigs";
 import { errorMessage, tabConfigsList, type TabConfigEntry } from "@/lib/ipc";
 import { toastError } from "@/stores/toasts";
-import { DETAILS_ID, HISTORY_ID, HOME_ID, openLocalShell, useTabs, type Group, type Tab } from "@/stores/tabs";
+import { DETAILS_ID, HISTORY_ID, HOME_ID, isViewTab, openLocalShell, toggleBroadcast, useTabs, type Group, type Tab } from "@/stores/tabs";
 import { useUi } from "@/stores/ui";
 
 function TabIcon({ tab }: { tab: Tab }) {
@@ -42,6 +42,8 @@ function TabItem({ tab, group, panes, active }: { tab: Tab; group: Group; panes:
   const [editing, setEditing] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const prod = panes.some((p) => p.prod);
+  const terminals = panes.filter((p) => !isViewTab(p.kind)).length;
+  const broadcast = !!group.broadcast && terminals > 1;
   const color = group.color ? TAB_COLORS[group.color] : null;
   // A coloured strip on top and a light tint; Dracula hue on the dark
   // active tab, the Alucard one on the light strip.
@@ -106,7 +108,15 @@ function TabItem({ tab, group, panes, active }: { tab: Tab; group: Group; panes:
       {tab.state === "failed" && tab.exitCode !== undefined && (
         <span className="font-mono text-[10.5px] text-term-red">{tab.exitCode}</span>
       )}
-      {panes.length > 1 && (
+      {broadcast ? (
+        <span
+          title={`Typing in all ${terminals} panes · ⇧⌘I to stop`}
+          className="flex h-[18px] flex-none items-center gap-1 rounded-[5px] bg-broadcast px-1 font-mono text-[10.5px] font-semibold text-background"
+        >
+          <Keyboard className="size-3" strokeWidth={2.25} aria-hidden />
+          {terminals}
+        </span>
+      ) : panes.length > 1 && (
         <span
           title={`${panes.length} panes`}
           className="flex h-[18px] flex-none items-center gap-1 rounded-[5px] border border-current/25 px-1 font-mono text-[10.5px] opacity-70"
@@ -150,6 +160,7 @@ function TabItem({ tab, group, panes, active }: { tab: Tab; group: Group; panes:
             [
               { label: "Split right", hint: "⌘D", run: () => useTabs.getState().splitActive("row") },
               { label: "Split down", hint: "⇧⌘D", run: () => useTabs.getState().splitActive("col") },
+              { label: "Type in all panes", hint: "⇧⌘I", checked: !!group.broadcast, run: toggleBroadcast },
             ],
             [{ label: panes.length > 1 ? `Close tab (${panes.length} panes)` : "Close tab", run: () => closeGroup(group.id) }],
           ]}

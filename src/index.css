@@ -78,6 +78,7 @@
   --terminal-bg: #282a36; /* the terminal stays Dracula */
   --term-green: #1f9d3a;
   --term-red: #d1242f;
+  --broadcast: #c2185b; /* type in all panes */
   --overlay: rgb(30 32 40 / 0.28);
 }
 
@@ -151,6 +152,7 @@
   --terminal-bg: #282a36;
   --term-green: #50fa7b;
   --term-red: #ff5555;
+  --broadcast: #ff79c6; /* Dracula pink: type in all panes */
   --overlay: rgb(0 0 0 / 0.55);
 }
 
@@ -221,6 +223,7 @@
   --color-terminal: var(--terminal-bg);
   --color-term-green: var(--term-green);
   --color-term-red: var(--term-red);
+  --color-broadcast: var(--broadcast);
   --color-overlay: var(--overlay);
 
   /* Type scale (use arbitrary sizes so `cn` merges them as font sizes):

@@ -92,6 +92,18 @@ function fontReady(family: string, size: number): Promise<unknown> {
 
 export type SessionStatus = "starting" | "running" | "exited" | "failed";
 
+/** What a terminal sends back on its own (cursor position, device
+ *  attributes, focus and mouse reports, OSC/DCS replies): not typing, so
+ *  never copied to other panes. */
+const REPORT = /^\x1b(\[(\??[\d;]*[cnR]|>[\d;]*c|[IO]|<[\d;]+[Mm]|M[\s\S]{3})|\][\s\S]|P[\s\S])/;
+
+let mirror: ((from: TerminalSession, data: string | number[]) => void) | null = null;
+/** Typing in one pane, for "Type in all panes" (the tabs store decides
+ *  where it goes). */
+export function setInputMirror(fn: typeof mirror): void {
+  mirror = fn;
+}
+
 export class TerminalSession {
   readonly term: Terminal;
   readonly search = new SearchAddon();
@@ -159,8 +171,13 @@ export class TerminalSession {
         return;
       }
       this.send(data);
+      if (!REPORT.test(data)) mirror?.(this, data);
     });
-    this.term.onBinary((data) => this.send(Array.from(data, (c) => c.charCodeAt(0) & 0xff)));
+    this.term.onBinary((data) => {
+      const bytes = Array.from(data, (c) => c.charCodeAt(0) & 0xff);
+      this.send(bytes);
+      if (!REPORT.test(data)) mirror?.(this, bytes);
+    });
     this.term.onResize(({ cols, rows }) => {
       if (this.ptyIdValue !== null) void resizePty(this.ptyIdValue, cols, rows).catch(() => {});
     });

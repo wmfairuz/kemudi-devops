@@ -157,6 +157,12 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
             "Focus Pane Below",
             Some("CmdOrCtrl+Alt+Down"),
         )?)
+        .item(&item(
+            app,
+            "pane.broadcast",
+            "Type in All Panes",
+            Some("CmdOrCtrl+Shift+I"),
+        )?)
         .separator()
         .fullscreen()
         .build()?;

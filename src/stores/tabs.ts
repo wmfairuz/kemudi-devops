@@ -5,12 +5,13 @@
 import { create } from "zustand";
 
 import type { ConfigLayout, PtyEvent } from "@/lib/ipc";
-import { ptySpawner, TerminalSession, type SessionOptions, type Spawner } from "@/lib/terminalSession";
+import { ptySpawner, setInputMirror, TerminalSession, type SessionOptions, type Spawner } from "@/lib/terminalSession";
 import { maybeNotifyFinished } from "@/lib/notify";
 import { leaves, neighbour, remove, setRatio, split, type Dir, type Layout, type Side } from "@/lib/layout";
 import type { TabColor } from "@/lib/tabColors";
 import type { StepTracker } from "@/lib/stepTracker";
 import { useConfig } from "@/stores/config";
+import { useToasts } from "@/stores/toasts";
 
 /** Design frame 1j, TerminalTab states. */
 export type TabState = "shell" | "running" | "ok" | "failed";
@@ -72,6 +73,9 @@ export interface Group {
   focus: string;
   /** Picked from the tab's right-click menu. */
   color?: TabColor;
+  /** Type in all panes: keys typed in one go to every terminal in the tab.
+   *  Never saved: a restored tab starts with it off. */
+  broadcast?: boolean;
 }
 
 export interface OpenOptions extends Pick<Tab, "title" | "kind">, Partial<Pick<Tab, "serverId" | "host" | "cwd" | "appId" | "actionId" | "local" | "prod" | "state">> {
@@ -115,6 +119,7 @@ interface TabsState {
   focusSide(side: Side): void;
   setRatio(groupId: string, splitId: string, ratio: number): void;
   setColor(groupId: string, color: TabColor | null): void;
+  setBroadcast(groupId: string, on: boolean): void;
   /** A tab config: one tab of panes, each in a folder running commands. */
   openConfig(opts: { title: string; color?: TabColor; layout: ConfigLayout }): void;
   /** Session restore: replace groups (layouts over existing pane ids). */
@@ -158,6 +163,13 @@ function likeOptions(t: Tab): OpenOptions {
 let nextId = 1;
 
 export const useTabs = create<TabsState>((set, get) => {
+  // Type in all panes: what's typed in one pane goes to the tab's others.
+  setInputMirror((from, data) => {
+    const s = get();
+    const tab = s.tabs.find((t) => t.session === from);
+    if (!tab || !s.groups.find((g) => g.id === tab.groupId)?.broadcast) return;
+    for (const t of s.tabs) if (t.groupId === tab.groupId && t.id !== tab.id && !isViewTab(t.kind)) t.session.send(data);
+  });
   const watch = (id: string, session: TerminalSession) =>
     session.onEvent((event: PtyEvent) => {
       const tab = get().tabs.find((t) => t.id === id);
@@ -367,6 +379,10 @@ export const useTabs = create<TabsState>((set, get) => {
       set((s) => ({ groups: s.groups.map((g) => (g.id === groupId ? { ...g, color: color ?? undefined } : g)) }));
     },
 
+    setBroadcast(groupId, on) {
+      set((s) => ({ groups: s.groups.map((g) => (g.id === groupId ? { ...g, broadcast: on || undefined } : g)) }));
+    },
+
     setRatio(groupId, splitId, ratio) {
       set((s) => ({ groups: s.groups.map((g) => (g.id === groupId ? { ...g, layout: setRatio(g.layout, splitId, ratio) } : g)) }));
     },
@@ -547,3 +563,20 @@ export function openSsh(
 // Dev only: a hot-swapped store would be a second, empty copy that
 // shortcuts and menus still use (⌘W/⌘A "stop working"); reload instead.
 import.meta.hot?.accept(() => window.location.reload());
+
+/** The terminal panes in a group (not monitors, files and other views). */
+export function terminalPanes(state: Pick<TabsState, "tabs">, groupId: string): Tab[] {
+  return state.tabs.filter((t) => t.groupId === groupId && !isViewTab(t.kind));
+}
+
+/** ⇧⌘I: type in all of the front tab's terminal panes, or stop. */
+export function toggleBroadcast(): void {
+  const s = useTabs.getState();
+  const group = groupOf(s, s.activeId);
+  if (!group) return;
+  if (!group.broadcast && terminalPanes(s, group.id).length < 2) {
+    useToasts.getState().push("Type in all panes needs two or more terminal panes in this tab: split it first (⌘D).", "info");
+    return;
+  }
+  s.setBroadcast(group.id, !group.broadcast);
+}

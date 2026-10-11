@@ -760,6 +760,7 @@ would seem to stop working). Tabs come back through session restore.
 | ⇧⌘K | Passwords |
 | ⌘D / ⇧⌘D | Split the pane right / down (same server and folder; an action pane gives a shell there) |
 | ⌥⌘ ← → ↑ ↓ | Move between panes |
+| ⇧⌘I | Type in all panes of the tab (on/off): what you type goes to every terminal pane, like iTerm's broadcast input. The panes get a pink outline, and the tab gets a ⌨ badge. Answers the focused pane's terminal queries only, and never carries over to a restored tab |
 | ⇧⌘C / ⌥⇧⌘C | Copy last command / its output |
 | ⌘, | Settings (terminal font, size, line height, scrollback, ⌥ as Meta, shell integration, editor) |
 | ⌘Y | History |
