@@ -1,6 +1,6 @@
 // AWS Auto Scaling group servers: their running instances are looked up
 // when used, and each gets a Session Manager pane in one tab, with Type in
-// all panes on (⇧⌘I), so one command or answer goes to all of them.
+// all panes on (⌥⌘I), so one command or answer goes to all of them.
 import {
   actionRun,
   asgInstances,
@@ -55,7 +55,7 @@ export async function openAsgShells(server: Server, app?: App | null): Promise<v
     { broadcast: list.length > 1 },
   );
   if (list.length > 1) {
-    useToasts.getState().push(`${list.length} instances of ${server.name}: typing goes to all of them (⇧⌘I to stop).`, "info");
+    useToasts.getState().push(`${list.length} instances of ${server.name}: typing goes to all of them (⌥⌘I to stop).`, "info");
   }
 }
 

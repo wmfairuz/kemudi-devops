@@ -612,7 +612,7 @@ export function terminalPanes(state: Pick<TabsState, "tabs">, groupId: string): 
   return state.tabs.filter((t) => t.groupId === groupId && !isViewTab(t.kind));
 }
 
-/** ⇧⌘I: type in all of the front tab's terminal panes, or stop. */
+/** ⌥⌘I: type in all of the front tab's terminal panes, or stop. */
 export function toggleBroadcast(): void {
   const s = useTabs.getState();
   const group = groupOf(s, s.activeId);

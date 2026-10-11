@@ -99,6 +99,7 @@ export function runCommand(id: string): boolean {
 /** ⌘ chord → command id. Uses the physical key where Option/Shift change e.key. */
 function commandFor(e: KeyboardEvent): string | null {
   if (e.code === "KeyC" && e.shiftKey) return e.altKey ? "block.copyOutput" : "block.copyCommand";
+  if (e.altKey && !e.shiftKey && e.code === "KeyI") return "pane.broadcast";
   if (e.altKey && !e.shiftKey) {
     const side = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" }[e.code];
     return side ? `pane.${side}` : null;
@@ -111,7 +112,6 @@ function commandFor(e: KeyboardEvent): string | null {
   if (e.shiftKey && e.code === "KeyT") return "tab.ssh";
   if (e.shiftKey && e.code === "KeyP") return "vault.fill";
   if (e.shiftKey && e.code === "KeyK") return "passwords";
-  if (e.shiftKey && e.code === "KeyI") return "pane.broadcast";
   if (e.shiftKey) return null;
   const byCode: Record<string, string> = {
     KeyA: "edit.selectAll",

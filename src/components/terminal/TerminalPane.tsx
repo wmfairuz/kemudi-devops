@@ -148,7 +148,7 @@ function LayoutView({
                 className="absolute right-4 bottom-3 z-20 flex h-7 cursor-pointer items-center gap-1.5 rounded-md bg-broadcast px-2.5 font-mono text-[12px] font-semibold text-[#282a36] shadow hover:brightness-110"
                 title="Stop typing in all panes"
               >
-                Typing in all {typingInAll} panes · ⇧⌘I to stop
+                Typing in all {typingInAll} panes · ⌥⌘I to stop
               </button>
             )}
           </>

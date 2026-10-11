@@ -110,7 +110,7 @@ function TabItem({ tab, group, panes, active }: { tab: Tab; group: Group; panes:
       )}
       {broadcast ? (
         <span
-          title={`Typing in all ${terminals} panes · ⇧⌘I to stop`}
+          title={`Typing in all ${terminals} panes · ⌥⌘I to stop`}
           className="flex h-[18px] flex-none items-center gap-1 rounded-[5px] bg-broadcast px-1 font-mono text-[10.5px] font-semibold text-background"
         >
           <Keyboard className="size-3" strokeWidth={2.25} aria-hidden />
@@ -160,7 +160,7 @@ function TabItem({ tab, group, panes, active }: { tab: Tab; group: Group; panes:
             [
               { label: "Split right", hint: "⌘D", run: () => useTabs.getState().splitActive("row") },
               { label: "Split down", hint: "⇧⌘D", run: () => useTabs.getState().splitActive("col") },
-              { label: "Type in all panes", hint: "⇧⌘I", checked: !!group.broadcast, run: toggleBroadcast },
+              { label: "Type in all panes", hint: "⌥⌘I", checked: !!group.broadcast, run: toggleBroadcast },
             ],
             [{ label: panes.length > 1 ? `Close tab (${panes.length} panes)` : "Close tab", run: () => closeGroup(group.id) }],
           ]}

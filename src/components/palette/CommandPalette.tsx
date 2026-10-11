@@ -88,7 +88,7 @@ function buildItems(servers: Server[], tabs: Tab[], snippets: Snippet[], close: 
     cmd("Passwords…", () => useUi.getState().setOverlay("passwords"), "⇧⌘K"),
     cmd("Environment…", () => useUi.getState().setOverlay("environment")),
     cmd("New workflow…", () => useWorkflows.getState().edit(null)),
-    cmd("Type in all panes (on/off)", () => toggleBroadcast(), "⇧⌘I"),
+    cmd("Type in all panes (on/off)", () => toggleBroadcast(), "⌥⌘I"),
   );
   // Workflows first among the commands (the run dialog shows the steps).
   const workflows = useConfig.getState().snapshot?.config?.workflows ?? [];
