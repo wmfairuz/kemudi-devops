@@ -418,9 +418,120 @@ pub fn forward(
     Ok(cmd)
 }
 
+/// What `get-command-invocation` reports.
+#[derive(Debug, Deserialize)]
+struct Invocation {
+    #[serde(rename = "Status")]
+    status: String,
+    #[serde(rename = "StandardOutputContent", default)]
+    stdout: String,
+    #[serde(rename = "StandardErrorContent", default)]
+    stderr: String,
+}
+
+/// Session Manager keeps this much of a command's output.
+const OUTPUT_LIMIT: usize = 24_000;
+
+/// The `commands` for AWS-RunShellScript: the script, base64-encoded so no
+/// quoting can break it, fed to `sh -s` as ssh's `run_for` does.
+fn run_shell_commands(script: &str) -> serde_json::Value {
+    let b64 = base64::engine::general_purpose::STANDARD.encode(script);
+    serde_json::json!({ "commands": [format!("echo {b64} | base64 -d | sh -s")] })
+}
+
+/// Run a script on one of the server's instances (the first running one;
+/// a group's are alike) with `aws ssm send-command` (AWS-RunShellScript, as
+/// root) and return its output: `monitor::run_for` for an AWS server.
+pub async fn run_script(env: &LoginEnv, asg: &Asg, script: &str, secs: u64) -> AppResult<String> {
+    let first = instances(env, asg)
+        .await?
+        .into_iter()
+        .next()
+        .ok_or_else(|| AppError::Invalid("no running instances".into()))?;
+    let params = run_shell_commands(script).to_string();
+    let timeout = secs.max(30).to_string();
+    let id: String = aws_json(
+        env,
+        asg,
+        &[
+            "ssm",
+            "send-command",
+            "--instance-ids",
+            &first.id,
+            "--document-name",
+            "AWS-RunShellScript",
+            "--timeout-seconds",
+            &timeout,
+            "--parameters",
+            &params,
+            "--query",
+            "Command.CommandId",
+        ],
+    )
+    .await?;
+    let deadline = std::time::Instant::now() + Duration::from_secs(secs + 10);
+    loop {
+        tokio::time::sleep(Duration::from_millis(1200)).await;
+        // Just after sending, the invocation may not exist yet.
+        let inv: Result<Invocation, _> = aws_json(
+            env,
+            asg,
+            &[
+                "ssm",
+                "get-command-invocation",
+                "--command-id",
+                &id,
+                "--instance-id",
+                &first.id,
+            ],
+        )
+        .await;
+        match inv {
+            Ok(inv) if matches!(inv.status.as_str(), "Pending" | "InProgress" | "Delayed") => {}
+            Ok(inv) => {
+                if inv.stdout.len() >= OUTPUT_LIMIT {
+                    return Err(AppError::Invalid(
+                        "the output is longer than Session Manager keeps (24 KB)".into(),
+                    ));
+                }
+                if inv.status == "Success" || inv.stdout.contains("@@") {
+                    return Ok(inv.stdout);
+                }
+                return Err(AppError::Invalid(format!(
+                    "{} on {}: {}",
+                    inv.status,
+                    first.id,
+                    inv.stderr.trim()
+                )));
+            }
+            Err(e) if !e.to_string().contains("InvocationDoesNotExist") => return Err(e),
+            Err(_) => {}
+        }
+        if std::time::Instant::now() > deadline {
+            return Err(AppError::Invalid(format!(
+                "no answer from {} within {secs} s",
+                first.id
+            )));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The command AWS-RunShellScript runs gives back the script intact.
+    #[test]
+    fn run_shell_command_round_trips() {
+        let script = "printf '%s|' \"a b\" 'c\"d'\necho \"@@x\"\n";
+        let v = run_shell_commands(script);
+        let cmd = v["commands"][0].as_str().expect("command");
+        let out = std::process::Command::new("/bin/sh")
+            .args(["-c", cmd])
+            .output()
+            .expect("sh");
+        assert_eq!(String::from_utf8_lossy(&out.stdout), "a b|c\"d|@@x\n");
+    }
 
     #[test]
     fn fixed_instances_are_described_by_id() {

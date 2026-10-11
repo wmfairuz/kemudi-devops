@@ -909,15 +909,18 @@ function AppsList({ server }: { server: Server }) {
           <Btn size="sm" variant="outline" onClick={() => openDetails({ kind: "app", serverId: server.id, appId: null })}>
             + Add app
           </Btn>
+          <Btn
+            size="sm"
+            variant="primary"
+            onClick={() => useManage.getState().setDiscover(server.id)}
+            title={server.asg ? "Look for Laravel apps on one of its instances (they're alike) and add the ones you pick" : "Look around the server for Laravel apps and add the ones you pick"}
+          >
+            <ScanSearch className="size-3.5" /> Discover apps…
+          </Btn>
           {!server.asg && (
-            <>
-              <Btn size="sm" variant="primary" onClick={() => useManage.getState().setDiscover(server.id)} title="Look around the server for Laravel apps and add the ones you pick">
-                <ScanSearch className="size-3.5" /> Discover apps…
-              </Btn>
-              <Btn size="sm" variant="outline" onClick={() => useNewApp.getState().open(server.id)} title="Set up a new Laravel app on this server: clone, .env, database, nginx, queue worker, HTTPS">
-                <PackagePlus className="size-3.5" /> New app…
-              </Btn>
-            </>
+            <Btn size="sm" variant="outline" onClick={() => useNewApp.getState().open(server.id)} title="Set up a new Laravel app on this server: clone, .env, database, nginx, queue worker, HTTPS">
+              <PackagePlus className="size-3.5" /> New app…
+            </Btn>
           )}
         </div>
       </div>

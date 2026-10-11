@@ -257,6 +257,10 @@ pub(crate) async fn run_for(
     let server = config
         .server(server_id)
         .ok_or_else(|| AppError::NotFound(format!("server `{server_id}` isn't in Kemudi")))?;
+    // An AWS server: on one of its instances, through Session Manager.
+    if let Some(asg) = &server.asg {
+        return crate::fleet::run_script(state.env_ready().await, asg, script, secs).await;
+    }
     crate::ssh::validate_host(&server.host)?;
     let control = dirs::home_dir()
         .map(|h| h.join(".ssh").join("kemudi-cm-%C"))

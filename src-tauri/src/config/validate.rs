@@ -1016,10 +1016,24 @@ actions:
         assert!(!neither.errors.is_empty());
         let fixed = parse("servers:\n  - id: web\n    env: dev\n    asg: { instances: [i-0123456789abcdef0], profile: p }\n");
         assert!(fixed.errors.is_empty(), "{:?}", fixed.errors);
-        let wrong_id = parse("servers:\n  - id: web\n    env: dev\n    asg: { instances: [web-1] }\n");
-        assert!(wrong_id.errors.iter().any(|d| d.message.contains("EC2 instance id")), "{:?}", wrong_id.errors);
+        let wrong_id =
+            parse("servers:\n  - id: web\n    env: dev\n    asg: { instances: [web-1] }\n");
+        assert!(
+            wrong_id
+                .errors
+                .iter()
+                .any(|d| d.message.contains("EC2 instance id")),
+            "{:?}",
+            wrong_id.errors
+        );
         let none = parse("servers:\n  - id: web\n    env: dev\n    asg: { profile: p }\n");
-        assert!(none.errors.iter().any(|d| d.message.contains("either a group")), "{:?}", none.errors);
+        assert!(
+            none.errors
+                .iter()
+                .any(|d| d.message.contains("either a group")),
+            "{:?}",
+            none.errors
+        );
         let bad = parse("servers:\n  - id: web\n    env: dev\n    asg: { name: \"a b\" }\n");
         assert!(
             bad.errors.iter().any(|d| d.message.contains("isn't valid")),

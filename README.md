@@ -711,8 +711,12 @@ default) or as Session Manager's own user, and click **Find instances** to check
   `127.0.0.1:<port>` forwarded to the database
   (`AWS-StartPortForwardingSessionToRemoteHost`); close it or press Ctrl+C to
   stop. Kemudi remembers your last choices for each server.
-- Files, Logs, Monitor, Health, Inspect, Discover and New app need one ssh host,
-  so they don't appear for a group. Workflows can't run steps on a group yet,
+- **Discover apps** works on a group too. It runs its read-only script on one of
+  the instances, since a group's instances are alike, through `aws ssm
+  send-command` (as root, output back without a terminal). The app form's
+  Detect buttons work the same way.
+- Files, Logs, Monitor, Health, Inspect and New app need one ssh host, so they
+  don't appear for a group. Workflows can't run steps on a group yet,
   because Session Manager doesn't return the remote command's exit status.
 
 ## Guardrails

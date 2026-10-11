@@ -53,7 +53,12 @@ export function EntityMenu() {
           app
             ? { label: "Details…", run: () => openDetails({ kind: "app", serverId: server.id, appId: app.id }) }
             : { label: "Details…", run: () => openDetails({ kind: "server", serverId: server.id }) },
-          ...(app ? [] : [{ label: "Add app…", run: () => openDetails({ kind: "app", serverId: server.id, appId: null }) }]),
+          ...(app
+            ? []
+            : [
+                { label: "Add app…", run: () => openDetails({ kind: "app", serverId: server.id, appId: null }) },
+                { label: "Discover apps…", hint: "on one instance", run: () => useManage.getState().setDiscover(server.id) },
+              ]),
         ],
         [app ? { label: "Delete app…", run: () => removeApp(server, app) } : { label: "Delete server…", run: () => removeServer(server) }],
       ]
