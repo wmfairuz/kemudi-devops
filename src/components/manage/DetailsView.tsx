@@ -125,7 +125,8 @@ function Page({
             </div>
           </div>
           <div className="flex flex-col gap-2.5 rounded-xl border border-divider bg-panel px-6 py-5">{children}</div>
-          <div className="flex items-center gap-2">{footer}</div>
+          {/* Wraps when there are more buttons than fit (an AWS server's). */}
+          <div className="flex flex-wrap items-center justify-end gap-2">{footer}</div>
           {after}
         </div>
         {side && <div className="flex min-w-0 flex-col gap-4 @min-[960px]:pt-[58px]">{side}</div>}
