@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 import { ActionDialogs } from "@/components/actions/ActionDialogs";
 import { ActionsPanel } from "@/components/actions/ActionsPanel";
 import { AddActionDialog } from "@/components/actions/AddActionDialog";
-import { SnippetDialog } from "@/components/snippets/SnippetsPanel";
+import { SnippetsView } from "@/components/snippets/SnippetsView";
 import { FileEditorDialog } from "@/components/manage/FileEditor";
 import { VhostGeneratorDialog } from "@/components/manage/VhostGenerator";
 import { NewAppDialog } from "@/components/manage/NewAppDialog";
@@ -40,16 +40,17 @@ import { initSession } from "@/stores/session";
 import { useDiskAlerts } from "@/stores/diskAlerts";
 import { useSslAlerts } from "@/stores/sslAlerts";
 import { useStatus } from "@/stores/status";
-import { activeTab, DETAILS_ID, HISTORY_ID, HOME_ID, useTabs } from "@/stores/tabs";
+import { activeTab, DETAILS_ID, HISTORY_ID, HOME_ID, SNIPPETS_ID, useTabs } from "@/stores/tabs";
 
 export default function App() {
   const active = useTabs(activeTab);
   const hasTabs = useTabs((s) => s.tabs.length > 0);
   const showHistory = useTabs((s) => s.activeId === HISTORY_ID);
   const showDetails = useTabs((s) => s.activeId === DETAILS_ID);
+  const showSnippets = useTabs((s) => s.activeId === SNIPPETS_ID);
   const showHome = useTabs((s) => s.activeId === HOME_ID || s.activeId === null);
   const filterRef = useRef<HTMLInputElement>(null);
-  const title = showHistory ? "Kemudi Devops — History" : active ? `Kemudi Devops — ${active.title}` : "Kemudi Devops";
+  const title = showHistory ? "Kemudi Devops — History" : showSnippets ? "Kemudi Devops — Snippets" : active ? `Kemudi Devops — ${active.title}` : "Kemudi Devops";
 
   useEffect(() => useConfig.getState().init(), []);
   useEffect(() => useStatus.getState().init(), []);
@@ -126,6 +127,7 @@ export default function App() {
             {showHome && <HomeView />}
             {showHistory && <HistoryView />}
             {showDetails && <DetailsView />}
+            {showSnippets && <SnippetsView />}
           </div>
         </main>
         <ActionsPanel />
@@ -140,7 +142,6 @@ export default function App() {
       <EntityMenu />
       <DiscoverHost />
       <AddActionDialog />
-      <SnippetDialog />
       <FileEditorDialog />
       <VhostGeneratorDialog />
       <NewAppDialog />

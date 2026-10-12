@@ -5,7 +5,7 @@
 // xterm passes every ⌘ chord through (see TerminalSession's key handler);
 // everything else stays in the PTY.
 import { copyCommand, copyOutput } from "@/lib/blockActions";
-import { DETAILS_ID, HISTORY_ID, isViewTab, openLocalShell, toggleBroadcast, useTabs } from "@/stores/tabs";
+import { DETAILS_ID, HISTORY_ID, SNIPPETS_ID, isViewTab, openLocalShell, toggleBroadcast, useTabs } from "@/stores/tabs";
 import { useVault } from "@/stores/vault";
 import { useUpdates } from "@/stores/updates";
 import { useUi } from "@/stores/ui";
@@ -23,6 +23,7 @@ const COMMANDS: Record<string, () => void> = {
     // With no tabs, ⌘W does nothing rather than closing the window.
     if (tabs.activeId === HISTORY_ID) tabs.closeHistory();
     else if (tabs.activeId === DETAILS_ID) tabs.closeDetails();
+    else if (tabs.activeId === SNIPPETS_ID) tabs.closeSnippets();
     else if (tabs.activeId) tabs.close(tabs.activeId);
   },
   "tab.prev": () => useTabs.getState().activateRelative(-1),
@@ -62,8 +63,12 @@ const COMMANDS: Record<string, () => void> = {
   settings: () => useUi.getState().setOverlay("settings"),
   "updates.check": () => useUpdates.getState().show(),
   passwords: () => useUi.getState().setOverlay("passwords"),
-  // The right panel, on its Snippets tab.
-  snippets: () => useUi.getState().setPanelTab("snippets"),
+  // The Snippets page (managing them); again: back where you were.
+  snippets: () => {
+    const tabs = useTabs.getState();
+    if (tabs.activeId === SNIPPETS_ID) tabs.closeSnippets();
+    else tabs.openSnippets();
+  },
   environment: () => useUi.getState().setOverlay("environment"),
   "panel.actions": () => useUi.getState().toggleActionsPanel(),
   "vault.fill": () => {

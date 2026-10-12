@@ -27,7 +27,11 @@ export const useSnippets = create<SnippetsState>((set) => ({
   loaded: false,
   error: null,
   editing: null,
-  setEditing: (editing) => set({ editing }),
+  // Editing happens on the Snippets page: opening one brings it up.
+  setEditing: (editing) => {
+    set({ editing });
+    if (editing) useTabs.getState().openSnippets();
+  },
   async load() {
     try {
       set({ list: await snippetsList(), loaded: true, error: null });
@@ -37,7 +41,10 @@ export const useSnippets = create<SnippetsState>((set) => ({
   },
   async save(input) {
     try {
-      set({ list: await snippetSave(input), error: null });
+      const list = await snippetSave(input);
+      // Keep the saved one open (a new one: found by what was typed).
+      const saved = list.find((s) => (input.id ? s.id === input.id : s.name === input.name.trim() && s.command === input.command));
+      set({ list, error: null, editing: saved ?? null });
       return true;
     } catch (e) {
       toastError(errorMessage(e));
@@ -56,7 +63,9 @@ export const useSnippets = create<SnippetsState>((set) => ({
 /** Type a snippet into the terminal in front: at the prompt, waiting for ↵,
  *  or (`run`) entered right away; a production tab asks first. */
 export async function insertSnippet(s: Snippet, { run = false }: { run?: boolean } = {}): Promise<void> {
-  const tab = activeTab(useTabs.getState());
+  const state = useTabs.getState();
+  // From the Snippets page: the terminal you were last in.
+  const tab = activeTab(state) ?? state.tabs.find((t) => t.id === state.groups[state.groups.length - 1]?.focus);
   if (!tab || tab.session.status !== "running") {
     useToasts.getState().push("Open a terminal tab first, then insert the snippet there", "info");
     return;
@@ -70,6 +79,7 @@ export async function insertSnippet(s: Snippet, { run = false }: { run?: boolean
     if (!ok) return;
   }
   tab.session.paste(s.command, { submit: run });
+  useTabs.getState().activate(tab.id);
   tab.session.focus();
 }
 

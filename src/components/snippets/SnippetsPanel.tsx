@@ -3,22 +3,17 @@ import { useEffect, useState } from "react";
 
 import { actionChoices } from "@/components/actions/AddActionDialog";
 import { Btn } from "@/components/kit/Btn";
-import { Hint } from "@/components/kit/Kbd";
-import { Modal, ModalFooter, ModalHeader } from "@/components/kit/Modal";
-import { Field, TextInput } from "@/components/manage/fields";
 import { copyText } from "@/lib/clipboard";
 import type { Snippet } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { askConfirm } from "@/stores/confirm";
 import { useSidebar } from "@/stores/sidebar";
+import { useTabs } from "@/stores/tabs";
 import { insertSnippet, useSnippets } from "@/stores/snippets";
 import { useToasts } from "@/stores/toasts";
 import { useUi } from "@/stores/ui";
-import { useConfig } from "@/stores/config";
 import { snippetVisible, useTeam } from "@/stores/team";
-import type { Team } from "@/lib/ipc";
 
-const NO_TEAMS: Team[] = [];
 
 /** The Snippets tab of the right-hand panel: saved commands with notes.
  *  Insert types one at the prompt of the terminal in front. */
@@ -49,6 +44,9 @@ export function SnippetsList() {
         />
         <Btn size="sm" variant="outline" onClick={() => useSnippets.getState().setEditing({ id: null })}>
           <Plus className="size-3.5" /> New
+        </Btn>
+        <Btn size="sm" variant="ghost" onClick={() => useTabs.getState().openSnippets()} title="Add, edit and organise snippets on their own page (⇧⌘S)">
+          Manage
         </Btn>
       </div>
       {error && (
@@ -152,7 +150,7 @@ function SnippetRow({ s, open, onToggle }: { s: Snippet; open: boolean; onToggle
 
 /** Open the Add-action form with the snippet's name and command, offering
  *  the places that fit what's selected on the left. */
-function makeAction(s: Snippet) {
+export function makeAction(s: Snippet) {
   const selected = useSidebar.getState().selected;
   const choices = actionChoices(selected?.serverId, selected?.appId ?? null);
   const first = choices[0]!;
@@ -164,119 +162,4 @@ function makeAction(s: Snippet) {
     prefill: { label: s.name, run: s.command },
     fromSnippet: s.id,
   });
-}
-
-/** New / edit snippet form. */
-export function SnippetDialog() {
-  const editing = useSnippets((s) => s.editing);
-  if (!editing) return null;
-  return <SnippetForm key={editing.id ?? "new"} />;
-}
-
-function SnippetForm() {
-  const editing = useSnippets((s) => s.editing)!;
-  const existing = editing.id !== null ? (editing as Snippet) : null;
-  const close = () => useSnippets.getState().setEditing(null);
-  const [name, setName] = useState(existing?.name ?? ("name" in editing ? (editing.name ?? "") : ""));
-  const [command, setCommand] = useState(existing?.command ?? ("command" in editing ? (editing.command ?? "") : ""));
-  const [notes, setNotes] = useState(existing?.notes ?? ("notes" in editing ? (editing.notes ?? "") : ""));
-  const teams = useConfig((s) => s.snapshot?.config?.teams ?? NO_TEAMS);
-  // A new snippet starts in the team in front.
-  const [team, setTeam] = useState<string>(
-    existing ? (existing.team ?? "") : "team" in editing && editing.team ? editing.team : teams.some((t) => t.id === useTeam.getState().current) ? useTeam.getState().current : "",
-  );
-  const [busy, setBusy] = useState(false);
-  const canSave = name.trim() !== "" && command.trim() !== "" && !busy;
-
-  const save = async () => {
-    if (!canSave) return;
-    setBusy(true);
-    const ok = await useSnippets.getState().save({ id: existing?.id ?? null, name, command, notes, team: team || null });
-    setBusy(false);
-    if (ok) close();
-  };
-  const cmdEnter = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && e.metaKey) {
-      e.preventDefault();
-      void save();
-    }
-  };
-  const area =
-    "block w-full resize-y rounded-lg border border-control-border bg-background px-2.5 py-2 text-[12.5px] leading-[19px] text-foreground outline-none placeholder:text-faint-foreground focus:border-primary/60";
-
-  return (
-    <Modal open onOpenChange={(o) => !o && close()} title={existing ? "Edit snippet" : "New snippet"} width={560}>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void save();
-        }}
-      >
-        <ModalHeader>
-          <span className="text-[15px] font-semibold">{existing ? "Edit snippet" : "New snippet"}</span>
-          <span className="text-[12.5px] text-muted-foreground">Stored as plain text, so no passwords or tokens</span>
-        </ModalHeader>
-        <div className="flex flex-col gap-3.5 px-5 pb-4">
-          <Field label="Name">
-            {(fid) => (
-              <TextInput id={fid} autoFocus value={name} placeholder="Tail the Laravel log" className="font-sans" onChange={(e) => setName(e.target.value)} />
-            )}
-          </Field>
-          <Field label="Command" hint="Typed at the prompt as is; several lines are pasted together. ⌘↵ saves.">
-            {(fid) => (
-              <textarea
-                id={fid}
-                value={command}
-                spellCheck={false}
-                placeholder="tail -f storage/logs/laravel-$(date +%F).log"
-                onChange={(e) => setCommand(e.target.value)}
-                onKeyDown={cmdEnter}
-                className={cn(area, "h-[96px] font-mono")}
-              />
-            )}
-          </Field>
-          {teams.length > 0 && (
-            <Field label="Team" hint="Shown only when that team is in front; or in every team.">
-              {(fid) => (
-                <select
-                  id={fid}
-                  value={team}
-                  onChange={(e) => setTeam(e.target.value)}
-                  className="h-[30px] w-[220px] rounded-lg border border-control-border bg-background px-2 text-[12.5px] outline-none focus:border-primary/60"
-                >
-                  <option value="">Every team</option>
-                  {teams.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </Field>
-          )}
-          <Field label="Notes" hint="Optional: when to use it, what to watch for.">
-            {(fid) => (
-              <textarea
-                id={fid}
-                value={notes}
-                placeholder="Use on staging when queue jobs fail silently…"
-                onChange={(e) => setNotes(e.target.value)}
-                onKeyDown={cmdEnter}
-                className={cn(area, "h-[84px] font-sans")}
-              />
-            )}
-          </Field>
-        </div>
-        <ModalFooter>
-          <span className="flex-1" />
-          <Btn variant="outline" className="pr-2.5" onClick={close}>
-            Cancel <Hint>esc</Hint>
-          </Btn>
-          <Btn type="submit" variant="primary" className="pr-2.5" disabled={!canSave}>
-            {existing ? "Save" : "Add snippet"} <Hint className="text-primary-foreground/60">⌘↵</Hint>
-          </Btn>
-        </ModalFooter>
-      </form>
-    </Modal>
-  );
 }

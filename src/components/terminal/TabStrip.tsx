@@ -14,7 +14,7 @@ import { TAB_COLORS, type TabColor } from "@/lib/tabColors";
 import { ColorDot, openTabConfig, useTabConfigs } from "@/components/tabconfigs/TabConfigs";
 import { errorMessage, tabConfigsList, type TabConfigEntry } from "@/lib/ipc";
 import { toastError } from "@/stores/toasts";
-import { DETAILS_ID, HISTORY_ID, HOME_ID, isViewTab, openLocalShell, toggleBroadcast, useTabs, type Group, type Tab } from "@/stores/tabs";
+import { DETAILS_ID, HISTORY_ID, HOME_ID, SNIPPETS_ID, isViewTab, openLocalShell, toggleBroadcast, useTabs, type Group, type Tab } from "@/stores/tabs";
 import { useUi } from "@/stores/ui";
 
 function TabIcon({ tab }: { tab: Tab }) {
@@ -177,6 +177,7 @@ export function TabStrip() {
   const activeId = useTabs((s) => s.activeId);
   const historyOpen = useTabs((s) => s.historyOpen);
   const detailsOpen = useTabs((s) => s.detailsOpen);
+  const snippetsOpen = useTabs((s) => s.snippetsOpen);
   const setOverlay = useUi((s) => s.setOverlay);
 
   return (
@@ -185,6 +186,7 @@ export function TabStrip() {
         <HomeTab active={activeId === HOME_ID || activeId === null} />
         {detailsOpen && <DetailsTab active={activeId === DETAILS_ID} />}
         {historyOpen && <HistoryTab active={activeId === HISTORY_ID} />}
+        {snippetsOpen && <SnippetsTab active={activeId === SNIPPETS_ID} />}
         {groups.map((g) => {
           const ids = leaves(g.layout);
           const panes = tabs.filter((t) => ids.includes(t.id));
@@ -317,6 +319,35 @@ function DetailsTab({ active }: { active: boolean }) {
         aria-label="Close details"
         onMouseDown={(e) => e.stopPropagation()}
         onClick={() => useTabs.getState().closeDetails()}
+        className="size-5 flex-none rounded-md text-center text-[16px] leading-[19px] text-faint-foreground hover:bg-hover-strong hover:text-foreground"
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
+/** The pinned Snippets tab (managing them). */
+function SnippetsTab({ active }: { active: boolean }) {
+  const { openSnippets, closeSnippets } = useTabs.getState();
+  return (
+    <div
+      role="tab"
+      aria-selected={active}
+      onMouseDown={(e) => {
+        if (e.button === 0) openSnippets();
+      }}
+      className={cn(
+        "flex h-11 flex-none items-center gap-2.5 border-r border-divider pr-2.5 pl-3.5 text-[13px]",
+        active ? "bg-background text-foreground" : "text-dim-foreground shadow-[inset_0_-1px_0_var(--divider)] hover:text-foreground",
+      )}
+    >
+      <Glyph className="text-muted-foreground">{"{}"}</Glyph>
+      <span>Snippets</span>
+      <button
+        aria-label="Close Snippets"
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={closeSnippets}
         className="size-5 flex-none rounded-md text-center text-[16px] leading-[19px] text-faint-foreground hover:bg-hover-strong hover:text-foreground"
       >
         ×

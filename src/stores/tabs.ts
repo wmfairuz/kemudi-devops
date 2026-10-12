@@ -96,6 +96,8 @@ export const HOME_ID = "home";
 export const HISTORY_ID = "history";
 /** activeId value while the server/app details page is in front. */
 export const DETAILS_ID = "details";
+/** activeId value while the pinned Snippets tab (managing them) is in front. */
+export const SNIPPETS_ID = "snippets";
 
 interface TabsState {
   tabs: Tab[];
@@ -107,6 +109,9 @@ interface TabsState {
   detailsOpen: boolean;
   openDetails(): void;
   closeDetails(): void;
+  snippetsOpen: boolean;
+  openSnippets(): void;
+  closeSnippets(): void;
   open(opts: OpenOptions): string;
   close(id: string): void;
   activate(id: string): void;
@@ -274,6 +279,19 @@ export const useTabs = create<TabsState>((set, get) => {
     activeId: HOME_ID,
     historyOpen: false,
     detailsOpen: false,
+    snippetsOpen: false,
+
+    openSnippets() {
+      set({ snippetsOpen: true, activeId: SNIPPETS_ID });
+    },
+
+    closeSnippets() {
+      const { activeId, groups } = get();
+      set({
+        snippetsOpen: false,
+        activeId: activeId === SNIPPETS_ID ? (groups[groups.length - 1]?.focus ?? HOME_ID) : activeId,
+      });
+    },
 
     openDetails() {
       set({ detailsOpen: true, activeId: DETAILS_ID });

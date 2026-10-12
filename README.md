@@ -589,6 +589,15 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   *Only this server*, *All servers* (shared). Each group's **+** adds an
   action there (name, command, on the server or this Mac, danger). Shared
   actions can be hidden on one app (*Hidden here* lists them, with Show).
+- **Snippets page** (Kemudi ▸ Snippets…, ⇧⌘S, ⌘K, or *Manage* in the panel's
+  Snippets tab): a pinned tab for managing them. It lists every snippet, with
+  each one's team, a filter and a team picker. The picked one opens in a
+  full-size editor: name, a big command box, team, notes. Save with ⌘S;
+  Revert, Duplicate, Make action…, Copy, Insert (into the terminal you were
+  last in) and Delete are there too. New and Edit, from anywhere (including
+  *Save command as snippet…*), open it here. Snippets are global, not tied to
+  a server: insert them into any terminal. A team only decides when one is
+  listed (*Every team*: always).
 - **Snippets** (the panel's second tab): commands you use often, each with a
   name and optional notes, saved to `~/.config/kemudi/snippets.yaml` (plain
   text: no passwords). Click one to see it; **Insert** types it at the prompt
@@ -839,7 +848,7 @@ would seem to stop working). Tabs come back through session restore.
 | ⌘J | Show/hide the Actions panel |
 | ⌘⇧P | Fill a saved password (picker) |
 | ⇧⌘K | Passwords |
-| ⇧⌘S | Snippets (the right panel's Snippets tab; also Kemudi ▸ Snippets…) |
+| ⇧⌘S | Snippets page: add, edit, organise (again: back where you were) |
 | ⌘D / ⇧⌘D | Split the pane right / down (same server and folder; an action pane gives a shell there) |
 | ⌥⌘ ← → ↑ ↓ | Move between panes |
 | ⌥⌘I | Type in all panes of the tab (on/off): what you type goes to every terminal pane, like Warp's synchronized inputs (and iTerm's broadcast input). The panes get a pink outline and the tab a ⌨ badge; it's off again when Kemudi restarts |
