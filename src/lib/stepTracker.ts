@@ -148,11 +148,28 @@ export class StepTracker {
     if (cur === null || this.steps[cur - 1]!.status !== "running") return;
     const b = this.term.buffer.active;
     if (b.cursorX === 0) return;
-    const line = b.getLine(b.baseY + b.cursorY)?.translateToString(true).slice(0, b.cursorX).trimStart() ?? "";
+    const at = b.baseY + b.cursorY;
+    const line = b.getLine(at)?.translateToString(true).slice(0, b.cursorX).trimStart() ?? "";
     if (!line) return;
+    let text = line.trim();
+    // A bare prompt mark (Laravel's " > ") asks the question on the line(s)
+    // above: show those (within this step's output).
+    if (text.length <= 2) {
+      const first = this.steps[cur - 1]!.start?.line ?? 0;
+      const above: string[] = [];
+      for (let y = at - 1; y >= first && y >= at - 8 && above.length < 3; y--) {
+        const t = b.getLine(y)?.translateToString(true).trim() ?? "";
+        if (!t) {
+          if (above.length) break;
+          continue;
+        }
+        above.unshift(t);
+      }
+      if (above.length) text = above.join("\n");
+    }
     const secret = passwordPromptIn(line) !== null;
-    const yesNo = YES_NO.test(line);
-    if (secret || yesNo || PROMPTISH.test(line)) this.setWaiting({ step: cur, text: line.trim(), secret, yesNo });
+    const yesNo = YES_NO.test(text);
+    if (secret || yesNo || PROMPTISH.test(line) || PROMPTISH.test(text)) this.setWaiting({ step: cur, text, secret, yesNo });
   }
 
   private setWaiting(w: Waiting | null) {

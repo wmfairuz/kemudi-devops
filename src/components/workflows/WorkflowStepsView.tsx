@@ -195,7 +195,7 @@ function Answer({ tab, text, secret, yesNo }: { tab: Tab; text: string; secret: 
   const btn = "h-7 cursor-pointer rounded-md px-3 text-[12px]";
   return (
     <div className="mt-2 ml-[52px] flex flex-col gap-2 rounded-md border border-[#f1fa8c]/30 bg-[#f1fa8c]/[0.06] px-3 py-2">
-      <div className="text-[12px] text-[#f1fa8c]">{text}</div>
+      <div className="text-[12px] whitespace-pre-wrap text-[#f1fa8c]">{text}</div>
       <form
         className="flex items-center gap-2"
         onSubmit={(e) => {
