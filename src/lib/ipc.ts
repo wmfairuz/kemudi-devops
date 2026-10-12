@@ -1066,6 +1066,8 @@ export interface Health {
   rebootPkgs: string[];
   services: { name: string; active: string; sub: string }[];
   failedUnits: string[];
+  /** Disk usage when checked. */
+  disks: MonitorDisk[];
   apps: { id: string; missing: boolean; php: string | null; laravel: string | null; appEnv: string | null; appDebug: boolean | null; noEnv: boolean }[];
   sslOnly: boolean;
 }

@@ -7,9 +7,25 @@ import { certsList, errorMessage, healthCheck, healthComposerAudit, openUrl, typ
 import { CertRenewDialog } from "./CertRenewDialog";
 import { useServiceMenu } from "@/components/actions/ServiceMenu";
 import { cn } from "@/lib/utils";
+import { levelOf, type Level } from "@/lib/thresholds";
 import { findServer, useConfig } from "@/stores/config";
 import { useSslAlerts } from "@/stores/sslAlerts";
 import { openLogs, openQueues, type Tab } from "@/stores/tabs";
+
+/** Disk levels on the light Health page (Monitor's are Dracula-dark). */
+const DISK_BAR: Record<Level, string> = { ok: "bg-status-up", warn: "bg-env-staging", bad: "bg-env-prod" };
+const DISK_TEXT: Record<Level, string> = { ok: "text-foreground", warn: "text-env-staging-fg", bad: "text-env-prod-fg" };
+
+function kb(n: number): string {
+  const units = ["KB", "MB", "GB", "TB"];
+  let v = n;
+  let u = 0;
+  while (v >= 1024 && u < units.length - 1) {
+    v /= 1024;
+    u++;
+  }
+  return `${v >= 10 || u === 0 ? v.toFixed(0) : v.toFixed(1)} ${units[u]}`;
+}
 import { toastError } from "@/stores/toasts";
 
 type Tone = "ok" | "warn" | "bad" | "dim";
@@ -292,6 +308,29 @@ export function HealthView({ tab, visible }: { tab: Tab; visible: boolean }) {
                     <>
                       <span className="text-env-prod-fg">Failed units</span>
                       <span className="text-env-prod-fg">{h.failedUnits.join(", ")}</span>
+                    </>
+                  )}
+                  {h.disks.length > 0 && (
+                    <>
+                      <span className="text-subtle-foreground">Disks</span>
+                      <span className="flex flex-col gap-1">
+                        {h.disks.map((d) => {
+                          const pct = d.sizeKb ? (d.usedKb / d.sizeKb) * 100 : 0;
+                          const lv = levelOf("disk", pct);
+                          return (
+                            <span key={d.mount} className="flex items-center gap-2.5" title={d.fs}>
+                              <span className="w-[10em] truncate font-mono">{d.mount}</span>
+                              <span className="h-1.5 w-[140px] flex-none overflow-hidden rounded-full bg-secondary">
+                                <span className={cn("block h-full", DISK_BAR[lv])} style={{ width: `${Math.min(100, pct)}%` }} />
+                              </span>
+                              <span className={cn("w-[3em] text-right font-mono", DISK_TEXT[lv])}>{pct.toFixed(0)}%</span>
+                              <span className="text-subtle-foreground">
+                                {kb(d.usedKb)} of {kb(d.sizeKb)} · {kb(d.availKb)} free
+                              </span>
+                            </span>
+                          );
+                        })}
+                      </span>
                     </>
                   )}
                 </div>

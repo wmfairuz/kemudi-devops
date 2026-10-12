@@ -25,7 +25,7 @@ echo @@os; (. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME"); uname -r
 "#;
 
 /// Just the disks, for background disk alerts.
-const DISKS_SCRIPT: &str = r#"export LC_ALL=C
+pub(crate) const DISKS_SCRIPT: &str = r#"export LC_ALL=C
 echo @@df; df -P -k -x tmpfs -x devtmpfs -x squashfs -x overlay -x efivarfs 2>/dev/null || df -P -k
 "#;
 
@@ -122,7 +122,7 @@ fn duration(secs: u64) -> String {
 }
 
 /// `df -P -k` lines (header first) → real disks (no snaps, no EFI).
-fn disks(lines: &[&str]) -> Vec<Disk> {
+pub(crate) fn disks(lines: &[&str]) -> Vec<Disk> {
     lines
         .iter()
         .skip(1)

@@ -84,6 +84,14 @@ echo @@failed
 systemctl list-units --state=failed --no-legend --plain 2>/dev/null | awk '{print $1}'
 "#;
 
+/// Disk usage, as Monitor reads it (a snapshot).
+fn system_script() -> String {
+    format!(
+        "{SYSTEM}{}",
+        crate::monitor::DISKS_SCRIPT.trim_start_matches("export LC_ALL=C\n")
+    )
+}
+
 fn apps_part(apps: &[(String, String, String)]) -> String {
     let mut s = String::from("echo @@apps\n");
     for (id, path, php) in apps {
@@ -181,6 +189,8 @@ pub struct Health {
     pub reboot_pkgs: Vec<String>,
     pub services: Vec<Service>,
     pub failed_units: Vec<String>,
+    /// Disk usage when checked.
+    pub disks: Vec<crate::monitor::Disk>,
     pub apps: Vec<AppHealth>,
     /// Only SSL was checked.
     pub ssl_only: bool,
@@ -193,7 +203,7 @@ fn sections(out: &str) -> BTreeMap<String, Vec<String>> {
         if let Some(n) = l.strip_prefix("@@") {
             let n = n.split(' ').next().unwrap_or("");
             if [
-                "os", "updates", "reboot", "services", "failed", "apps", "renew", "renewerr",
+                "os", "updates", "reboot", "services", "failed", "df", "apps", "renew", "renewerr",
             ]
             .contains(&n)
             {
@@ -403,6 +413,8 @@ fn parse_ssl(
 
 fn parse_system(out: &str, h: &mut Health) {
     let mut sec = sections(out);
+    let df = sec.remove("df").unwrap_or_default();
+    h.disks = crate::monitor::disks(&df.iter().map(String::as_str).collect::<Vec<_>>());
     let os = sec.remove("os").unwrap_or_default();
     h.os = os.first().map(|s| s.trim().to_string()).unwrap_or_default();
     h.kernel = os.get(1).map(|s| s.trim().to_string()).unwrap_or_default();
@@ -517,7 +529,7 @@ pub async fn health_check(
     // 1: the vhosts' names (and the system and apps, in the same trip).
     let mut first = format!("{prelude}{SSL}");
     if !ssl_only {
-        first.push_str(SYSTEM);
+        first.push_str(&system_script());
         first.push_str(&apps_part(&apps));
     }
     let out = crate::monitor::run_for(&state, &server_id, &first, 60).await?;
@@ -715,7 +727,7 @@ mod tests {
 
     #[test]
     fn parses_system() {
-        let out = "@@os\nUbuntu 24.04.1 LTS\n6.8.0-45-generic\n12345.67 999.0\n@@updates\n12;3\n@@reboot\nyes\nlinux-image-6.8.0-47\n@@services\nnginx.service active running\nphp8.3-fpm.service failed failed\n@@failed\nphp8.3-fpm.service\n@@apps\n@app web\nphp 8.3.12\nlaravel Laravel Framework 11.9.2\nenv APP_ENV=production\nenv APP_DEBUG=true\n@app gone\nmissing\n";
+        let out = "@@os\nUbuntu 24.04.1 LTS\n6.8.0-45-generic\n12345.67 999.0\n@@updates\n12;3\n@@reboot\nyes\nlinux-image-6.8.0-47\n@@services\nnginx.service active running\nphp8.3-fpm.service failed failed\n@@failed\nphp8.3-fpm.service\n@@df\nFilesystem 1024-blocks Used Available Capacity Mounted on\n/dev/root 30298176 24238540 6043252 81% /\n@@apps\n@app web\nphp 8.3.12\nlaravel Laravel Framework 11.9.2\nenv APP_ENV=production\nenv APP_DEBUG=true\n@app gone\nmissing\n";
         let mut h = Health::default();
         parse_system(out, &mut h);
         assert_eq!(
@@ -728,6 +740,11 @@ mod tests {
         assert_eq!(h.apps[0].laravel.as_deref(), Some("11.9.2"));
         assert_eq!(h.apps[0].app_debug, Some(true));
         assert!(h.apps[1].missing);
+        assert_eq!(h.disks.len(), 1);
+        assert_eq!(
+            (h.disks[0].mount.as_str(), h.disks[0].used_kb),
+            ("/", 24238540)
+        );
     }
 
     #[test]

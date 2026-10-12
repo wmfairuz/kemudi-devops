@@ -870,7 +870,7 @@ would seem to stop working). Tabs come back through session restore.
 - [x] Log viewer (follows the newest daily / rotated file)
 - [x] Queue health (workers, waiting and failed jobs, scheduler)
 - [x] File actions: copy / cut / paste, duplicate, find by name or contents, download a folder (.tar.gz)
-- [x] Health checks: SSL expiry (what nginx actually serves), OS updates and reboot needed, services, APP_DEBUG on production, PHP / Laravel versions, `composer audit` on demand
+- [x] Health checks: SSL expiry (what nginx actually serves), OS updates and reboot needed, services, disk usage (a snapshot), APP_DEBUG on production, PHP / Laravel versions, `composer audit` on demand
 - [x] Server fine-tuning: suggest settings from the server's RAM / CPUs and current load (PHP-FPM `pm.*` and `memory_limit`, OPcache, MySQL `innodb_buffer_pool_size` / connections, nginx workers / `client_max_body_size`, swap, `sysctl` like `vm.swappiness`), show current vs suggested with why, apply with a backup and a test (`nginx -t`, `php-fpm -t`) and roll back
 - [ ] Git-pull deploy with a preview (incoming commits, migrations, composer.lock) and one-click rollback to the previous commit
 - [ ] Run a command on several servers at once (one pane each, ✓/✗ summary)
