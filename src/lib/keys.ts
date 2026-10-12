@@ -62,6 +62,8 @@ const COMMANDS: Record<string, () => void> = {
   settings: () => useUi.getState().setOverlay("settings"),
   "updates.check": () => useUpdates.getState().show(),
   passwords: () => useUi.getState().setOverlay("passwords"),
+  // The right panel, on its Snippets tab.
+  snippets: () => useUi.getState().setPanelTab("snippets"),
   environment: () => useUi.getState().setOverlay("environment"),
   "panel.actions": () => useUi.getState().toggleActionsPanel(),
   "vault.fill": () => {
@@ -112,6 +114,7 @@ function commandFor(e: KeyboardEvent): string | null {
   if (e.shiftKey && e.code === "KeyT") return "tab.ssh";
   if (e.shiftKey && e.code === "KeyP") return "vault.fill";
   if (e.shiftKey && e.code === "KeyK") return "passwords";
+  if (e.shiftKey && e.code === "KeyS") return "snippets";
   if (e.shiftKey) return null;
   const byCode: Record<string, string> = {
     KeyA: "edit.selectAll",

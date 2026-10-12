@@ -87,6 +87,7 @@ function buildItems(servers: Server[], tabs: Tab[], snippets: Snippet[], close: 
     cmd("History", () => useTabs.getState().openHistory(), "⌘Y"),
     cmd("Settings…", () => useUi.getState().setOverlay("settings"), "⌘,"),
     cmd("Passwords…", () => useUi.getState().setOverlay("passwords"), "⇧⌘K"),
+    cmd("Snippets", () => useUi.getState().setPanelTab("snippets"), "⇧⌘S"),
     cmd("Environment…", () => useUi.getState().setOverlay("environment")),
     cmd("New workflow…", () => useWorkflows.getState().edit(null)),
     cmd("Type in all panes (on/off)", () => toggleBroadcast(), "⌥⌘I"),

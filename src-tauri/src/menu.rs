@@ -39,6 +39,12 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
             "Passwords…",
             Some("CmdOrCtrl+Shift+K"),
         )?)
+        .item(&item(
+            app,
+            "snippets",
+            "Snippets…",
+            Some("CmdOrCtrl+Shift+S"),
+        )?)
         .item(&item(app, "environment", "Environment…", None)?)
         .separator()
         .services()
