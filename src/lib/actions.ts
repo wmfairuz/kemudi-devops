@@ -11,7 +11,8 @@ import {
   type Env,
   type RenderedAction,
 } from "@/lib/ipc";
-import { findServer } from "@/stores/config";
+import { findServer, useConfig } from "@/stores/config";
+import { useWorkflows } from "@/stores/workflows";
 import { askParams } from "@/stores/params";
 import { useStatus } from "@/stores/status";
 import { useActionFlow, type FlowDialog } from "@/stores/actionFlow";
@@ -81,6 +82,36 @@ export async function triggerAction(ref: ActionRef, opts: TriggerOptions = {}): 
       command: edited ? (opts.command ?? null) : null,
       edit: opts.alt ?? false,
     });
+}
+
+/** A workflow's run is recorded as action `workflow:<id>`: the id, else null. */
+export function workflowOf(actionId: string): string | null {
+  return actionId.startsWith("workflow:") ? actionId.slice("workflow:".length) : null;
+}
+
+/** Whether a History row can run again: a workflow or an action that still
+ *  exists. (History also records things done from Kemudi's own screens:
+ *  certificates, New app, queues, file permissions…; those don't re-run.) */
+export function canRunAgain(r: { serverId: string; appId: string | null; actionId: string }): boolean {
+  const config = useConfig.getState().snapshot?.config;
+  const wf = workflowOf(r.actionId);
+  if (wf !== null) return !!config?.workflows.some((w) => w.id === wf);
+  const server = config?.servers.find((s) => s.id === r.serverId);
+  const list = r.appId ? server?.apps.find((a) => a.id === r.appId)?.actions : server?.actions;
+  return !!list?.some((a) => a.id === r.actionId);
+}
+
+/** Run again from History or Home's Recent runs: a workflow opens its run
+ *  dialog (with its own confirmation); an action asks like a click, starting
+ *  from the command that ran. */
+export function runAgain(r: { serverId: string; appId: string | null; actionId: string; command: string }): void {
+  const wf = workflowOf(r.actionId);
+  if (wf !== null) {
+    if (useConfig.getState().snapshot?.config?.workflows.some((w) => w.id === wf)) useWorkflows.getState().run(wf);
+    else toastError(`The workflow ${wf} isn't in Kemudi any more`);
+    return;
+  }
+  void triggerAction({ serverId: r.serverId, appId: r.appId, actionId: r.actionId }, { command: r.command });
 }
 
 /** "Connect VPN": a local tab running the server's `vpn_connect`, so the

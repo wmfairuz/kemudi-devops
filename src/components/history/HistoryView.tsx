@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { EnvTag } from "@/components/kit/EnvTag";
 import { Spinner } from "@/components/kit/Spinner";
 import { SearchIcon } from "@/components/sidebar/SidebarFrame";
-import { triggerAction } from "@/lib/actions";
+import { canRunAgain, runAgain } from "@/lib/actions";
 import { auditList, errorMessage, type AuditQuery, type AuditRun, type Env } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { useConfig } from "@/stores/config";
@@ -117,12 +117,8 @@ export function HistoryView() {
     return out;
   }, [data]);
 
-  const actionExists = (r: AuditRun) => {
-    const server = config?.servers.find((s) => s.id === r.serverId);
-    if (!server) return false;
-    const list = r.appId ? server.apps.find((a) => a.id === r.appId)?.actions : server.actions;
-    return !!list?.some((a) => a.id === r.actionId);
-  };
+  // (`config` in scope keeps this current as the config changes.)
+  const actionExists = (r: AuditRun) => !!config && canRunAgain(r);
 
   return (
     <div className="absolute inset-0 z-10 flex min-h-0 flex-col bg-background">
@@ -226,10 +222,10 @@ function HistoryRow({ run, tabId, canRerun }: { run: AuditRun; tabId: string | n
       <span className="text-right font-mono text-[11.5px] text-subtle-foreground">{duration(run)}</span>
       <button
         disabled={!open && !canRerun}
-        title={!open && !canRerun ? "This action no longer exists" : undefined}
+        title={!open && !canRerun ? "Nothing to run again: the action or workflow is gone, or this was done from Kemudi itself" : undefined}
         onClick={() => {
           if (open && tabId) useTabs.getState().activate(tabId);
-          else void triggerAction({ serverId: run.serverId, appId: run.appId, actionId: run.actionId }, { command: run.command });
+          else runAgain(run);
         }}
         className="h-6 justify-self-end rounded-md border border-input bg-transparent px-2 text-[11.5px] font-medium text-soft-foreground enabled:hover:bg-secondary enabled:hover:text-foreground disabled:opacity-40"
       >

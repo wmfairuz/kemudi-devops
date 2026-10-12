@@ -10,7 +10,7 @@ import { Badge } from "@/components/manage/Badge";
 import { DiskBadge } from "@/components/monitor/DiskBadge";
 import { SslBadge } from "@/components/health/SslBadge";
 import { ColorDot, openTabConfig, useTabConfigs } from "@/components/tabconfigs/TabConfigs";
-import { triggerAction } from "@/lib/actions";
+import { canRunAgain, runAgain } from "@/lib/actions";
 import {
   auditList,
   errorMessage,
@@ -215,10 +215,9 @@ export function HomeView() {
               runs.map((r) => (
                 <Row
                   key={r.id}
-                  onClick={() =>
-                    void triggerAction({ serverId: r.serverId, appId: r.appId, actionId: r.actionId }, { command: r.command })
-                  }
-                  title="Run again (asks first, like a click)"
+                  onClick={() => runAgain(r)}
+                  inert={!canRunAgain(r)}
+                  title={canRunAgain(r) ? "Run again (asks first, like a click)" : "Done from Kemudi itself; nothing to run again"}
                 >
                   <span
                     className={cn(
@@ -295,24 +294,28 @@ function Row({
   children,
   onClick,
   disabled,
+  inert,
   title,
 }: {
   children: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
+  /** Not clickable, but not dimmed either. */
+  inert?: boolean;
   title?: string;
 }) {
+  const off = disabled || inert;
   return (
     <div
       role="button"
       tabIndex={0}
       title={title}
-      aria-disabled={disabled}
-      onClick={() => !disabled && onClick()}
-      onKeyDown={(e) => e.key === "Enter" && !disabled && onClick()}
+      aria-disabled={off}
+      onClick={() => !off && onClick()}
+      onKeyDown={(e) => e.key === "Enter" && !off && onClick()}
       className={cn(
         "mx-1.5 flex min-h-10 cursor-default items-center gap-2.5 rounded-lg px-2.5 py-1.5",
-        disabled ? "opacity-50" : "hover:bg-hover",
+        disabled ? "opacity-50" : inert ? "" : "hover:bg-hover",
       )}
     >
       {children}
