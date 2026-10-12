@@ -139,6 +139,8 @@ function RunDialog({ wf, from: initialFrom }: { wf: Workflow; from: number }) {
         </Btn>
         {prodServer && (
           <input
+            // Production: the name is the next thing to type.
+            autoFocus
             value={typed}
             spellCheck={false}
             onChange={(e) => setTyped(e.target.value)}
