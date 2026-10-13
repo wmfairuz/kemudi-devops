@@ -327,10 +327,11 @@ pub(crate) async fn run_for(
         .await;
     }
     crate::ssh::validate_host(&server.host)?;
-    let control = dirs::home_dir()
-        .map(|h| h.join(".ssh").join("kemudi-cm-%C"))
-        .ok_or_else(|| AppError::Invalid("no home directory".into()))?;
     let env = state.env_ready().await;
+    // The same connection options as the server's tabs: retries, and the
+    // shared connection (Kemudi's, or the one your ssh config sets up), so a
+    // password typed in a shell also lets these reads through.
+    let hc = crate::ssh::host_config(&server.host, env);
     let mut cmd = tokio::process::Command::new("ssh");
     cmd.args([
         "-o",
@@ -341,19 +342,9 @@ pub(crate) async fn run_for(
         "RemoteCommand=none",
         "-o",
         "RequestTTY=no",
-        "-o",
-        "ConnectTimeout=5",
-        "-o",
-        // See ssh::connect_opts: retry dropped connects on a fresh port.
-        "ConnectionAttempts=8",
-        "-o",
-        "ServerAliveInterval=15",
-        "-o",
-        "ControlMaster=auto",
-        "-o",
     ])
-    .arg(format!("ControlPath={}", control.display()))
-    .args(["-o", "ControlPersist=120", &server.host, "sh -s"])
+    .args(&hc.connect_opts)
+    .args([&server.host, "sh -s"])
     .env_clear()
     .envs(&env.vars)
     .stdin(std::process::Stdio::piped())
