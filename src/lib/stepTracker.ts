@@ -27,6 +27,24 @@ export interface Waiting {
   secret: boolean;
   /** A yes/no question (buttons for both). */
   yesNo: boolean;
+  /** Laravel Prompts' boxed prompts: `confirm` (Yes / No: answered with y /
+   *  n and ↵), `choice` (a list: arrow keys and ↵), `text` (typed). */
+  box?: "confirm" | "choice" | "text";
+}
+
+/** Laravel Prompts draws `┌ question ─┐ / │ … │ / └──┘` and waits on the
+ *  bottom border: the question and what's inside, from the lines above. */
+function promptsBox(lines: string[]): { text: string; box: "confirm" | "choice" | "text" } | null {
+  const top = lines.findIndex((l) => /^[┌╭]/.test(l));
+  if (top < 0) return null;
+  const question = lines[top]!.replace(/^[┌╭]\s*/, "").replace(/[─━]+\s*[┐╮]?\s*$/, "").trim();
+  const body = lines
+    .slice(top + 1)
+    .map((l) => l.replace(/^[│┃]\s?/, "").replace(/\s*[│┃]\s*$/, "").trim())
+    .filter(Boolean);
+  const inside = body.join("\n");
+  const box = /\bYes\b.*\/.*\bNo\b/.test(inside) ? "confirm" : body.length > 1 || /[○●◯◉›❯]/.test(inside) ? "choice" : "text";
+  return { text: [question, box === "text" ? "" : inside].filter(Boolean).join("\n"), box };
 }
 
 const YES_NO = /\(yes\/no\)|\[y\/n\]|\(y\/n\)|\[yes\/no\]/i;
@@ -152,6 +170,21 @@ export class StepTracker {
     const line = b.getLine(at)?.translateToString(true).slice(0, b.cursorX).trimStart() ?? "";
     if (!line) return;
     let text = line.trim();
+    // Laravel Prompts: the cursor sits on the box's bottom border.
+    if (/^[└╰][─━]*[┘╯]?$/.test(text)) {
+      const first = this.steps[cur - 1]!.start?.line ?? 0;
+      const above: string[] = [];
+      for (let y = at - 1; y >= first && y >= at - 14; y--) {
+        const t = b.getLine(y)?.translateToString(true).trim() ?? "";
+        above.unshift(t);
+        if (/^[┌╭]/.test(t)) break;
+      }
+      const p = promptsBox(above);
+      if (p) {
+        this.setWaiting({ step: cur, text: p.text, secret: false, yesNo: p.box === "confirm", box: p.box });
+        return;
+      }
+    }
     // A bare prompt mark (Laravel's " > ") asks the question on the line(s)
     // above: show those (within this step's output).
     if (text.length <= 2) {

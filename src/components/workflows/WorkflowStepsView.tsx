@@ -146,7 +146,7 @@ export function WorkflowStepsView({ tab }: { tab: Tab }) {
                   </button>
                 </div>
               )}
-              {waiting && s.status === "running" && <Answer tab={tab} text={waiting.text} secret={waiting.secret} yesNo={waiting.yesNo} />}
+              {waiting && s.status === "running" && <Answer tab={tab} text={waiting.text} secret={waiting.secret} yesNo={waiting.yesNo} box={waiting.box} />}
               {showOut && out && (
                 <pre className="selectable mt-2 ml-[52px] max-h-[320px] overflow-auto rounded-md bg-black/25 px-3 py-2 text-[12px] leading-[17px] whitespace-pre-wrap text-[#e2e2dc]">
                   {out}
@@ -179,7 +179,7 @@ function StepIcon({ state }: { state: StepState }) {
 
 /** The step's question, with a box to answer it (typed into the terminal
  *  with ↵). Passwords: hidden, or Fill from the vault. Yes/no: buttons. */
-function Answer({ tab, text, secret, yesNo }: { tab: Tab; text: string; secret: boolean; yesNo: boolean }) {
+function Answer({ tab, text, secret, yesNo, box }: { tab: Tab; text: string; secret: boolean; yesNo: boolean; box?: "confirm" | "choice" | "text" }) {
   const [value, setValue] = useState("");
   const entries = useVault((s) => s.entries);
   const loaded = useVault((s) => s.loaded);
@@ -205,15 +205,30 @@ function Answer({ tab, text, secret, yesNo }: { tab: Tab; text: string; secret: 
       >
         {yesNo && (
           <>
-            <button type="button" onClick={() => send("yes")} className={`${btn} bg-[#50fa7b] font-medium text-[#282a36]`}>
+            {/* A Laravel Prompts box picks with y / n, then ↵; others read the word. */}
+            <button type="button" onClick={() => send(box === "confirm" ? "y" : "yes")} className={`${btn} bg-[#50fa7b] font-medium text-[#282a36]`}>
               yes
             </button>
-            <button type="button" onClick={() => send("no")} className={`${btn} border border-white/20 text-[#f8f8f2] hover:bg-white/10`}>
+            <button type="button" onClick={() => send(box === "confirm" ? "n" : "no")} className={`${btn} border border-white/20 text-[#f8f8f2] hover:bg-white/10`}>
               no
             </button>
           </>
         )}
-        <input
+        {box === "choice" && (
+          <>
+            {/* A list: move with the arrows, pick with ↵ (as in the terminal). */}
+            <button type="button" title="Up" onClick={() => tab.session.send("\x1b[A")} className={`${btn} border border-white/20 text-[#f8f8f2] hover:bg-white/10`}>
+              ↑
+            </button>
+            <button type="button" title="Down" onClick={() => tab.session.send("\x1b[B")} className={`${btn} border border-white/20 text-[#f8f8f2] hover:bg-white/10`}>
+              ↓
+            </button>
+            <button type="button" onClick={() => tab.session.send("\r")} className={`${btn} bg-[#50fa7b] font-medium text-[#282a36]`}>
+              Pick ↵
+            </button>
+          </>
+        )}
+        {box !== "confirm" && box !== "choice" && <input
           autoFocus
           type={secret ? "password" : "text"}
           value={value}
@@ -222,10 +237,12 @@ function Answer({ tab, text, secret, yesNo }: { tab: Tab; text: string; secret: 
           onChange={(e) => setValue(e.target.value)}
           placeholder={secret ? "password" : yesNo ? "or type an answer" : "answer"}
           className="h-7 min-w-0 flex-1 rounded-md border border-white/15 bg-black/30 px-2 text-[12.5px] text-[#f8f8f2] outline-none placeholder:text-[#6272a4] focus:border-[#bd93f9]"
-        />
-        <button type="submit" className={`${btn} border border-white/20 text-[#f8f8f2] hover:bg-white/10`}>
-          Send ↵
-        </button>
+        />}
+        {box !== "confirm" && box !== "choice" && (
+          <button type="submit" className={`${btn} border border-white/20 text-[#f8f8f2] hover:bg-white/10`}>
+            Send ↵
+          </button>
+        )}
         {secret && best && (
           <button
             type="button"
