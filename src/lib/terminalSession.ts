@@ -40,7 +40,9 @@ export function passwordPromptIn(line: string): PasswordPrompt {
   if (/\[sudo\] password for [^:]+:\s*$/.test(line)) return { kind: "sudo" };
   const ssh = /(\S+)@(\S+)'s password:\s*$/.exec(line);
   if (ssh) return { kind: "login", user: ssh[1]!, host: ssh[2]! };
-  if (/(password|passphrase|passcode)[^:\n]{0,60}:\s*$/i.test(line)) return { kind: "other" };
+  // Anything after the word, colons included: git's "Password for
+  // 'https://user@github.com':" has one in its URL.
+  if (/(password|passphrase|passcode)\b.{0,120}:\s*$/i.test(line) || /(password|passphrase|passcode):\s*$/i.test(line)) return { kind: "other" };
   return null;
 }
 
