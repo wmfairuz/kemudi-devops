@@ -234,6 +234,7 @@ pub fn run() {
             actions::commands::action_render,
             actions::commands::action_run,
             actions::commands::action_send,
+            actions::commands::action_render_mac,
             preflight::commands::status_get,
             preflight::commands::status_refresh,
             preflight::commands::vpn_connect,

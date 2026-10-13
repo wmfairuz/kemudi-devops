@@ -2,6 +2,7 @@
 // in a new tab, or typing it into the current tab.
 import {
   actionRender,
+  actionRenderMac,
   actionRun,
   actionSend,
   errorMessage,
@@ -102,6 +103,30 @@ export async function typeHere(ref: ActionRef): Promise<void> {
       rendered = await actionRender(ref);
     }
     useActionFlow.getState().show("preview", rendered, { edit: true, here: true });
+  } catch (e) {
+    toastError(errorMessage(e));
+  }
+}
+
+/** A shared action in the shell on this Mac in front (This Mac panel): one
+ *  that asks first (danger, or ⌥-click) opens the command to check; else it
+ *  is typed and entered right away. */
+export async function runOnMac(actionId: string, appLevel: boolean, alt: boolean): Promise<void> {
+  const tab = localShellInFront();
+  if (!tab) return;
+  try {
+    let r = await actionRenderMac(actionId, appLevel);
+    if (r.params.length > 0) {
+      const values = await askParams(r);
+      if (!values) return;
+      r = await actionRenderMac(actionId, appLevel, values);
+    }
+    if (alt || r.confirm !== "none") {
+      useActionFlow.getState().show("preview", r, { edit: true, here: true });
+      return;
+    }
+    tab.session.paste(r.command, { submit: true });
+    tab.session.focus();
   } catch (e) {
     toastError(errorMessage(e));
   }
@@ -334,6 +359,13 @@ export function sendTarget(a: RenderedAction, here = false): { tab: Tab | null; 
 
 export async function sendAction(a: RenderedAction, command: string, here = false): Promise<boolean> {
   const { tab, reason } = sendTarget(a, here);
+  // Into a shell on this Mac: exactly what the dialog shows, entered.
+  if (here && tab) {
+    tab.session.paste(command, { submit: true });
+    useTabs.getState().activate(tab.id);
+    tab.session.focus();
+    return true;
+  }
   const ptyId = tab?.session.ptyId;
   if (!tab || ptyId === null || ptyId === undefined) {
     toastError(reason ?? "No tab to send to");

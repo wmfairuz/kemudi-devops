@@ -611,8 +611,10 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
 - **This Mac** in the Actions panel: with a shell on this Mac in front, the panel
   switches to what runs there. It shows your **workflows**, and your **snippets**
   as one-click **Commands**: click types one into the shell, ⌥-click also presses
-  ↵, right-click edits it. The server selected on the left is folded under
-  *‹name›'s actions*, for typing one of its actions into your shell.
+  ↵, right-click edits it. It also shows the **shared actions** (*All apps* and
+  *All servers*, plus your team's), to run in that shell: `{{ app.path }}` becomes
+  `.` (the folder the shell is in), with no server PHP version or branch. A
+  dangerous one (◆), or ⌥-click, shows the command to check first.
 - **A server's action in your local shell**: with a shell on this Mac in front
   (say your own checkout), right-click an action ▸ **Type into ‹that tab›…**. It
   shows the command, editable, and types it at that prompt, to migrate your local

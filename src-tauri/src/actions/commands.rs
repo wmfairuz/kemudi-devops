@@ -528,6 +528,75 @@ pub async fn action_run(
     })
 }
 
+/// A shared action (the global or a team's `actions:` list) rendered for a
+/// shell on this Mac: `{{ app.path }}` is `.` (the folder the shell is in),
+/// with no server PHP version or branch. The UI types it into that shell.
+#[tauri::command]
+pub async fn action_render_mac(
+    state: State<'_, AppState>,
+    action_id: String,
+    app_level: bool,
+    values: Option<BTreeMap<String, String>>,
+) -> AppResult<RenderedAction> {
+    let config = current_config(&state)?;
+    let found = config.servers.iter().find_map(|s| {
+        if app_level {
+            s.apps.iter().find_map(|a| {
+                a.actions
+                    .iter()
+                    .find(|x| x.id == action_id && x.shared)
+                    .map(|x| (s, Some(a), x))
+            })
+        } else {
+            s.actions
+                .iter()
+                .find(|x| x.id == action_id && x.shared)
+                .map(|x| (s, None, x))
+        }
+    });
+    let (srv, app, action) =
+        found.ok_or_else(|| AppError::NotFound(format!("shared action `{action_id}`")))?;
+    let mut server = srv.clone();
+    server.id = "this-mac".into();
+    server.name = "This Mac".into();
+    server.host = "localhost".into();
+    server.env = Env::Dev;
+    server.asg = None;
+    let app = app.map(|a| {
+        let mut a = a.clone();
+        a.path = ".".into();
+        a.php = None;
+        a.branch = None;
+        a.env = Env::Dev;
+        a
+    });
+    let values = values.unwrap_or_default();
+    let (command, missing) = render::render_with(&action.run, &server, app.as_ref(), &values)
+        .map_err(AppError::Invalid)?;
+    Ok(RenderedAction {
+        server_id: String::new(),
+        app_id: None,
+        action_id,
+        label: action.label.clone(),
+        title: format!("This Mac · {}", action.label),
+        command: command.clone(),
+        rendered: command,
+        kind: ActionKind::Local,
+        danger: action.danger,
+        confirm: action
+            .confirm
+            .unwrap_or(Confirm::default_for(Env::Dev, action.danger)),
+        confirm_explicit: action.confirm.is_some(),
+        env: Env::Dev,
+        host: "localhost".into(),
+        vpn: Vpn::None,
+        cwd: None,
+        params: render::params(&action.run),
+        missing,
+        values,
+    })
+}
+
 /// Write an audit row; failures never block the action.
 fn record(state: &AppState, a: &RenderedAction, kind: &str, edited: bool) -> Option<i64> {
     let log = state.audit.as_ref().ok()?;

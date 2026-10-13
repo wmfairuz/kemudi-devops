@@ -1,12 +1,12 @@
-import { ChevronRight, EyeOff, PanelRightClose, Plus, SquareTerminal, Workflow as WorkflowIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { EyeOff, PanelRightClose, Plus, SquareTerminal, Workflow as WorkflowIcon } from "lucide-react";
+import { useEffect } from "react";
 
 import { whereOf } from "@/lib/fleet";
 import { EnvTag } from "@/components/kit/EnvTag";
 import { Badge } from "@/components/manage/Badge";
 import { ActionButton } from "@/components/sidebar/ActionButton";
 import { SnippetsList } from "@/components/snippets/SnippetsPanel";
-import { triggerAction } from "@/lib/actions";
+import { runOnMac, triggerAction } from "@/lib/actions";
 import {
   actionRemove,
   defaultConfirm,
@@ -111,7 +111,7 @@ export function ActionsPanel() {
         {tab === "snippets" ? (
           <SnippetsList />
         ) : localFront ? (
-          <MacView server={server} app={app} shell={localFront.title} />
+          <MacView shell={localFront.title} />
         ) : !server ? (
           <div className="px-4 py-5 text-[13px] leading-5 text-subtle-foreground">
             Select a server or app on the left to see its actions.
@@ -127,15 +127,23 @@ export function ActionsPanel() {
 /** The Actions tab with a shell on this Mac in front: what runs here (your
  *  workflows, your snippets as one-click commands), and the server picked on
  *  the left folded away (its actions run there; right-click ▸ Type into …). */
-function MacView({ server, app, shell }: { server?: Server; app?: App; shell: string }) {
+function MacView({ shell }: { shell: string }) {
   const workflows = useConfig((s) => s.snapshot?.config?.workflows ?? NO_WORKFLOWS);
   const { list: snippets, loaded } = useSnippets();
   const current = useTeam((s) => s.current);
-  const [showServer, setShowServer] = useState(false);
   useEffect(() => {
     if (!loaded) void useSnippets.getState().load();
   }, [loaded]);
   const mine = snippets.filter((s) => snippetVisible(s, current));
+  // The shared actions (global, and the team in front's), once each.
+  const servers = useConfig((s) => s.snapshot?.config?.servers ?? NO_SERVERS);
+  const sharedOf = (lists: Action[][]) => {
+    const seen = new Map<string, Action>();
+    for (const a of lists.flat()) if (a.shared && snippetVisible(a, current) && !seen.has(a.id)) seen.set(a.id, a);
+    return [...seen.values()];
+  };
+  const sharedApp = sharedOf(servers.flatMap((s) => s.apps.map((a) => a.actions)));
+  const sharedServer = sharedOf(servers.map((s) => s.actions));
   const head = "mb-2 flex items-center text-[11.5px] font-semibold tracking-wide text-subtle-foreground uppercase";
   return (
     <div className="flex flex-col gap-5 px-3.5 pt-3.5">
@@ -201,25 +209,39 @@ function MacView({ server, app, shell }: { server?: Server; app?: App; shell: st
         )}
         <div className="mt-1.5 text-[11px] text-subtle-foreground">From your snippets: click types one into {shell}; ⌥-click also presses ↵.</div>
       </section>
-      {server && (
-        <section className="border-t border-divider pt-3.5">
-          <button onClick={() => setShowServer(!showServer)} className={cn(head, "w-full cursor-pointer text-left hover:text-foreground")}>
-            <ChevronRight className={cn("mr-1 size-3.5 transition-transform", showServer && "rotate-90")} />
-            <span className="flex-1 truncate normal-case">
-              {app ? app.name : server.name}'s actions
-            </span>
-          </button>
-          {showServer && (
-            <div className="-mx-3.5">
-              <div className="px-3.5 pb-1 text-[11px] leading-[15px] text-subtle-foreground">
-                Selected on the left. A click runs one on {server.name}; right-click ▸ <i>Type into {shell}…</i> runs it here.
-              </div>
-              <Groups server={server} app={app} />
-            </div>
-          )}
-        </section>
-      )}
+      <SharedForMac title="All apps" note="shared" list={sharedApp} appLevel shell={shell} />
+      <SharedForMac title="All servers" note="shared" list={sharedServer} appLevel={false} shell={shell} />
     </div>
+  );
+}
+
+/** Shared actions as buttons for the shell on this Mac: a click types one in
+ *  (`{{ app.path }}` is the shell's folder); one that asks first, or ⌥-click,
+ *  shows the command to check. */
+function SharedForMac({ title, note, list, appLevel, shell }: { title: string; note: string; list: Action[]; appLevel: boolean; shell: string }) {
+  if (list.length === 0) return null;
+  return (
+    <section>
+      <div className="mb-2 flex items-center gap-1.5 text-[11.5px] font-semibold tracking-wide text-subtle-foreground uppercase">
+        {title} <span className="font-normal tracking-normal normal-case">· {note}</span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {list.map((a) => (
+          <button
+            key={a.id}
+            title={`${a.run}\n\nclick: run it in ${shell} (in its folder)${a.danger ? " · asks first" : ""} · ⌥-click: check the command first`}
+            onClick={(e) => void runOnMac(a.id, appLevel, e.altKey)}
+            className={cn(
+              "flex h-[30px] max-w-full cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-[12.5px] hover:bg-hover-strong",
+              a.danger ? "border-env-prod/40 text-env-prod-fg" : "border-control-border bg-background text-foreground",
+            )}
+          >
+            <span className="truncate">{a.label}</span>
+            {a.danger && <span className="text-[10px]">◆</span>}
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 

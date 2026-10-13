@@ -558,6 +558,9 @@ export interface RunInfo {
 }
 
 export const actionRender = (action: ActionRef): Promise<RenderedAction> => invoke("action_render", { action });
+/** A shared action rendered for a shell on this Mac (`{{ app.path }}` = `.`). */
+export const actionRenderMac = (actionId: string, appLevel: boolean, values: Record<string, string> | null = null): Promise<RenderedAction> =>
+  invoke("action_render_mac", { actionId, appLevel, values });
 
 /** Save how much this one action asks (null = back to the default). */
 /** An action's command as written in servers.yaml. */

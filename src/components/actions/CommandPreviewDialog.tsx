@@ -52,9 +52,15 @@ export function CommandPreviewDialog() {
         <span className="text-[12.5px] text-muted-foreground">
           {here ? (
             <>
-              Typed at the prompt of <b className="font-medium text-foreground">{currentTitle}</b> on this Mac, not run on {action.serverId}. Any
-              server paths in it (like <span className="font-mono">{action.cwd ?? "/opt/www/…"}</span>) are the server's: change them here if
-              they don't apply.
+              Typed at the prompt of <b className="font-medium text-foreground">{currentTitle}</b> on this Mac
+              {action.serverId ? (
+                <>
+                  , not run on {action.serverId}. Any server paths in it (like <span className="font-mono">{action.cwd ?? "/opt/www/…"}</span>) are
+                  the server's: change them here if they don't apply.
+                </>
+              ) : (
+                <>, in the folder it's in.</>
+              )}
             </>
           ) : (
             where
