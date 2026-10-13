@@ -1,4 +1,5 @@
-import { EyeOff, PanelRightClose, Plus, Workflow as WorkflowIcon } from "lucide-react";
+import { ChevronRight, EyeOff, PanelRightClose, Plus, SquareTerminal, Workflow as WorkflowIcon } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { whereOf } from "@/lib/fleet";
 import { EnvTag } from "@/components/kit/EnvTag";
@@ -15,8 +16,12 @@ import {
   type ActionScope,
   type App,
   type Server,
+  type Workflow,
 } from "@/lib/ipc";
+import { insertSnippet, useSnippets } from "@/stores/snippets";
+import { snippetVisible, useTeam } from "@/stores/team";
 import { useConfig } from "@/stores/config";
+import { activeTab, useTabs } from "@/stores/tabs";
 import { useSidebar } from "@/stores/sidebar";
 import { toastError } from "@/stores/toasts";
 import { cn } from "@/lib/utils";
@@ -25,6 +30,7 @@ import { useWorkflows } from "@/stores/workflows";
 import { pinnedHere } from "@/lib/workflows";
 
 const NO_SERVERS: Server[] = [];
+const NO_WORKFLOWS: Workflow[] = [];
 
 /** Right-hand panel (⌘J): the buttons for the app or server selected on the
  *  left, grouped by where they're defined, each group with "+ Add action". */
@@ -33,6 +39,10 @@ export function ActionsPanel() {
   const tab = useUi((s) => s.panelTab);
   const selected = useSidebar((s) => s.selected);
   const servers = useConfig((s) => s.snapshot?.config?.servers ?? NO_SERVERS);
+  // A shell on this Mac in front: the panel still shows what's selected on
+  // the left, so say whose actions these are and where they run.
+  const front = useTabs(activeTab);
+  const localFront = front && (front.kind === "local" || front.local) && !front.workflow && !front.serverId ? front : null;
   if (!open) return null;
   const server = selected ? servers.find((s) => s.id === selected.serverId) : undefined;
   const app = server && selected?.appId ? server.apps.find((a) => a.id === selected.appId) : undefined;
@@ -40,7 +50,17 @@ export function ActionsPanel() {
   return (
     <aside className="flex w-[310px] min-h-0 flex-none flex-col border-l border-sidebar-border bg-sidebar">
       <div className="flex h-[60px] flex-none items-center gap-2.5 border-b border-divider pr-2 pl-3.5">
-        {server ? (
+        {localFront ? (
+          <>
+            <span className="flex size-[34px] flex-none items-center justify-center rounded-lg bg-secondary text-subtle-foreground">
+              <SquareTerminal className="size-[18px]" strokeWidth={1.75} />
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate text-[13.5px] font-semibold text-foreground">This Mac</span>
+              <span className="mt-0.5 truncate text-[11px] text-subtle-foreground">{localFront.title}</span>
+            </span>
+          </>
+        ) : server ? (
           <>
             <Badge id={app ? `${server.id}/${app.id}` : server.id} name={app ? app.name : server.name} size={34} />
             <span className="flex min-w-0 flex-1 flex-col">
@@ -65,7 +85,7 @@ export function ActionsPanel() {
           <PanelRightClose className="size-5" strokeWidth={1.75} />
         </button>
       </div>
-      {server && (
+      {server && !localFront && (
         <div className="selectable truncate border-b border-divider px-3.5 py-2 font-mono text-[11.5px] text-subtle-foreground">
           {whereOf(server)}
           {app ? `:${app.path}` : ""}
@@ -90,6 +110,8 @@ export function ActionsPanel() {
       <div className="min-h-0 flex-1 overflow-y-auto pb-4">
         {tab === "snippets" ? (
           <SnippetsList />
+        ) : localFront ? (
+          <MacView server={server} app={app} shell={localFront.title} />
         ) : !server ? (
           <div className="px-4 py-5 text-[13px] leading-5 text-subtle-foreground">
             Select a server or app on the left to see its actions.
@@ -99,6 +121,105 @@ export function ActionsPanel() {
         )}
       </div>
     </aside>
+  );
+}
+
+/** The Actions tab with a shell on this Mac in front: what runs here (your
+ *  workflows, your snippets as one-click commands), and the server picked on
+ *  the left folded away (its actions run there; right-click ▸ Type into …). */
+function MacView({ server, app, shell }: { server?: Server; app?: App; shell: string }) {
+  const workflows = useConfig((s) => s.snapshot?.config?.workflows ?? NO_WORKFLOWS);
+  const { list: snippets, loaded } = useSnippets();
+  const current = useTeam((s) => s.current);
+  const [showServer, setShowServer] = useState(false);
+  useEffect(() => {
+    if (!loaded) void useSnippets.getState().load();
+  }, [loaded]);
+  const mine = snippets.filter((s) => snippetVisible(s, current));
+  const head = "mb-2 flex items-center text-[11.5px] font-semibold tracking-wide text-subtle-foreground uppercase";
+  return (
+    <div className="flex flex-col gap-5 px-3.5 pt-3.5">
+      {workflows.length > 0 && (
+        <section>
+          <div className={head}>Workflows</div>
+          <div className="flex flex-wrap gap-2">
+            {workflows.map((w) => (
+              <button
+                key={w.id}
+                title={`${w.steps.length} step${w.steps.length === 1 ? "" : "s"} · click: run (shows the steps first) · right-click: edit`}
+                onClick={() => useWorkflows.getState().run(w.id)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  useWorkflows.getState().edit(w);
+                }}
+                className="flex h-[30px] cursor-pointer items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/8 px-2.5 text-[12.5px] font-medium text-foreground hover:bg-primary/15"
+              >
+                <WorkflowIcon className="size-4 text-primary" strokeWidth={1.75} />
+                {w.name}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+      <section>
+        <div className={head}>
+          <span className="flex-1">Commands</span>
+          <button
+            title="New snippet"
+            aria-label="New snippet"
+            onClick={() => useSnippets.getState().setEditing({ id: null })}
+            className="flex size-7 cursor-pointer items-center justify-center rounded-md text-subtle-foreground hover:bg-hover-strong hover:text-foreground"
+          >
+            <Plus className="size-4" strokeWidth={2} />
+          </button>
+        </div>
+        {mine.length === 0 ? (
+          <button
+            onClick={() => useSnippets.getState().setEditing({ id: null })}
+            className="w-full cursor-pointer rounded-lg border border-dashed border-control-border px-3 py-2 text-left text-[12px] text-subtle-foreground hover:border-primary/50 hover:bg-hover hover:text-foreground"
+          >
+            + Your snippets show here as buttons for this shell
+          </button>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {mine.map((s) => (
+              <button
+                key={s.id}
+                title={`${s.command}${s.notes ? `\n\n${s.notes}` : ""}\n\nclick: type it into ${shell} · ⌥-click: and press ↵ · right-click: edit`}
+                onClick={(e) => void insertSnippet(s, { run: e.altKey })}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  useSnippets.getState().setEditing(s);
+                }}
+                className="flex h-[30px] max-w-full cursor-pointer items-center gap-1.5 rounded-lg border border-control-border bg-background px-2.5 text-[12.5px] text-foreground hover:bg-hover-strong"
+              >
+                <SquareTerminal className="size-3.5 flex-none text-subtle-foreground" strokeWidth={1.75} />
+                <span className="truncate">{s.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="mt-1.5 text-[11px] text-subtle-foreground">From your snippets: click types one into {shell}; ⌥-click also presses ↵.</div>
+      </section>
+      {server && (
+        <section className="border-t border-divider pt-3.5">
+          <button onClick={() => setShowServer(!showServer)} className={cn(head, "w-full cursor-pointer text-left hover:text-foreground")}>
+            <ChevronRight className={cn("mr-1 size-3.5 transition-transform", showServer && "rotate-90")} />
+            <span className="flex-1 truncate normal-case">
+              {app ? app.name : server.name}'s actions
+            </span>
+          </button>
+          {showServer && (
+            <div className="-mx-3.5">
+              <div className="px-3.5 pb-1 text-[11px] leading-[15px] text-subtle-foreground">
+                Selected on the left. A click runs one on {server.name}; right-click ▸ <i>Type into {shell}…</i> runs it here.
+              </div>
+              <Groups server={server} app={app} />
+            </div>
+          )}
+        </section>
+      )}
+    </div>
   );
 }
 

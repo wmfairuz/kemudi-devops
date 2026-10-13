@@ -608,6 +608,11 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   all servers) and optionally delete the snippet. Right-click a command in a
   terminal ▸ *Save command as snippet…*; ⌘K finds snippets by name, command or
   notes (↵ inserts).
+- **This Mac** in the Actions panel: with a shell on this Mac in front, the panel
+  switches to what runs there. It shows your **workflows**, and your **snippets**
+  as one-click **Commands**: click types one into the shell, ⌥-click also presses
+  ↵, right-click edits it. The server selected on the left is folded under
+  *‹name›'s actions*, for typing one of its actions into your shell.
 - **A server's action in your local shell**: with a shell on this Mac in front
   (say your own checkout), right-click an action ▸ **Type into ‹that tab›…**. It
   shows the command, editable, and types it at that prompt, to migrate your local
