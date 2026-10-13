@@ -608,6 +608,12 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   all servers) and optionally delete the snippet. Right-click a command in a
   terminal ▸ *Save command as snippet…*; ⌘K finds snippets by name, command or
   notes (↵ inserts).
+- **A server's action in your local shell**: with a shell on this Mac in front
+  (say your own checkout), right-click an action ▸ **Type into ‹that tab›…**. It
+  shows the command, editable, and types it at that prompt, to migrate your local
+  database, for example. Nothing runs on the server, so its confirmations don't
+  apply. Server paths in the command (`cd {{ app.path }}`) are the server's: edit
+  them first.
 - **Running an action in the shell you're in**: when the tab in front is an
   idle shell on the action's server (for an app's action: that app's shell,
   e.g. its *ssh* button), the action is typed at that prompt instead of

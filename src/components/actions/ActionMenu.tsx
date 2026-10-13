@@ -1,5 +1,5 @@
 import { PopupMenu } from "@/components/kit/PopupMenu";
-import { triggerAction } from "@/lib/actions";
+import { localShellInFront, triggerAction, typeHere } from "@/lib/actions";
 import { actionDefinition, actionRemove, actionSetConfirm, actionSetDanger, defaultConfirm, errorMessage, type Confirm, type RemoveMode } from "@/lib/ipc";
 import { useConfig } from "@/stores/config";
 import { askConfirm } from "@/stores/confirm";
@@ -74,6 +74,7 @@ export function ActionMenu() {
           },
         ];
 
+  const here = localShellInFront();
   return (
     <PopupMenu
       x={menu.x}
@@ -83,6 +84,8 @@ export function ActionMenu() {
       groups={[
         [
           { label: "Run", run: () => triggerAction(menu.ref) },
+          // In the local shell in front, e.g. migrate your own checkout.
+          ...(here ? [{ label: `Type into ${here.title}…`, hint: "this Mac", run: () => void typeHere(menu.ref) }] : []),
           { label: "Edit…", hint: "name, command", run: () => useUi.getState().setEditAction(menu) },
           { label: "Duplicate…", hint: "a copy to change", run: () => void duplicate() },
         ],

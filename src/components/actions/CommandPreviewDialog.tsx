@@ -17,6 +17,7 @@ export function CommandPreviewDialog() {
   const action = useActionFlow((s) => s.action);
   const initial = useActionFlow((s) => s.command);
   const close = useActionFlow((s) => s.close);
+  const here = useActionFlow((s) => s.here);
   const currentTitle = useTabs((s) => activeTab(s)?.title ?? "none");
   const [cmd, setCmd] = useState("");
 
@@ -26,10 +27,11 @@ export function CommandPreviewDialog() {
 
   if (!action) return null;
   const edited = cmd.trim() !== action.rendered;
-  const target = sendTarget(action);
+  const target = sendTarget(action, here);
   const where = action.appId ? `${action.appId} on ${action.serverId}` : action.serverId;
 
   const run = () => {
+    if (here) return void send();
     if (!cmd.trim()) return;
     close();
     runAction(action, cmd);
@@ -37,7 +39,7 @@ export function CommandPreviewDialog() {
   const send = async () => {
     if (!cmd.trim() || !target.tab) return;
     close();
-    await sendAction(action, cmd);
+    await sendAction(action, cmd, here);
   };
 
   return (
@@ -47,16 +49,26 @@ export function CommandPreviewDialog() {
           <span className="text-[15px] font-semibold">{action.label}</span>
           <EnvTag env={action.env} />
         </div>
-        <span className="text-[12.5px] text-muted-foreground">{where}</span>
+        <span className="text-[12.5px] text-muted-foreground">
+          {here ? (
+            <>
+              Typed at the prompt of <b className="font-medium text-foreground">{currentTitle}</b> on this Mac, not run on {action.serverId}. Any
+              server paths in it (like <span className="font-mono">{action.cwd ?? "/opt/www/…"}</span>) are the server's: change them here if
+              they don't apply.
+            </>
+          ) : (
+            where
+          )}
+        </span>
       </ModalHeader>
       <div className="flex flex-col gap-3 px-5 pb-4">
         <div className="grid grid-cols-[72px_1fr] gap-y-1.5 text-[12px]">
           <span className="text-subtle-foreground">Target</span>
           <span className="font-mono text-[11.5px] text-soft-foreground">
-            {action.kind === "local" ? "this Mac · local shell" : `ssh ${action.host}`}
+            {here ? `this Mac · ${currentTitle}` : action.kind === "local" ? "this Mac · local shell" : `ssh ${action.host}`}
           </span>
           <span className="text-subtle-foreground">Directory</span>
-          <span className="font-mono text-[11.5px] text-soft-foreground">{action.cwd ?? "~"}</span>
+          <span className="font-mono text-[11.5px] text-soft-foreground">{here ? "wherever that shell is" : (action.cwd ?? "~")}</span>
         </div>
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center text-[12px] text-subtle-foreground">
@@ -88,12 +100,20 @@ export function CommandPreviewDialog() {
           Reset
         </Btn>
         <span className="flex-1 truncate text-[11.5px] text-subtle-foreground">Current tab: {currentTitle}</span>
-        <Btn className="pr-2.5" disabled={!target.tab} title={target.reason ?? undefined} onClick={() => void send()}>
-          Send to current tab <Hint>⌥↵</Hint>
-        </Btn>
-        <Btn variant="primary" className="pr-2.5 pl-3.5" onClick={run}>
-          Run <Hint className="text-faint-foreground">⌘↵</Hint>
-        </Btn>
+        {here ? (
+          <Btn variant="primary" className="pr-2.5 pl-3.5" disabled={!target.tab} title={target.reason ?? undefined} onClick={() => void send()}>
+            Type into {currentTitle} <Hint className="text-faint-foreground">⌘↵</Hint>
+          </Btn>
+        ) : (
+          <>
+            <Btn className="pr-2.5" disabled={!target.tab} title={target.reason ?? undefined} onClick={() => void send()}>
+              Send to current tab <Hint>⌥↵</Hint>
+            </Btn>
+            <Btn variant="primary" className="pr-2.5 pl-3.5" onClick={run}>
+              Run <Hint className="text-faint-foreground">⌘↵</Hint>
+            </Btn>
+          </>
+        )}
       </ModalFooter>
     </Modal>
   );

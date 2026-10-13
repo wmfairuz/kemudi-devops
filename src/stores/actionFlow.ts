@@ -16,10 +16,13 @@ interface FlowState {
   retry: (() => void) | null;
   /** Open with the command already editable (Edit command / ⌥-click). */
   edit: boolean;
+  /** Type it into the local shell in front instead of running it on the
+   *  server (right-click ▸ Type into …): no Run, no server guardrails. */
+  here: boolean;
   show(
     dialog: FlowDialog,
     action: RenderedAction,
-    extra?: Partial<Pick<FlowState, "command" | "status" | "retry" | "edit">>,
+    extra?: Partial<Pick<FlowState, "command" | "status" | "retry" | "edit" | "here">>,
   ): void;
   close(): void;
 }
@@ -31,6 +34,7 @@ export const useActionFlow = create<FlowState>((set) => ({
   status: null,
   retry: null,
   edit: false,
+  here: false,
   show: (dialog, action, extra = {}) =>
     set({
       dialog,
@@ -39,6 +43,7 @@ export const useActionFlow = create<FlowState>((set) => ({
       status: extra.status ?? null,
       retry: extra.retry ?? null,
       edit: extra.edit ?? false,
+      here: extra.here ?? false,
     }),
   close: () => set({ dialog: null }),
 }));

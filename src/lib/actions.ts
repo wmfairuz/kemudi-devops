@@ -84,6 +84,29 @@ export async function triggerAction(ref: ActionRef, opts: TriggerOptions = {}): 
     });
 }
 
+/** The local shell in front (for "Type into …"), if any. */
+export function localShellInFront(): Tab | null {
+  const tab = activeTab(useTabs.getState());
+  return tab && (tab.kind === "local" || tab.local) && tab.session.status === "running" && !tab.workflow ? tab : null;
+}
+
+/** Right-click ▸ Type into <local shell>: the action's command, editable,
+ *  to type at that shell's prompt (on this Mac, not on the server). */
+export async function typeHere(ref: ActionRef): Promise<void> {
+  try {
+    let rendered = await actionRender(ref);
+    if (rendered.params.length > 0) {
+      const values = await askParams(rendered);
+      if (!values) return;
+      ref = { ...ref, values };
+      rendered = await actionRender(ref);
+    }
+    useActionFlow.getState().show("preview", rendered, { edit: true, here: true });
+  } catch (e) {
+    toastError(errorMessage(e));
+  }
+}
+
 /** A workflow's run is recorded as action `workflow:<id>`: the id, else null. */
 export function workflowOf(actionId: string): string | null {
   return actionId.startsWith("workflow:") ? actionId.slice("workflow:".length) : null;
@@ -287,10 +310,16 @@ export function runAction(a: RenderedAction, command?: string): string {
 }
 
 /** The tab "Send to current tab" would type into, or why there isn't one. */
-export function sendTarget(a: RenderedAction): { tab: Tab | null; reason: string | null } {
+export function sendTarget(a: RenderedAction, here = false): { tab: Tab | null; reason: string | null } {
   const tab = activeTab(useTabs.getState()) ?? null;
   if (!tab || tab.session.ptyId === null || tab.session.status !== "running") {
     return { tab: null, reason: "No running tab" };
+  }
+  // Asked for: a server's action typed into a shell on this Mac.
+  if (here) {
+    return tab.kind === "local" || tab.local
+      ? { tab, reason: null }
+      : { tab: null, reason: "The tab in front isn't a shell on this Mac" };
   }
   if (a.kind === "local") {
     return tab.kind === "local" || tab.local
@@ -303,8 +332,8 @@ export function sendTarget(a: RenderedAction): { tab: Tab | null; reason: string
   return { tab: null, reason: `The current tab is ${where}, not ${a.serverId}` };
 }
 
-export async function sendAction(a: RenderedAction, command: string): Promise<boolean> {
-  const { tab, reason } = sendTarget(a);
+export async function sendAction(a: RenderedAction, command: string, here = false): Promise<boolean> {
+  const { tab, reason } = sendTarget(a, here);
   const ptyId = tab?.session.ptyId;
   if (!tab || ptyId === null || ptyId === undefined) {
     toastError(reason ?? "No tab to send to");
