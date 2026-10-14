@@ -1310,6 +1310,7 @@ mod tests {
             name: "Acme".into(),
             team: None,
             host: "acme-host".into(),
+            group: None,
             asg: None,
             env: crate::config::schema::Env::Prod,
             vpn: crate::config::schema::Vpn::None,

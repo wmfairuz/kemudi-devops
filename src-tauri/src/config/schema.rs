@@ -123,6 +123,8 @@ pub struct RawServer {
     pub name: Option<String>,
     /// The team it belongs to (a `teams:` id).
     pub team: Option<String>,
+    /// A sidebar group (a heading the servers sharing it sit under).
+    pub group: Option<String>,
     /// An ~/.ssh/config alias (or user@host). Not with `asg`.
     #[serde(default)]
     pub host: String,
@@ -480,6 +482,7 @@ pub struct Server {
     pub id: String,
     pub name: String,
     pub team: Option<String>,
+    pub group: Option<String>,
     /// Empty for an `asg` server.
     pub host: String,
     pub asg: Option<Asg>,

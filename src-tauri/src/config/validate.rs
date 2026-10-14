@@ -826,6 +826,7 @@ impl Validator<'_> {
         let mut server = Server {
             name: rs.name.clone().unwrap_or_else(|| rs.id.clone()),
             team: rs.team.clone(),
+            group: rs.group.clone().map(|g| g.trim().to_string()).filter(|g| !g.is_empty()),
             id: rs.id,
             host: rs.host,
             asg: rs.asg,

@@ -141,6 +141,7 @@ pub fn run() {
             config::forms::server_save,
             config::forms::server_delete,
             config::forms::server_duplicate,
+            config::forms::servers_set_group,
             config::forms::team_save,
             config::forms::team_delete,
             config::forms::app_save,

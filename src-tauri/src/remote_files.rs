@@ -1292,6 +1292,7 @@ shop.example.com
             name: "stg".into(),
             team: None,
             host: "stg".into(),
+            group: None,
             asg: None,
             env: crate::config::schema::Env::Staging,
             vpn: crate::config::schema::Vpn::None,

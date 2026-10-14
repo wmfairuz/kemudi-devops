@@ -252,6 +252,8 @@ function ServerDetails({ server }: { server: Server | null }) {
   const teams = useConfig((s) => s.snapshot?.config?.teams ?? NO_TEAMS);
   // A new server starts in the team in front.
   const [team, setTeam] = useState<string>(server ? (server.team ?? "") : teams.some((t) => t.id === useTeam.getState().current) ? useTeam.getState().current : "");
+  const [group, setGroup] = useState(server?.group ?? "");
+  const groupNames = [...new Set(servers.map((s) => s.group).filter((g): g is string => !!g))];
   const [hosts, setHosts] = useState<string[]>([]);
   const [keys, setKeys] = useState<string[]>([]);
   const reach = useStatus((s) => (server ? s.byServer[server.id] : undefined));
@@ -376,6 +378,7 @@ function ServerDetails({ server }: { server: Server | null }) {
     check: checkHost.trim() && portOf(checkPort) ? { host: checkHost.trim(), port: portOf(checkPort)! } : null,
     color,
     team: team || null,
+    group: group.trim() || null,
   };
   const dirty =
     entryDirty ||
@@ -390,7 +393,8 @@ function ServerDetails({ server }: { server: Server | null }) {
     form.vpnConnect !== server.vpnConnect ||
     JSON.stringify(form.check) !== JSON.stringify(server.check) ||
     form.color !== server.color ||
-    form.team !== (server.team ?? null);
+    form.team !== (server.team ?? null) ||
+    form.group !== (server.group ?? null);
   const valid = asgForm
     ? idOk && (asgMode === "group" ? asgForm.name !== "" : idsOk) && checkOk
     : idOk && form.host !== "" && vpnOk && checkOk && entryOk && mode !== "loading";
@@ -771,6 +775,14 @@ function ServerDetails({ server }: { server: Server | null }) {
             </select>
           </Row>
         )}
+        <Row label="Group" hint="A heading in the sidebar for servers that belong together (e.g. AWS, Clients); empty: none">
+          <TextInput list="kemudi-server-groups" value={group} placeholder="(none)" className="font-sans" onChange={(e) => setGroup(e.target.value)} />
+          <datalist id="kemudi-server-groups">
+            {groupNames.map((g) => (
+              <option key={g} value={g} />
+            ))}
+          </datalist>
+        </Row>
         <Row
           label="Environment"
           hint={(() => {

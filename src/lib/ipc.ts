@@ -403,6 +403,8 @@ export interface Server {
   name: string;
   /** Its team's id (null: no team). */
   team: string | null;
+  /** Its sidebar group (null: none). */
+  group: string | null;
   /** Empty for an Auto Scaling group. */
   host: string;
   asg: Asg | null;
@@ -612,6 +614,7 @@ export interface ServerForm {
   id: string;
   name: string | null;
   team: string | null;
+  group: string | null;
   host: string;
   asg: Asg | null;
   env: Env;
@@ -647,6 +650,9 @@ export const teamDelete = (id: string): Promise<ConfigSnapshot> => invoke("team_
 export const serverSave = (original: string | null, server: ServerForm): Promise<ConfigSnapshot> =>
   invoke("server_save", { original, server });
 export const serverDelete = (id: string): Promise<ConfigSnapshot> => invoke("server_delete", { id });
+/** Put servers in a sidebar group (null: out of any); also renames / removes one. */
+export const serversSetGroup = (ids: string[], group: string | null): Promise<ConfigSnapshot> =>
+  invoke("servers_set_group", { ids, group });
 /** Copy a server (apps and actions too) as `id`, named `name`, right after it. */
 export const serverDuplicate = (original: string, id: string, name: string): Promise<ConfigSnapshot> =>
   invoke("server_duplicate", { original, id, name });

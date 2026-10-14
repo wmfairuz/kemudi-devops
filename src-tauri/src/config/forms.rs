@@ -24,6 +24,9 @@ pub struct ServerForm {
     /// Its team (None: no team).
     #[serde(default)]
     pub team: Option<String>,
+    /// Its sidebar group (None: none).
+    #[serde(default)]
+    pub group: Option<String>,
     /// Empty for an Auto Scaling group.
     #[serde(default)]
     pub host: String,
@@ -141,6 +144,7 @@ fn server_fields(f: &ServerForm) -> Vec<(&'static str, Option<String>)> {
             opt(&f.name).filter(|n| n != id).map(|n| yaml_scalar(&n)),
         ),
         ("team", opt(&f.team).map(|t| yaml_scalar(&t))),
+        ("group", opt(&f.group).map(|g| yaml_scalar(&g))),
         ("host", f.asg.is_none().then(|| yaml_scalar(f.host.trim()))),
         ("asg", f.asg.as_ref().map(|a| asg_map(&clean_asg(a)))),
         ("env", Some(f.env.as_str().to_string())),
@@ -296,6 +300,7 @@ pub async fn server_save(
                 && s.vpn_connect == opt(&server.vpn_connect).filter(|_| vpn)
                 && s.color == server.color
                 && s.team == opt(&server.team)
+                && s.group == opt(&server.group)
         }) && original
             .as_ref()
             .is_none_or(|o| o == &id || c.server(o).is_none())
@@ -327,6 +332,25 @@ pub async fn server_duplicate(
             && c.server(&id)
                 .is_some_and(|s| name.is_empty() || s.name == name)
     })?;
+    save(&app, &state, state.config.path(), &edited)
+}
+
+/// Put servers in a sidebar group (None: out of any group). Also how a
+/// group is renamed or removed: every server in it, at once.
+#[tauri::command]
+pub async fn servers_set_group(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<String>,
+    group: Option<String>,
+) -> AppResult<Snapshot> {
+    let group = opt(&group);
+    let value = group.as_deref().map(yaml_scalar);
+    let edited = ids
+        .iter()
+        .try_fold(read(&state)?, |src, id| set_entity_field(&src, id, None, "group", value.as_deref()))
+        .map_err(AppError::Invalid)?;
+    checked(&edited, |c| ids.iter().all(|id| c.server(id).is_some_and(|s| s.group == group)))?;
     save(&app, &state, state.config.path(), &edited)
 }
 
@@ -951,6 +975,7 @@ mod workflow_tests {
             name: Some("Shop web".into()),
             team: None,
             host: "ignored".into(),
+            group: None,
             asg: Some(Asg {
                 name: " shop-web-asg ".into(),
                 instances: Vec::new(),

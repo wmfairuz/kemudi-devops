@@ -1,6 +1,6 @@
 import { PopupMenu } from "@/components/kit/PopupMenu";
-import { appDelete, errorMessage, openUrl, serverDelete, type App, type Server } from "@/lib/ipc";
-import { askConfirm } from "@/stores/confirm";
+import { appDelete, errorMessage, openUrl, serverDelete, serversSetGroup, type App, type Server } from "@/lib/ipc";
+import { askConfirm, askText } from "@/stores/confirm";
 import { duplicateServer, openDetails, useManage } from "@/stores/manage";
 import { useNewApp } from "@/stores/newApp";
 import { useConfig } from "@/stores/config";
@@ -21,6 +21,26 @@ async function removeServer(server: Server) {
     await serverDelete(server.id);
     useToasts.getState().push(`Deleted ${server.id}`, "info");
     if (useManage.getState().details?.serverId === server.id) useTabs.getState().closeDetails();
+  } catch (e) {
+    toastError(errorMessage(e));
+  }
+}
+
+/** Put a server in a sidebar group (an existing one or a new name); empty:
+ *  out of any. */
+async function pickGroup(server: Server) {
+  const all = [...new Set((useConfig.getState().snapshot?.config?.servers ?? []).map((s) => s.group).filter((g): g is string => !!g))];
+  const to = await askText(
+    `Group for ${server.name}`,
+    all.length ? `Pick one (${all.join(", ")}) or type a new name. (To take it out of a group, clear Group on its page.)` : "A heading in the sidebar for servers that belong together, like AWS or Clients.",
+    "Save",
+    server.group ?? "",
+    all,
+    "AWS, Clients…",
+  );
+  if (to === null || to === server.group) return;
+  try {
+    await serversSetGroup([server.id], to);
   } catch (e) {
     toastError(errorMessage(e));
   }
@@ -72,6 +92,7 @@ export function EntityMenu() {
         app
           ? [{ label: "Delete app…", run: () => removeApp(server, app) }]
           : [
+              { label: "Group…", hint: server.group ?? "none", run: () => void pickGroup(server) },
               { label: "Duplicate", hint: "group, profile, apps, actions", run: () => void duplicateServer(server) },
               { label: "Delete server…", run: () => removeServer(server) },
             ],
@@ -104,6 +125,7 @@ export function EntityMenu() {
           { label: "New app…", hint: "set one up from git", run: () => useNewApp.getState().open(server.id) },
         ],
         [
+          { label: "Group…", hint: server.group ?? "none", run: () => void pickGroup(server) },
           { label: "Duplicate", hint: "host, apps, actions", run: () => void duplicateServer(server) },
           { label: "Delete server…", run: () => removeServer(server) },
         ],

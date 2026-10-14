@@ -260,6 +260,7 @@ mod tests {
             name: "Staging 03".into(),
             team: None,
             host: "stg-svr03".into(),
+            group: None,
             asg: None,
             env: Env::Staging,
             vpn: Vpn::None,

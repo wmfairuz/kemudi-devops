@@ -96,6 +96,15 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   *Servers* adds one. Kemudi edits only the lines it must, keeps your
   comments, and checks the result before writing it; with no servers.yaml
   yet, the first server creates it.
+- **Server groups**: give servers a `group:` (on the server's page, right-click ▸
+  **Group…**, or drag a server onto a group's heading) and the sidebar lists them
+  under that heading. Ungrouped servers come first. Click a heading to open or
+  close it. Right-click one to **Rename…** it (or merge it into an existing group)
+  or **Ungroup** it (the servers stay). Dropping a server among another group's
+  servers moves it into that group.
+- **Open / closed is remembered**: servers and groups stay as you left them,
+  across restarts. Bringing an app's tab to the front no longer reopens its
+  server; a closed server whose app is in front is highlighted instead.
 - **Home tab** (pinned first; the start screen): New terminal, SSH to host,
   Add server; your tab configs (one click opens one), servers with status,
   SSH hosts (**New** creates one with Test connection; Kemudi's are

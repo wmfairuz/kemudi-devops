@@ -1,12 +1,14 @@
 import { ChevronRight, ChevronsDownUp, ChevronsUpDown, Plus, SquareTerminal } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { create } from "zustand";
 
 import { EnvTag, StaleBadge, VpnBadge } from "@/components/kit/EnvTag";
 import { envBar } from "@/components/kit/env";
 import { Glyph, Spinner } from "@/components/kit/Spinner";
 import { StatusDot } from "@/components/kit/StatusDot";
-import { appMove, errorMessage, serverMove, type App, type Server } from "@/lib/ipc";
+import { appMove, errorMessage, serverMove, serversSetGroup, type App, type Server } from "@/lib/ipc";
+import { PopupMenu } from "@/components/kit/PopupMenu";
+import { askConfirm as askSure, askText } from "@/stores/confirm";
 import { findServer, useConfig } from "@/stores/config";
 import { askConfirm } from "@/stores/confirm";
 import { toastError, useToasts } from "@/stores/toasts";
@@ -42,7 +44,7 @@ interface Drag {
   y: number;
   /** Where it would land: before `before` (an app on `serverId`, or a
    *  server), null: at the end. */
-  over: { serverId: string; before: string | null } | null;
+  over: { serverId: string; before: string | null; group?: string } | null;
 }
 
 const useDrag = create<{ drag: Drag | null }>(() => ({ drag: null }));
@@ -68,7 +70,7 @@ function startDrag(e: React.PointerEvent, server: Server, app?: App) {
         name: app?.name ?? server.name,
         x: ev.clientX,
         y: ev.clientY,
-        over: kind === "app" ? dropAt(ev.clientX, ev.clientY) : serverDropAt(ev.clientX, ev.clientY),
+        over: kind === "app" ? dropAt(ev.clientX, ev.clientY) : (groupDropAt(ev.clientX, ev.clientY) ?? serverDropAt(ev.clientX, ev.clientY)),
       },
     });
   };
@@ -82,7 +84,10 @@ function startDrag(e: React.PointerEvent, server: Server, app?: App) {
     justDropped = true;
     setTimeout(() => (justDropped = false), 0);
     if (d.over && d.kind === "app") void drop(d.serverId, d.appId, d.over.serverId, d.over.before);
-    if (d.over && d.kind === "server") void dropServer(d.serverId, d.over.before);
+    if (d.over && d.kind === "server") {
+      if (d.over.group !== undefined) void joinGroup(d.serverId, d.over.group);
+      else void dropServer(d.serverId, d.over.before);
+    }
   };
   window.addEventListener("pointermove", move);
   window.addEventListener("pointerup", up);
@@ -110,12 +115,33 @@ function serverDropAt(x: number, y: number): Drag["over"] {
   return { serverId: id, before: y < r.top + r.height / 2 ? id : (el.dataset.nextServer ?? null) };
 }
 
+/** A group heading under the pointer: drop a server there to put it in. */
+function groupDropAt(x: number, y: number): Drag["over"] {
+  const el = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-group-header]");
+  return el ? { serverId: "", before: null, group: el.dataset.groupHeader! } : null;
+}
+
+async function joinGroup(id: string, group: string) {
+  if (findServer(id)?.group === group) return;
+  try {
+    await serversSetGroup([id], group);
+    if (useSidebar.getState().closedGroups[group]) useSidebar.getState().toggleGroup(group);
+  } catch (e) {
+    toastError(errorMessage(e));
+  }
+}
+
+/** Move a server before another (or to the end); dropped among another
+ *  group's servers, it joins that group. */
 async function dropServer(id: string, before: string | null) {
   const servers = useConfig.getState().snapshot?.config?.servers ?? [];
   const ids = servers.map((s) => s.id);
-  if (before === id || (before ?? null) === (ids[ids.indexOf(id) + 1] ?? null)) return; // where it already is
+  const target = before ? servers.find((s) => s.id === before) : undefined;
+  const group = target ? (target.group ?? null) : undefined;
+  const moved = !(before === id || (before ?? null) === (ids[ids.indexOf(id) + 1] ?? null));
   try {
-    await serverMove(id, before);
+    if (moved) await serverMove(id, before);
+    if (group !== undefined && group !== (findServer(id)?.group ?? null)) await serversSetGroup([id], group);
   } catch (e) {
     toastError(errorMessage(e));
   }
@@ -184,6 +210,20 @@ export function ServerTree({ servers, stale }: Props) {
     });
   }, [servers, filter]);
 
+  // Ungrouped servers first, then each group (in the order they first appear).
+  const sections = useMemo(() => {
+    const out: { group: string | null; rows: typeof visible }[] = [];
+    for (const row of visible) {
+      const g = row.server.group ?? null;
+      let sec = out.find((s) => s.group === g);
+      if (!sec) out.push((sec = { group: g, rows: [] }));
+      sec.rows.push(row);
+    }
+    return out.sort((a, b) => Number(a.group !== null) - Number(b.group !== null));
+  }, [visible]);
+  const closedGroups = useSidebar((s) => s.closedGroups);
+  const order = sections.flatMap((s) => s.rows.map((r) => r.server.id));
+
   return (
     <>
       <div className="flex items-center gap-2 px-3.5 pt-3 pb-2 text-[11px] font-medium text-subtle-foreground">
@@ -206,20 +246,84 @@ export function ServerTree({ servers, stale }: Props) {
         <AddServerButton />
       </div>
       <div role="tree" className={cn("min-h-0 flex-1 overflow-y-auto pb-2", stale && "opacity-72")}>
-        {visible.map(({ server, apps, forced }, i) => (
-          <ServerGroup
-            key={server.id}
-            server={server}
-            apps={apps}
-            forceOpen={forced || (!!filter && apps.length > 0)}
-            next={visible[i + 1]?.server.id ?? null}
-          />
-        ))}
+        {sections.map((sec) => {
+          const closed = sec.group !== null && !!closedGroups[sec.group] && !filter;
+          return (
+            <div key={sec.group ?? ""}>
+              {sec.group !== null && <GroupHeader name={sec.group} count={sec.rows.length} closed={closed} ids={sec.rows.map((r) => r.server.id)} />}
+              {!closed &&
+                sec.rows.map(({ server, apps, forced }) => (
+                  <ServerGroup
+                    key={server.id}
+                    server={server}
+                    apps={apps}
+                    forceOpen={forced || (!!filter && apps.length > 0)}
+                    next={order[order.indexOf(server.id) + 1] ?? null}
+                  />
+                ))}
+            </div>
+          );
+        })}
         <DragGhost />
         {filter && visible.length === 0 && (
           <div className="px-3 py-4 text-[12px] text-subtle-foreground">No servers or apps match “{filter}”.</div>
         )}
       </div>
+    </>
+  );
+}
+
+/** A group's heading: click opens / closes it (remembered); drop a server
+ *  on it to put it in; right-click: rename, ungroup. */
+function GroupHeader({ name, count, closed, ids }: { name: string; count: number; closed: boolean; ids: string[] }) {
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const target = useDrag((s) => s.drag?.kind === "server" && s.drag.over?.group === name);
+  const rename = async () => {
+    const all = [...new Set((useConfig.getState().snapshot?.config?.servers ?? []).map((s) => s.group).filter((g): g is string => !!g))];
+    const to = await askText(`Rename ${name}`, `A new name for this group (${count} server${count === 1 ? "" : "s"}); an existing one merges them.`, "Rename", name, all.filter((g) => g !== name));
+    if (!to || to === name) return;
+    try {
+      await serversSetGroup(ids, to);
+    } catch (e) {
+      toastError(errorMessage(e));
+    }
+  };
+  const ungroup = async () => {
+    if (!(await askSure(`Ungroup ${name}?`, `Its ${count} server${count === 1 ? "" : "s"} go back to the top of the list. Nothing else changes.`, "Ungroup"))) return;
+    try {
+      await serversSetGroup(ids, null);
+    } catch (e) {
+      toastError(errorMessage(e));
+    }
+  };
+  return (
+    <>
+      <button
+        data-group-header={name}
+        onClick={() => useSidebar.getState().toggleGroup(name)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setMenu({ x: e.clientX, y: e.clientY });
+        }}
+        title="Click: open / close · drop a server here to add it · right-click: rename, ungroup"
+        className={cn(
+          "mx-2 mt-2 mb-1 flex w-[calc(100%-1rem)] cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] font-semibold tracking-wide text-subtle-foreground uppercase hover:bg-hover hover:text-foreground",
+          target && "bg-primary/10 ring-2 ring-primary/60",
+        )}
+      >
+        <ChevronRight className={cn("size-3.5 flex-none transition-transform", !closed && "rotate-90")} strokeWidth={2} />
+        <span className="min-w-0 flex-1 truncate">{name}</span>
+        <span className="font-mono text-[10.5px] font-normal tracking-normal text-faint-foreground">{count}</span>
+      </button>
+      {menu && (
+        <PopupMenu
+          x={menu.x}
+          y={menu.y}
+          title={name}
+          onClose={() => setMenu(null)}
+          groups={[[{ label: "Rename…", run: () => void rename() }, { label: "Ungroup", hint: "servers stay", run: () => void ungroup() }]]}
+        />
+      )}
     </>
   );
 }
@@ -237,6 +341,8 @@ function ServerGroup({ server, apps, forceOpen, next }: { server: Server; apps: 
   const expanded = useSidebar((s) => !!s.expanded[server.id]) || forceOpen;
   const toggle = useSidebar((s) => s.toggle);
   const selected = useSidebar((s) => s.selected?.serverId === server.id && s.selected.appId === null);
+  // One of its apps is what's in front, but you've closed the server.
+  const childSelected = useSidebar((s) => s.selected?.serverId === server.id && s.selected.appId !== null) && !expanded;
   const reach = useStatus((s) => s.byServer[server.id]);
   const status = reach?.state ?? "unknown";
   const down = status === "down";
@@ -280,7 +386,7 @@ function ServerGroup({ server, apps, forceOpen, next }: { server: Server; apps: 
         }}
         className={cn(
           "group flex h-[54px] cursor-default items-center gap-2.5 rounded-lg pr-2 pl-1.5",
-          selected ? "bg-accent" : "hover:bg-hover",
+          selected ? "bg-accent" : childSelected ? "bg-accent/45 hover:bg-hover" : "hover:bg-hover",
           dragging && dropHere === null && "ring-2 ring-primary/60",
         )}
       >

@@ -1198,6 +1198,7 @@ mod tests {
             name: "S".into(),
             team: None,
             host: "s".into(),
+            group: None,
             asg: None,
             env: Env::Staging,
             vpn: Vpn::None,

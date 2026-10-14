@@ -6,6 +6,8 @@ const KEY = "kemudi.sidebar";
 
 interface Persisted {
   expanded: Record<string, boolean>;
+  /** Sidebar groups you've closed (open unless here). */
+  closedGroups: Record<string, boolean>;
   /** The app (or, with appId null, the server) the Actions panel shows. */
   selected: { serverId: string; appId: string | null } | null;
 }
@@ -13,32 +15,34 @@ interface Persisted {
 function load(): Persisted {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return JSON.parse(raw) as Persisted;
+    if (raw) return { closedGroups: {}, ...(JSON.parse(raw) as Partial<Persisted>) } as Persisted;
   } catch {
     // Corrupt or unavailable storage: start fresh.
   }
-  return { expanded: {}, selected: null };
+  return { expanded: {}, closedGroups: {}, selected: null };
 }
 
 interface SidebarState extends Persisted {
   filter: string;
   setFilter(filter: string): void;
   toggle(serverId: string): void;
+  toggleGroup(group: string): void;
   /** Open or close all of these servers at once. */
   setAll(serverIds: string[], open: boolean): void;
   select(serverId: string, appId: string | null): void;
   /** Expand, select and scroll to an app (palette). */
   reveal(serverId: string, appId: string): void;
-  /** Select what the tab in front belongs to (its app, else its server),
-   *  opening the server so the row shows. Keeps the filter. */
+  /** Select what the tab in front belongs to (its app, else its server).
+   *  Leaves open / closed servers as you set them (a closed server's row is
+   *  marked instead). Keeps the filter. */
   follow(serverId: string, appId: string | null): void;
 }
 
 export const useSidebar = create<SidebarState>((set, get) => {
   const save = () => {
-    const { expanded, selected } = get();
+    const { expanded, closedGroups, selected } = get();
     try {
-      localStorage.setItem(KEY, JSON.stringify({ expanded, selected }));
+      localStorage.setItem(KEY, JSON.stringify({ expanded, closedGroups, selected }));
     } catch {
       // Not persisted; fine.
     }
@@ -49,6 +53,10 @@ export const useSidebar = create<SidebarState>((set, get) => {
     setFilter: (filter) => set({ filter }),
     toggle(serverId) {
       set((s) => ({ expanded: { ...s.expanded, [serverId]: !s.expanded[serverId] } }));
+      save();
+    },
+    toggleGroup(group) {
+      set((s) => ({ closedGroups: { ...s.closedGroups, [group]: !s.closedGroups[group] } }));
       save();
     },
     setAll(serverIds, open) {
@@ -65,7 +73,7 @@ export const useSidebar = create<SidebarState>((set, get) => {
     follow(serverId, appId) {
       const cur = get().selected;
       if (cur && cur.serverId === serverId && cur.appId === appId) return;
-      set((s) => ({ selected: { serverId, appId }, expanded: appId ? { ...s.expanded, [serverId]: true } : s.expanded }));
+      set({ selected: { serverId, appId } });
       save();
       if (appId) requestAnimationFrame(() => document.getElementById(`app-${serverId}-${appId}`)?.scrollIntoView({ block: "nearest" }));
     },
