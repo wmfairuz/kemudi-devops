@@ -1,4 +1,4 @@
-import { ChevronRight, Plus, SquareTerminal } from "lucide-react";
+import { ChevronRight, ChevronsDownUp, ChevronsUpDown, Plus, SquareTerminal } from "lucide-react";
 import { useMemo } from "react";
 import { create } from "zustand";
 
@@ -170,6 +170,10 @@ function DragGhost() {
 export function ServerTree({ servers, stale }: Props) {
   const filter = useSidebar((s) => s.filter.trim().toLowerCase());
   const appCount = servers.reduce((n, s) => n + s.apps.length, 0);
+  // Collapse all while any server with apps is open, else expand all.
+  const expanded = useSidebar((s) => s.expanded);
+  const withApps = servers.filter((s) => s.apps.length > 0).map((s) => s.id);
+  const anyOpen = withApps.some((id) => expanded[id]);
 
   const visible = useMemo(() => {
     if (!filter) return servers.map((s) => ({ server: s, apps: s.apps, forced: false }));
@@ -189,6 +193,16 @@ export function ServerTree({ servers, stale }: Props) {
         </span>
         <span className="flex-1" />
         {stale && <StaleBadge />}
+        {withApps.length > 0 && (
+          <button
+            title={anyOpen ? "Collapse all (⌥-click a server's arrow: the same)" : "Expand all (⌥-click a server's arrow: the same)"}
+            aria-label={anyOpen ? "Collapse all servers" : "Expand all servers"}
+            onClick={() => useSidebar.getState().setAll(withApps, !anyOpen)}
+            className="-my-1 flex size-5 cursor-pointer items-center justify-center rounded-md text-subtle-foreground hover:bg-hover-strong hover:text-foreground"
+          >
+            {anyOpen ? <ChevronsDownUp className="size-3.5" strokeWidth={2} /> : <ChevronsUpDown className="size-3.5" strokeWidth={2} />}
+          </button>
+        )}
         <AddServerButton />
       </div>
       <div role="tree" className={cn("min-h-0 flex-1 overflow-y-auto pb-2", stale && "opacity-72")}>
@@ -274,7 +288,11 @@ function ServerGroup({ server, apps, forceOpen, next }: { server: Server; apps: 
           aria-label={expanded ? "Collapse" : "Expand"}
           onClick={(e) => {
             e.stopPropagation();
-            toggle(server.id);
+            // ⌥-click: every server the same way (as in Finder).
+            if (e.altKey) {
+              const ids = (useConfig.getState().snapshot?.config?.servers ?? []).map((s) => s.id);
+              useSidebar.getState().setAll(ids, !expanded);
+            } else toggle(server.id);
           }}
           onDoubleClick={(e) => e.stopPropagation()}
           className="-ml-0.5 flex size-6 flex-none cursor-pointer items-center justify-center rounded-md text-subtle-foreground hover:bg-hover-strong hover:text-foreground"

@@ -24,6 +24,8 @@ interface SidebarState extends Persisted {
   filter: string;
   setFilter(filter: string): void;
   toggle(serverId: string): void;
+  /** Open or close all of these servers at once. */
+  setAll(serverIds: string[], open: boolean): void;
   select(serverId: string, appId: string | null): void;
   /** Expand, select and scroll to an app (palette). */
   reveal(serverId: string, appId: string): void;
@@ -47,6 +49,10 @@ export const useSidebar = create<SidebarState>((set, get) => {
     setFilter: (filter) => set({ filter }),
     toggle(serverId) {
       set((s) => ({ expanded: { ...s.expanded, [serverId]: !s.expanded[serverId] } }));
+      save();
+    },
+    setAll(serverIds, open) {
+      set((s) => ({ expanded: { ...s.expanded, ...Object.fromEntries(serverIds.map((id) => [id, open])) } }));
       save();
     },
     reveal(serverId, appId) {
