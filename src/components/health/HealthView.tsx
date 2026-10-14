@@ -153,6 +153,89 @@ export function HealthView({ tab, visible }: { tab: Tab; visible: boolean }) {
         {!h && !error && <div className="py-6 text-[0.9em] text-subtle-foreground">Checking {server?.name ?? serverId}: certificates, updates, services, apps…</div>}
         {h && (
           <div className="flex flex-col gap-5">
+            {/* The machine first: OS, updates, services, disks. */}
+            {!h.sslOnly && (
+              <Section title="System">
+                <div className="grid grid-cols-[9em_minmax(0,1fr)] gap-x-3 gap-y-1 text-[0.92em]">
+                  <span className="text-subtle-foreground">OS</span>
+                  <span>
+                    {h.os || "?"} <span className="text-subtle-foreground">· kernel {h.kernel} · up {uptime(h.uptimeS)}</span>
+                  </span>
+                  <span className="text-subtle-foreground">Updates</span>
+                  <span>
+                    {h.updates == null ? (
+                      <span className="text-subtle-foreground">unknown (no apt-check)</span>
+                    ) : h.updates === 0 ? (
+                      <Pill tone="ok">up to date</Pill>
+                    ) : (
+                      <>
+                        <Pill tone={h.securityUpdates ? "warn" : "dim"}>{h.updates} pending</Pill>{" "}
+                        {h.securityUpdates ? <Pill tone="bad">{h.securityUpdates} security</Pill> : null}
+                      </>
+                    )}
+                  </span>
+                  <span className="text-subtle-foreground">Reboot</span>
+                  <span>
+                    {h.rebootRequired ? (
+                      <>
+                        <Pill tone="warn">needed</Pill>
+                        {h.rebootPkgs.length > 0 && <span className="ml-2 text-[0.85em] text-subtle-foreground">for {h.rebootPkgs.slice(0, 4).join(", ")}{h.rebootPkgs.length > 4 ? "…" : ""}</span>}
+                      </>
+                    ) : (
+                      <Pill tone="ok">not needed</Pill>
+                    )}
+                  </span>
+                  <span className="text-subtle-foreground">Services</span>
+                  <span className="flex flex-wrap gap-1.5">
+                    {h.services.length === 0 && <span className="text-subtle-foreground">—</span>}
+                    {h.services.map((s) => (
+                      <button
+                        key={s.name}
+                        type="button"
+                        className="cursor-pointer rounded hover:ring-1 hover:ring-control-border"
+                        title={`${s.active} (${s.sub}) · click for Status / Start / Stop / Restart`}
+                        onClick={(e) => serviceMenu.open(e, "service", s.name)}
+                      >
+                        <Pill tone={s.active === "active" ? "ok" : s.active === "failed" ? "bad" : "dim"}>
+                          {s.name}
+                          {s.active !== "active" ? ` · ${s.active}` : ""}
+                        </Pill>
+                      </button>
+                    ))}
+                    {serviceMenu.node}
+                  </span>
+                  {h.failedUnits.length > 0 && (
+                    <>
+                      <span className="text-env-prod-fg">Failed units</span>
+                      <span className="text-env-prod-fg">{h.failedUnits.join(", ")}</span>
+                    </>
+                  )}
+                  {h.disks.length > 0 && (
+                    <>
+                      <span className="text-subtle-foreground">Disks</span>
+                      <span className="flex flex-col gap-1">
+                        {h.disks.map((d) => {
+                          const pct = d.sizeKb ? (d.usedKb / d.sizeKb) * 100 : 0;
+                          const lv = levelOf("disk", pct);
+                          return (
+                            <span key={d.mount} className="flex items-center gap-2.5" title={d.fs}>
+                              <span className="w-[10em] truncate font-mono">{d.mount}</span>
+                              <span className="h-1.5 w-[140px] flex-none overflow-hidden rounded-full bg-secondary">
+                                <span className={cn("block h-full", DISK_BAR[lv])} style={{ width: `${Math.min(100, pct)}%` }} />
+                              </span>
+                              <span className={cn("w-[3em] text-right font-mono", DISK_TEXT[lv])}>{pct.toFixed(0)}%</span>
+                              <span className="text-subtle-foreground">
+                                {kb(d.usedKb)} of {kb(d.sizeKb)} · {kb(d.availKb)} free
+                              </span>
+                            </span>
+                          );
+                        })}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </Section>
+            )}
             <Section
               title="SSL certificates"
               extra={
@@ -254,88 +337,6 @@ export function HealthView({ tab, visible }: { tab: Tab; visible: boolean }) {
               </Section>
             )}
 
-            {!h.sslOnly && (
-              <Section title="System">
-                <div className="grid grid-cols-[9em_minmax(0,1fr)] gap-x-3 gap-y-1 text-[0.92em]">
-                  <span className="text-subtle-foreground">OS</span>
-                  <span>
-                    {h.os || "?"} <span className="text-subtle-foreground">· kernel {h.kernel} · up {uptime(h.uptimeS)}</span>
-                  </span>
-                  <span className="text-subtle-foreground">Updates</span>
-                  <span>
-                    {h.updates == null ? (
-                      <span className="text-subtle-foreground">unknown (no apt-check)</span>
-                    ) : h.updates === 0 ? (
-                      <Pill tone="ok">up to date</Pill>
-                    ) : (
-                      <>
-                        <Pill tone={h.securityUpdates ? "warn" : "dim"}>{h.updates} pending</Pill>{" "}
-                        {h.securityUpdates ? <Pill tone="bad">{h.securityUpdates} security</Pill> : null}
-                      </>
-                    )}
-                  </span>
-                  <span className="text-subtle-foreground">Reboot</span>
-                  <span>
-                    {h.rebootRequired ? (
-                      <>
-                        <Pill tone="warn">needed</Pill>
-                        {h.rebootPkgs.length > 0 && <span className="ml-2 text-[0.85em] text-subtle-foreground">for {h.rebootPkgs.slice(0, 4).join(", ")}{h.rebootPkgs.length > 4 ? "…" : ""}</span>}
-                      </>
-                    ) : (
-                      <Pill tone="ok">not needed</Pill>
-                    )}
-                  </span>
-                  <span className="text-subtle-foreground">Services</span>
-                  <span className="flex flex-wrap gap-1.5">
-                    {h.services.length === 0 && <span className="text-subtle-foreground">—</span>}
-                    {h.services.map((s) => (
-                      <button
-                        key={s.name}
-                        type="button"
-                        className="cursor-pointer rounded hover:ring-1 hover:ring-control-border"
-                        title={`${s.active} (${s.sub}) · click for Status / Start / Stop / Restart`}
-                        onClick={(e) => serviceMenu.open(e, "service", s.name)}
-                      >
-                        <Pill tone={s.active === "active" ? "ok" : s.active === "failed" ? "bad" : "dim"}>
-                          {s.name}
-                          {s.active !== "active" ? ` · ${s.active}` : ""}
-                        </Pill>
-                      </button>
-                    ))}
-                    {serviceMenu.node}
-                  </span>
-                  {h.failedUnits.length > 0 && (
-                    <>
-                      <span className="text-env-prod-fg">Failed units</span>
-                      <span className="text-env-prod-fg">{h.failedUnits.join(", ")}</span>
-                    </>
-                  )}
-                  {h.disks.length > 0 && (
-                    <>
-                      <span className="text-subtle-foreground">Disks</span>
-                      <span className="flex flex-col gap-1">
-                        {h.disks.map((d) => {
-                          const pct = d.sizeKb ? (d.usedKb / d.sizeKb) * 100 : 0;
-                          const lv = levelOf("disk", pct);
-                          return (
-                            <span key={d.mount} className="flex items-center gap-2.5" title={d.fs}>
-                              <span className="w-[10em] truncate font-mono">{d.mount}</span>
-                              <span className="h-1.5 w-[140px] flex-none overflow-hidden rounded-full bg-secondary">
-                                <span className={cn("block h-full", DISK_BAR[lv])} style={{ width: `${Math.min(100, pct)}%` }} />
-                              </span>
-                              <span className={cn("w-[3em] text-right font-mono", DISK_TEXT[lv])}>{pct.toFixed(0)}%</span>
-                              <span className="text-subtle-foreground">
-                                {kb(d.usedKb)} of {kb(d.sizeKb)} · {kb(d.availKb)} free
-                              </span>
-                            </span>
-                          );
-                        })}
-                      </span>
-                    </>
-                  )}
-                </div>
-              </Section>
-            )}
 
             {!h.sslOnly && h.apps.length > 0 && (
               <Section title="Apps">
