@@ -29,6 +29,13 @@ const COMMANDS: Record<string, () => void> = {
   },
   "tab.prev": () => useTabs.getState().activateRelative(-1),
   "tab.next": () => useTabs.getState().activateRelative(1),
+  // The Workflows tab (its runs); again: back where you were.
+  workflows: () => {
+    const tabs = useTabs.getState();
+    const front = tabs.activeId === WORKFLOWS_ID || !!tabs.groups.find((g) => g.workflow && g.focus === tabs.activeId);
+    if (front) tabs.closeWorkflows();
+    else tabs.openWorkflows();
+  },
   history: () => {
     const tabs = useTabs.getState();
     if (tabs.activeId === HISTORY_ID) tabs.closeHistory();
@@ -121,6 +128,7 @@ function commandFor(e: KeyboardEvent): string | null {
   if (e.shiftKey && e.code === "KeyP") return "vault.fill";
   if (e.shiftKey && e.code === "KeyK") return "passwords";
   if (e.shiftKey && e.code === "KeyS") return "snippets";
+  if (e.shiftKey && e.code === "KeyR") return "workflows";
   if (e.shiftKey) return null;
   const byCode: Record<string, string> = {
     KeyA: "edit.selectAll",

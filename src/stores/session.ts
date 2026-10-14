@@ -26,7 +26,13 @@ interface Saved {
   active: number;
   /** Split layouts over `tabs` indexes (absent: one pane per tab). */
   groups?: { layout: SavedLayout; focus: number; color?: string }[];
+  /** The tab strip's order: pinned tabs by name, tabs as `g:<index in
+   *  groups>`. */
+  strip?: string[];
 }
+
+/** The pinned tabs' names in the strip order. */
+const PINNED = ["details", "history", "snippets", "workflows"];
 
 function isSaved(v: unknown): v is Saved {
   return typeof v === "object" && v !== null && (v as Saved).version === 1 && Array.isArray((v as Saved).tabs);
@@ -125,6 +131,16 @@ export async function initSession(): Promise<void> {
         });
         useTabs.getState().restoreGroups(groups);
       }
+      // Where you'd dragged the tabs, pinned ones included.
+      if (saved.strip) {
+        const gs = useTabs.getState().groups.filter((g) => !g.workflow);
+        const keys = saved.strip.flatMap((k) => {
+          const m = /^g:(\d+)$/.exec(k);
+          if (m) return gs[Number(m[1])] ? [gs[Number(m[1])]!.id] : [];
+          return PINNED.includes(k) ? [k] : [];
+        });
+        useTabs.getState().setStripOrder(keys);
+      }
       const active = ids[saved.active];
       if (active) useTabs.getState().activate(active);
     }
@@ -133,7 +149,7 @@ export async function initSession(): Promise<void> {
   }
   let timer: ReturnType<typeof setTimeout> | undefined;
   useTabs.subscribe((state, prev) => {
-    if (state.tabs === prev.tabs && state.activeId === prev.activeId && state.groups === prev.groups) return;
+    if (state.tabs === prev.tabs && state.activeId === prev.activeId && state.groups === prev.groups && state.stripOrder === prev.stripOrder) return;
     clearTimeout(timer);
     timer = setTimeout(() => {
       const all = useTabs.getState();
@@ -158,6 +174,10 @@ export async function initSession(): Promise<void> {
         })),
         active: Math.max(0, tabs.findIndex((t) => t.id === activeId)),
         groups: groups.map((g) => ({ layout: saveLayout(g.layout, index), focus: index(g.focus), color: g.color })),
+        strip: all.stripOrder.flatMap((k) => {
+          const i = groups.findIndex((g) => g.id === k);
+          return i >= 0 ? [`g:${i}`] : PINNED.includes(k) ? [k] : [];
+        }),
       };
       void sessionSave(data).catch(() => {});
     }, 500);

@@ -122,6 +122,12 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .item(&item(app, "history", "History", Some("CmdOrCtrl+Y"))?)
         .item(&item(
             app,
+            "workflows",
+            "Workflows",
+            Some("CmdOrCtrl+Shift+R"),
+        )?)
+        .item(&item(
+            app,
             "panel.actions",
             "Show/Hide Actions",
             Some("CmdOrCtrl+J"),

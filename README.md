@@ -886,8 +886,9 @@ would seem to stop working). Tabs come back through session restore.
 | ⇧⌘C / ⌥⇧⌘C | Copy last command / its output |
 | ⌘, | Settings (terminal font, size, line height, scrollback, ⌥ as Meta, shell integration, editor) |
 | ⌘Y | History |
+| ⇧⌘R | Workflows tab (its runs; again: back). Also View ▸ Workflows, ⌘K, and *Runs* on Home's Workflows card |
 | / | Focus the sidebar filter |
-| double-click tab | Rename; middle-click closes; drag a tab to move it along the strip (Home stays first; ⌘1–9 follow the new order) |
+| double-click tab | Rename; middle-click closes; drag a tab to move it along the strip (Home stays first; ⌘1–9 follow the new order; the order, pinned tabs' places included, is kept across restarts) |
 | Kemudi ▸ Environment… | PATH, ssh-agent and tools the terminals see |
 
 ## Status

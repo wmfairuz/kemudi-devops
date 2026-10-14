@@ -263,11 +263,14 @@ export function HomeView() {
 function Card({
   title,
   action,
+  link,
   footer,
   children,
 }: {
   title: string;
   action?: { label: string; run: () => void };
+  /** A plain link next to the action (no +). */
+  link?: { label: string; run: () => void };
   footer?: React.ReactNode;
   children: React.ReactNode;
 }) {
@@ -275,6 +278,11 @@ function Card({
     <section className="flex min-h-[180px] flex-col overflow-hidden rounded-xl border border-divider bg-panel">
       <div className="flex h-11 flex-none items-center gap-2 border-b border-divider px-4">
         <span className="flex-1 text-[12px] font-semibold tracking-wide text-subtle-foreground uppercase">{title}</span>
+        {link && (
+          <button onClick={link.run} className="flex h-7 cursor-pointer items-center rounded-md px-2 text-[12px] text-primary hover:bg-primary/10">
+            {link.label}
+          </button>
+        )}
         {action && (
           <button
             onClick={action.run}
@@ -342,7 +350,11 @@ function WorkflowsCard() {
   const workflows = useConfig((s) => s.snapshot?.config?.workflows ?? NO_WORKFLOWS);
   const servers = useConfig((s) => s.snapshot?.config?.servers);
   return (
-    <Card title="Workflows" action={{ label: "New", run: () => useWorkflows.getState().edit(null) }}>
+    <Card
+      title="Workflows"
+      link={{ label: "Runs ⇧⌘R", run: () => useTabs.getState().openWorkflows() }}
+      action={{ label: "New", run: () => useWorkflows.getState().edit(null) }}
+    >
       {workflows.length === 0 ? (
         <Empty>None yet: steps that run one after another in one tab, e.g. merge and push here, then deploy on the server as root.</Empty>
       ) : (
