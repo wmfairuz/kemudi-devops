@@ -6,7 +6,7 @@ import { killPty, workflowBranchRun, workflowRun, workflowWatchRun, type Config,
 import { StepTracker } from "@/lib/stepTracker";
 import { localHms } from "@/lib/time";
 import { useConfig } from "@/stores/config";
-import { useTabs, type WorkflowRunState } from "@/stores/tabs";
+import { groupOf, useTabs, type WorkflowRunState } from "@/stores/tabs";
 import { useToasts } from "@/stores/toasts";
 import { useWorkflows } from "@/stores/workflows";
 
@@ -81,11 +81,37 @@ function patchRun(id: string, patch: Partial<WorkflowRunState>) {
  *  their own panes next to it when the run gets there. */
 export function runWorkflow(wf: Workflow, from = 1): string {
   const config = useConfig.getState().snapshot?.config;
+  // One Workflow tab: a run takes the place of a finished one (this
+  // workflow's last run, else any other's); still running: go to it.
+  const state = useTabs.getState();
+  const runs = state.tabs.filter((t) => t.workflow && !t.workflow.part && t.actionId?.startsWith("workflow:"));
+  const running = runs.find((t) => t.workflow!.id === wf.id && t.state === "running");
+  if (running) {
+    state.activate(running.id);
+    useToasts.getState().push(`${wf.name} is still running: here it is`, "info");
+    return running.id;
+  }
+  // A run is done when none of its panes runs (a kept watch still tailing
+  // keeps its tab).
+  const done = runs.filter((t) => {
+    const g = groupOf(state, t.id);
+    return !!g && state.tabs.every((p) => p.groupId !== g.id || p.state !== "running");
+  });
+  const reuse = done.find((t) => t.workflow!.id === wf.id) ?? done[0];
+  let at: number | undefined;
+  if (reuse) {
+    const g = groupOf(state, reuse.id);
+    if (g) {
+      at = state.groups.findIndex((x) => x.id === g.id);
+      state.closeGroup(g.id);
+    }
+  }
   const prod = serversTouched(config, wf, from).some((s) => s.env === "prod");
   const steps = wf.steps.length;
   let token = "";
   let tabId: string | null = null;
   tabId = useTabs.getState().open({
+    at,
     kind: "action",
     title: `${wf.name}${from > 1 ? ` · from ${from}` : ""}`,
     serverId: wf.pinServer ?? undefined,

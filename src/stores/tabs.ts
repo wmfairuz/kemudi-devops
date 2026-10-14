@@ -88,6 +88,8 @@ export interface OpenOptions extends Pick<Tab, "title" | "kind">, Partial<Pick<T
   background?: boolean;
   /** Open as a pane next to `from` (split right = row, down = col). */
   into?: { from: string; dir: Dir };
+  /** Its place in the tab strip (a tab it replaces); default: the end. */
+  at?: number;
 }
 
 /** activeId value while the pinned Home tab is in front (also the start). */
@@ -211,7 +213,7 @@ export const useTabs = create<TabsState>((set, get) => {
       }
     });
 
-  const make = ({ spawn, intro, prod = false, state = "shell", background: _b, into: _i, ...meta }: OpenOptions): Tab => {
+  const make = ({ spawn, intro, prod = false, state = "shell", background: _b, into: _i, at: _a, ...meta }: OpenOptions): Tab => {
     const options: SessionOptions = {
       intro,
       settings: useConfig.getState().snapshot?.config?.terminal,
@@ -220,7 +222,7 @@ export const useTabs = create<TabsState>((set, get) => {
     return { ...meta, id: `t${nextId++}`, renamed: false, prod, state, session: new TerminalSession(spawn, options), groupId: "" };
   };
 
-  const insert = (tab: Tab, background?: boolean, into?: OpenOptions["into"]) => {
+  const insert = (tab: Tab, background?: boolean, into?: OpenOptions["into"], at?: number) => {
     // Watched first: if something reacting to the update below throws, the
     // tab still tracks its exit (and isn't left spinning).
     watch(tab.id, tab.session);
@@ -233,9 +235,11 @@ export const useTabs = create<TabsState>((set, get) => {
         return { tabs: [...s.tabs, { ...tab, groupId: host.id }], groups, activeId: tab.id };
       }
       const group: Group = { id: `g${nextGroup++}`, layout: { pane: tab.id }, focus: tab.id, color: defaultColor(tab) };
+      const groups = [...s.groups];
+      groups.splice(at === undefined ? groups.length : Math.max(0, Math.min(at, groups.length)), 0, group);
       return {
         tabs: [...s.tabs, { ...tab, groupId: group.id }],
-        groups: [...s.groups, group],
+        groups,
         activeId: background && s.activeId ? s.activeId : tab.id,
       };
     });
@@ -317,8 +321,8 @@ export const useTabs = create<TabsState>((set, get) => {
       });
     },
 
-    open({ spawn, intro, background, into, prod = false, state = "shell", ...meta }) {
-      return insert(make({ spawn, intro, prod, state, ...meta }), background, into);
+    open({ spawn, intro, background, into, at, prod = false, state = "shell", ...meta }) {
+      return insert(make({ spawn, intro, prod, state, ...meta }), background, into, at);
     },
 
     openGrid(panes, { broadcast = false } = {}) {
