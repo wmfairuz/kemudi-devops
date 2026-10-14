@@ -1,4 +1,4 @@
-import { ChevronRight, ChevronsDownUp, ChevronsUpDown, Plus, SquareTerminal } from "lucide-react";
+import { ChevronRight, ChevronsDownUp, ChevronsUpDown, Folder, FolderOpen, Plus, SquareTerminal } from "lucide-react";
 import { useMemo, useState } from "react";
 import { create } from "zustand";
 
@@ -307,13 +307,18 @@ function GroupHeader({ name, count, closed, ids }: { name: string; count: number
         }}
         title="Click: open / close · drop a server here to add it · right-click: rename, ungroup"
         className={cn(
-          "mx-2 mt-2 mb-1 flex w-[calc(100%-1rem)] cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] font-semibold tracking-wide text-subtle-foreground uppercase hover:bg-hover hover:text-foreground",
+          "mx-2 mt-3 mb-1.5 flex h-9 w-[calc(100%-1rem)] cursor-pointer items-center gap-2 rounded-lg border-b border-divider px-1.5 text-left text-[13px] font-semibold text-foreground hover:bg-hover",
           target && "bg-primary/10 ring-2 ring-primary/60",
         )}
       >
-        <ChevronRight className={cn("size-3.5 flex-none transition-transform", !closed && "rotate-90")} strokeWidth={2} />
+        <ChevronRight className={cn("size-4 flex-none text-subtle-foreground transition-transform", !closed && "rotate-90")} strokeWidth={2} />
+        {closed ? (
+          <Folder className="size-4 flex-none text-subtle-foreground" strokeWidth={1.75} />
+        ) : (
+          <FolderOpen className="size-4 flex-none text-subtle-foreground" strokeWidth={1.75} />
+        )}
         <span className="min-w-0 flex-1 truncate">{name}</span>
-        <span className="font-mono text-[10.5px] font-normal tracking-normal text-faint-foreground">{count}</span>
+        <span className="rounded-full bg-secondary px-2 py-px font-mono text-[11px] font-normal text-subtle-foreground">{count}</span>
       </button>
       {menu && (
         <PopupMenu
