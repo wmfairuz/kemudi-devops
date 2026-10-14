@@ -172,10 +172,10 @@ export function DangerConfirmDialog() {
         <CommandBlock action={action} command={c.command} editing={c.editing} onChange={c.setCommand} />
         <div className="flex flex-col gap-1.5">
           <div className="text-[12px] text-muted-foreground">
-            Type <span className="rounded-sm bg-muted px-[5px] py-px font-mono text-foreground">{confirm.word}</span>
+            Type <span className="rounded-sm bg-muted px-[5px] py-px font-mono text-foreground" style={{ WebkitUserSelect: "all", userSelect: "all" }}>{confirm.word}</span>
             {confirm.short.toLowerCase() !== confirm.word.toLowerCase() && (
               <>
-                {" "}or its initials <span className="rounded-sm bg-muted px-[5px] py-px font-mono text-foreground">{confirm.short}</span>
+                {" "}or its initials <span className="rounded-sm bg-muted px-[5px] py-px font-mono text-foreground" style={{ WebkitUserSelect: "all", userSelect: "all" }}>{confirm.short}</span>
               </>
             )}{" "}
             to confirm

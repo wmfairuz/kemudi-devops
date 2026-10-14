@@ -129,6 +129,20 @@ function RunDialog({ wf, from: initialFrom }: { wf: Workflow; from: number }) {
             Connects to {touched.map((s) => s.name).join(", ")} (each checked to be reachable first).
           </div>
         )}
+        {confirm && (
+          <div className="text-[12px] text-subtle-foreground">
+            Production: type{" "}
+            <span className="rounded-sm bg-muted px-[5px] py-px font-mono text-foreground" style={{ WebkitUserSelect: "all", userSelect: "all" }} title="Select and copy, or type it">
+              {confirm.word}
+            </span>
+            {confirm.short.toLowerCase() !== confirm.word.toLowerCase() && (
+              <>
+                {" "}(or <span className="rounded-sm bg-muted px-[5px] py-px font-mono text-foreground" style={{ WebkitUserSelect: "all", userSelect: "all" }}>{confirm.short}</span>)
+              </>
+            )}{" "}
+            below to run.
+          </div>
+        )}
         {scriptError && <div className="rounded-md bg-env-prod/8 px-2.5 py-1.5 text-[12px] text-env-prod-fg">{scriptError}</div>}
         {script !== null && !scriptError && (
           <pre className="selectable max-h-[260px] overflow-auto rounded-lg border border-divider bg-background px-3 py-2 font-mono text-[11px] leading-[16px] whitespace-pre text-foreground">
