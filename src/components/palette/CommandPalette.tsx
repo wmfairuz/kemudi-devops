@@ -90,6 +90,7 @@ function buildItems(servers: Server[], tabs: Tab[], snippets: Snippet[], close: 
     cmd("Snippets…", () => useTabs.getState().openSnippets(), "⇧⌘S"),
     cmd("Environment…", () => useUi.getState().setOverlay("environment")),
     cmd("New workflow…", () => useWorkflows.getState().edit(null)),
+    cmd("Workflows (runs)", () => useTabs.getState().openWorkflows()),
     cmd("Type in all panes (on/off)", () => toggleBroadcast(), "⌥⌘I"),
   );
   // AWS servers: one instance, and database forwarding.

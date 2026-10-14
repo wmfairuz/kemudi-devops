@@ -136,7 +136,11 @@ export async function initSession(): Promise<void> {
     if (state.tabs === prev.tabs && state.activeId === prev.activeId && state.groups === prev.groups) return;
     clearTimeout(timer);
     timer = setTimeout(() => {
-      const { tabs, activeId, groups } = useTabs.getState();
+      const all = useTabs.getState();
+      const activeId = all.activeId;
+      // Workflow runs aren't restored (their record is in History).
+      const groups = all.groups.filter((g) => !g.workflow);
+      const tabs = all.tabs.filter((t) => groups.some((g) => g.id === t.groupId));
       const index = (id: string) => tabs.findIndex((t) => t.id === id);
       const data: Saved = {
         version: 1,

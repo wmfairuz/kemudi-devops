@@ -312,10 +312,15 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   type and ↵ (hidden for passwords, with *Fill* from your Passwords), or
   *yes* / *no* for yes/no questions. The script marks each step with an
   invisible terminal escape (`\e]6973;…`) that the view reads.
-- **One Workflow tab**: running a workflow again reuses its finished tab, or any
-  finished workflow's tab, in the same place, instead of adding a tab per run.
-  If that workflow is still running, Kemudi takes you to it. A run whose kept
-  watch pane is still tailing keeps its tab.
+- **The Workflows tab**: runs don't open tabs of their own. Each one is a line in
+  the pinned **Workflows** tab (with a spinner while one runs). On its left are
+  your workflows (click to run, right-click to edit), then **This session**'s
+  runs (live: click one to see its steps and output on the right) and
+  **Earlier** runs from History (when, how long, ✓ or the step it stopped at).
+  Hover a run for **Run again** or **From step N**; each run is a new line at
+  the top. ✕ closes a run (it stays in History); closing the tab clears the
+  finished ones, and a running one carries on. Runs aren't restored after a
+  restart, only listed under Earlier.
 - **Reorder servers**: drag a server by its row in the sidebar and drop it
   on another server (upper half: before it; lower half: after it). Its apps
   and settings go with it; comments above it in the config stay put.

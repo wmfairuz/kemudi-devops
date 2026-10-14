@@ -1,4 +1,4 @@
-import { Activity, ChevronDown, Columns2, Keyboard, FolderOpen, Gauge, HeartPulse, House, ListChecks, ScrollText, SquareTerminal } from "lucide-react";
+import { Activity, ChevronDown, Columns2, Keyboard, Workflow as WorkflowIcon, FolderOpen, Gauge, HeartPulse, House, ListChecks, ScrollText, SquareTerminal } from "lucide-react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -14,7 +14,7 @@ import { TAB_COLORS, type TabColor } from "@/lib/tabColors";
 import { ColorDot, openTabConfig, useTabConfigs } from "@/components/tabconfigs/TabConfigs";
 import { errorMessage, tabConfigsList, type TabConfigEntry } from "@/lib/ipc";
 import { toastError } from "@/stores/toasts";
-import { DETAILS_ID, HISTORY_ID, HOME_ID, SNIPPETS_ID, isViewTab, openLocalShell, toggleBroadcast, useTabs, type Group, type Tab } from "@/stores/tabs";
+import { DETAILS_ID, HISTORY_ID, HOME_ID, SNIPPETS_ID, WORKFLOWS_ID, groupOf, isViewTab, openLocalShell, toggleBroadcast, useTabs, type Group, type Tab } from "@/stores/tabs";
 import { useUi } from "@/stores/ui";
 
 function TabIcon({ tab }: { tab: Tab }) {
@@ -178,6 +178,8 @@ export function TabStrip() {
   const historyOpen = useTabs((s) => s.historyOpen);
   const detailsOpen = useTabs((s) => s.detailsOpen);
   const snippetsOpen = useTabs((s) => s.snippetsOpen);
+  const workflowsOpen = useTabs((s) => s.workflowsOpen);
+  const workflowsFront = useTabs((s) => s.activeId === WORKFLOWS_ID || !!groupOf(s, s.activeId)?.workflow);
   const setOverlay = useUi((s) => s.setOverlay);
 
   return (
@@ -187,7 +189,8 @@ export function TabStrip() {
         {detailsOpen && <DetailsTab active={activeId === DETAILS_ID} />}
         {historyOpen && <HistoryTab active={activeId === HISTORY_ID} />}
         {snippetsOpen && <SnippetsTab active={activeId === SNIPPETS_ID} />}
-        {groups.map((g) => {
+        {workflowsOpen && <WorkflowsTab active={workflowsFront} />}
+        {groups.filter((g) => !g.workflow).map((g) => {
           const ids = leaves(g.layout);
           const panes = tabs.filter((t) => ids.includes(t.id));
           const tab = panes.find((t) => t.id === g.focus) ?? panes[0];
@@ -319,6 +322,38 @@ function DetailsTab({ active }: { active: boolean }) {
         aria-label="Close details"
         onMouseDown={(e) => e.stopPropagation()}
         onClick={() => useTabs.getState().closeDetails()}
+        className="size-5 flex-none rounded-md text-center text-[16px] leading-[19px] text-faint-foreground hover:bg-hover-strong hover:text-foreground"
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
+/** The pinned Workflows tab: every run (this session's live, earlier ones
+ *  from History). A spinner while one is running. */
+function WorkflowsTab({ active }: { active: boolean }) {
+  const { openWorkflows, closeWorkflows } = useTabs.getState();
+  const running = useTabs((s) => s.tabs.some((t) => t.workflow && !t.workflow.part && t.state === "running" && !!groupOf(s, t.id)?.workflow));
+  return (
+    <div
+      role="tab"
+      aria-selected={active}
+      onMouseDown={(e) => {
+        if (e.button === 0 && !active) openWorkflows();
+      }}
+      className={cn(
+        "flex h-11 flex-none items-center gap-2.5 border-r border-divider pr-2.5 pl-3.5 text-[13px]",
+        active ? "dracula bg-terminal text-foreground" : "text-dim-foreground shadow-[inset_0_-1px_0_var(--divider)] hover:text-foreground",
+      )}
+    >
+      {running ? <Spinner size={11} /> : <WorkflowIcon className="size-3.5 text-muted-foreground" strokeWidth={1.75} />}
+      <span>Workflows</span>
+      <button
+        aria-label="Close Workflows"
+        title="Close: finished runs are cleared (they stay in History); a running one carries on"
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={closeWorkflows}
         className="size-5 flex-none rounded-md text-center text-[16px] leading-[19px] text-faint-foreground hover:bg-hover-strong hover:text-foreground"
       >
         ×

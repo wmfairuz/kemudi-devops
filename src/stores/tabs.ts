@@ -79,6 +79,8 @@ export interface Group {
   /** Type in all panes: keys typed in one go to every terminal in the tab.
    *  Never saved: a restored tab starts with it off. */
   broadcast?: boolean;
+  /** A workflow run: shown in the Workflows tab, not as a tab of its own. */
+  workflow?: boolean;
 }
 
 export interface OpenOptions extends Pick<Tab, "title" | "kind">, Partial<Pick<Tab, "serverId" | "host" | "instance" | "cwd" | "appId" | "actionId" | "local" | "prod" | "state">> {
@@ -90,6 +92,8 @@ export interface OpenOptions extends Pick<Tab, "title" | "kind">, Partial<Pick<T
   into?: { from: string; dir: Dir };
   /** Its place in the tab strip (a tab it replaces); default: the end. */
   at?: number;
+  /** A workflow run (its own group, listed in the Workflows tab). */
+  workflowRun?: boolean;
 }
 
 /** activeId value while the pinned Home tab is in front (also the start). */
@@ -100,6 +104,8 @@ export const HISTORY_ID = "history";
 export const DETAILS_ID = "details";
 /** activeId value while the pinned Snippets tab (managing them) is in front. */
 export const SNIPPETS_ID = "snippets";
+/** activeId value while the Workflows tab is in front with no run picked. */
+export const WORKFLOWS_ID = "workflows";
 
 interface TabsState {
   tabs: Tab[];
@@ -114,6 +120,11 @@ interface TabsState {
   snippetsOpen: boolean;
   openSnippets(): void;
   closeSnippets(): void;
+  workflowsOpen: boolean;
+  /** The Workflows tab: the newest run, else the page with no run picked. */
+  openWorkflows(): void;
+  /** Leave it; finished runs are closed, running ones carry on. */
+  closeWorkflows(): void;
   open(opts: OpenOptions): string;
   close(id: string): void;
   activate(id: string): void;
@@ -213,7 +224,7 @@ export const useTabs = create<TabsState>((set, get) => {
       }
     });
 
-  const make = ({ spawn, intro, prod = false, state = "shell", background: _b, into: _i, at: _a, ...meta }: OpenOptions): Tab => {
+  const make = ({ spawn, intro, prod = false, state = "shell", background: _b, into: _i, at: _a, workflowRun: _w, ...meta }: OpenOptions): Tab => {
     const options: SessionOptions = {
       intro,
       settings: useConfig.getState().snapshot?.config?.terminal,
@@ -222,7 +233,7 @@ export const useTabs = create<TabsState>((set, get) => {
     return { ...meta, id: `t${nextId++}`, renamed: false, prod, state, session: new TerminalSession(spawn, options), groupId: "" };
   };
 
-  const insert = (tab: Tab, background?: boolean, into?: OpenOptions["into"], at?: number) => {
+  const insert = (tab: Tab, background?: boolean, into?: OpenOptions["into"], at?: number, workflowRun?: boolean) => {
     // Watched first: if something reacting to the update below throws, the
     // tab still tracks its exit (and isn't left spinning).
     watch(tab.id, tab.session);
@@ -234,7 +245,7 @@ export const useTabs = create<TabsState>((set, get) => {
         );
         return { tabs: [...s.tabs, { ...tab, groupId: host.id }], groups, activeId: tab.id };
       }
-      const group: Group = { id: `g${nextGroup++}`, layout: { pane: tab.id }, focus: tab.id, color: defaultColor(tab) };
+      const group: Group = { id: `g${nextGroup++}`, layout: { pane: tab.id }, focus: tab.id, color: defaultColor(tab), workflow: workflowRun || undefined };
       const groups = [...s.groups];
       groups.splice(at === undefined ? groups.length : Math.max(0, Math.min(at, groups.length)), 0, group);
       return {
@@ -253,7 +264,6 @@ export const useTabs = create<TabsState>((set, get) => {
   const drop = (ids: string[]) => {
     const s = get();
     const gone = new Set(ids);
-    const oldIndex = s.groups.findIndex((g) => g.id === groupOf(s, s.activeId)?.id);
     const groups: Group[] = [];
     for (const g of s.groups) {
       let layout: Layout | null = g.layout;
@@ -270,9 +280,13 @@ export const useTabs = create<TabsState>((set, get) => {
     }
     let activeId = s.activeId;
     if (activeId && gone.has(activeId)) {
-      const same = groups.find((g) => g.id === groupOf(s, activeId)?.id);
-      const next = same ?? groups[oldIndex] ?? groups[oldIndex - 1] ?? null;
-      activeId = next?.focus ?? HOME_ID;
+      const was = groupOf(s, activeId);
+      const same = groups.find((g) => g.id === was?.id);
+      // Next to it among its own kind: tabs, or (in the Workflows tab) runs.
+      const kin = groups.filter((g) => !!g.workflow === !!was?.workflow);
+      const at = s.groups.filter((g) => !!g.workflow === !!was?.workflow).findIndex((g) => g.id === was?.id);
+      const next = same ?? kin[at] ?? kin[at - 1] ?? null;
+      activeId = next?.focus ?? (was?.workflow ? WORKFLOWS_ID : HOME_ID);
     }
     set({ tabs: s.tabs.filter((t) => !gone.has(t.id)), groups, activeId });
   };
@@ -284,6 +298,29 @@ export const useTabs = create<TabsState>((set, get) => {
     historyOpen: false,
     detailsOpen: false,
     snippetsOpen: false,
+    workflowsOpen: false,
+
+    openWorkflows() {
+      const runs = get().groups.filter((g) => g.workflow);
+      const last = runs[runs.length - 1];
+      set({ workflowsOpen: true, activeId: last ? last.focus : WORKFLOWS_ID });
+    },
+
+    closeWorkflows() {
+      const s = get();
+      // Finished runs go; one still running stays (and keeps the tab).
+      for (const g of s.groups.filter((x) => x.workflow)) {
+        const ids = leaves(g.layout);
+        if (!s.tabs.some((t) => ids.includes(t.id) && t.state === "running")) get().closeGroup(g.id);
+      }
+      const after = get();
+      const plain = after.groups.filter((g) => !g.workflow);
+      const front = groupOf(after, after.activeId);
+      set({
+        workflowsOpen: after.groups.some((g) => g.workflow),
+        activeId: after.activeId === WORKFLOWS_ID || front?.workflow ? (plain[plain.length - 1]?.focus ?? HOME_ID) : after.activeId,
+      });
+    },
 
     openSnippets() {
       set({ snippetsOpen: true, activeId: SNIPPETS_ID });
@@ -321,8 +358,9 @@ export const useTabs = create<TabsState>((set, get) => {
       });
     },
 
-    open({ spawn, intro, background, into, at, prod = false, state = "shell", ...meta }) {
-      return insert(make({ spawn, intro, prod, state, ...meta }), background, into, at);
+    open({ spawn, intro, background, into, at, workflowRun, prod = false, state = "shell", ...meta }) {
+      if (workflowRun) set({ workflowsOpen: true });
+      return insert(make({ spawn, intro, prod, state, ...meta }), background, into, at, workflowRun);
     },
 
     openGrid(panes, { broadcast = false } = {}) {
@@ -370,16 +408,17 @@ export const useTabs = create<TabsState>((set, get) => {
     },
 
     activateIndex(index) {
-      const { groups } = get();
+      const groups = get().groups.filter((g) => !g.workflow);
       const g = index < 0 ? groups[groups.length - 1] : groups[index];
       if (g) set({ activeId: g.focus });
     },
 
     activateRelative(delta) {
       const s = get();
-      if (s.groups.length === 0) return;
-      const i = s.groups.findIndex((g) => g.id === groupOf(s, s.activeId)?.id);
-      const g = s.groups[(i + delta + s.groups.length) % s.groups.length];
+      const groups = s.groups.filter((x) => !x.workflow);
+      if (groups.length === 0) return;
+      const i = groups.findIndex((g) => g.id === groupOf(s, s.activeId)?.id);
+      const g = groups[(i + delta + groups.length) % groups.length];
       if (g) set({ activeId: g.focus });
     },
 

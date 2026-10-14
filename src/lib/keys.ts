@@ -5,7 +5,7 @@
 // xterm passes every ⌘ chord through (see TerminalSession's key handler);
 // everything else stays in the PTY.
 import { copyCommand, copyOutput } from "@/lib/blockActions";
-import { DETAILS_ID, HISTORY_ID, SNIPPETS_ID, isViewTab, openLocalShell, toggleBroadcast, useTabs } from "@/stores/tabs";
+import { DETAILS_ID, HISTORY_ID, SNIPPETS_ID, WORKFLOWS_ID, isViewTab, openLocalShell, toggleBroadcast, useTabs } from "@/stores/tabs";
 import { useVault } from "@/stores/vault";
 import { useUpdates } from "@/stores/updates";
 import { useUi } from "@/stores/ui";
@@ -24,6 +24,7 @@ const COMMANDS: Record<string, () => void> = {
     if (tabs.activeId === HISTORY_ID) tabs.closeHistory();
     else if (tabs.activeId === DETAILS_ID) tabs.closeDetails();
     else if (tabs.activeId === SNIPPETS_ID) tabs.closeSnippets();
+    else if (tabs.activeId === WORKFLOWS_ID) tabs.closeWorkflows();
     else if (tabs.activeId) tabs.close(tabs.activeId);
   },
   "tab.prev": () => useTabs.getState().activateRelative(-1),
