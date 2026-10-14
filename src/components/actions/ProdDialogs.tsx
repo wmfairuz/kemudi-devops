@@ -4,7 +4,7 @@ import { Btn } from "@/components/kit/Btn";
 import { DangerBadge, EnvTag } from "@/components/kit/EnvTag";
 import { Hint } from "@/components/kit/Kbd";
 import { Modal, ModalFooter, ModalHeader } from "@/components/kit/Modal";
-import { runAction } from "@/lib/actions";
+import { confirmWord, runAction } from "@/lib/actions";
 import type { RenderedAction } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { useActionFlow } from "@/stores/actionFlow";
@@ -123,7 +123,8 @@ export function ProdConfirmDialog() {
   );
 }
 
-/** Design 1f: prod + danger also needs the server id typed. */
+/** Design 1f: prod + danger also needs a name typed: the app's for an
+ *  app's action, else the server's (name or id, any case). */
 export function DangerConfirmDialog() {
   const open = useActionFlow((s) => s.dialog === "dangerConfirm");
   const { action, command: initial, close } = useActionFlow();
@@ -134,7 +135,8 @@ export function DangerConfirmDialog() {
   }, [open]);
   if (!action) return null;
 
-  const canRun = typed === action.serverId && c.command.trim() !== "";
+  const confirm = confirmWord(action.serverId, action.serverWide ? null : action.appId);
+  const canRun = confirm.ok(typed) && c.command.trim() !== "";
   const run = () => {
     if (!canRun) return;
     close();
@@ -163,14 +165,14 @@ export function DangerConfirmDialog() {
           {action.danger && <DangerBadge />}
         </div>
         <span className="text-[12.5px] text-muted-foreground">
-          {where(action)} · type the server name to run
+          {where(action)} · type the {confirm.what}'s name to run
         </span>
       </ModalHeader>
       <div className="flex flex-col gap-3.5 px-5 pb-4">
         <CommandBlock action={action} command={c.command} editing={c.editing} onChange={c.setCommand} />
         <div className="flex flex-col gap-1.5">
           <div className="text-[12px] text-muted-foreground">
-            Type <span className="rounded-sm bg-muted px-[5px] py-px font-mono text-foreground">{action.serverId}</span> to
+            Type <span className="rounded-sm bg-muted px-[5px] py-px font-mono text-foreground">{confirm.word}</span> to
             confirm
           </div>
           <input
@@ -178,14 +180,14 @@ export function DangerConfirmDialog() {
             value={typed}
             spellCheck={false}
             autoComplete="off"
-            placeholder={action.serverId}
+            placeholder={confirm.word}
             onChange={(e) => setTyped(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") run();
             }}
             className={cn(
               "h-8 w-full rounded-lg border bg-background px-2.5 font-mono text-[12.5px] text-foreground outline-none placeholder:text-faint-foreground focus:shadow-[0_0_0_3px_rgba(255,85,85,0.18)]",
-              typed === action.serverId ? "border-env-prod/70" : "border-control-border",
+              confirm.ok(typed) ? "border-env-prod/70" : "border-control-border",
             )}
           />
         </div>
@@ -204,7 +206,7 @@ export function DangerConfirmDialog() {
           Cancel <Hint>esc</Hint>
         </Btn>
         <Btn variant="danger" className="px-3.5" disabled={!canRun} onClick={run}>
-          {action.label} {action.serverId}
+          {action.label} · {confirm.word}
         </Btn>
       </ModalFooter>
     </Modal>

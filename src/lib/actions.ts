@@ -85,6 +85,18 @@ export async function triggerAction(ref: ActionRef, opts: TriggerOptions = {}): 
     });
 }
 
+/** What production asks you to type: the app for an app's action (or a
+ *  workflow pinned to an app on that server), else the server. Its name as
+ *  shown; the name or the id works, in any case. */
+export function confirmWord(serverId: string, appId: string | null): { word: string; what: "app" | "server"; ok: (typed: string) => boolean } {
+  const server = findServer(serverId);
+  const app = appId ? server?.apps.find((a) => a.id === appId) : undefined;
+  const target = app ?? server;
+  const word = target?.name ?? appId ?? serverId;
+  const ids = [word, app ? app.id : serverId].map((x) => x.trim().toLowerCase());
+  return { word, what: app ? "app" : "server", ok: (typed) => ids.includes(typed.trim().toLowerCase()) };
+}
+
 /** The local shell in front (for "Type into …"), if any. */
 export function localShellInFront(): Tab | null {
   const tab = activeTab(useTabs.getState());

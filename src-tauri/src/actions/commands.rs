@@ -58,6 +58,9 @@ pub struct RenderedAction {
     pub missing: Vec<String>,
     /// The values it was rendered with.
     pub values: BTreeMap<String, String>,
+    /// Acts on the whole server though started from an app (nginx,
+    /// Supervisor, certbot…): confirm by the server, not the app.
+    pub server_wide: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -393,6 +396,7 @@ pub fn render_action(
         params: render::params(&action.run),
         missing,
         values: r.values.clone(),
+        server_wide,
     })
 }
 
@@ -599,6 +603,7 @@ pub async fn action_render_mac(
         params: render::params(&action.run),
         missing,
         values,
+        server_wide: false,
     })
 }
 

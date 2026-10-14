@@ -7,6 +7,7 @@ import { Modal, ModalFooter, ModalHeader } from "@/components/kit/Modal";
 import { TextInput } from "@/components/manage/fields";
 import { errorMessage, filesChmod, type Env, type FileEntry } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
+import { confirmWord } from "@/lib/actions";
 import { toastError, useToasts } from "@/stores/toasts";
 
 const MODE = /^[0-7]{3,4}$/;
@@ -68,7 +69,7 @@ export function ChmodDialog({
   const isDir = entry.kind === "dir" || entry.toDir;
   const prod = env === "prod";
   const valid = MODE.test(mode) && (!inside || MODE.test(filesMode));
-  const ok = valid && (mode !== current || inside) && (!prod || typed === serverId) && !busy;
+  const ok = valid && (mode !== current || inside) && (!prod || confirmWord(serverId, null).ok(typed)) && !busy;
 
   const setDigits = (m: string) => {
     setMode(m);
@@ -185,11 +186,11 @@ export function ChmodDialog({
               value={typed}
               spellCheck={false}
               onChange={(e) => setTyped(e.target.value)}
-              placeholder={`type ${serverId} to apply`}
+              placeholder={`type ${confirmWord(serverId, null).word} to apply`}
               aria-label="Type the server name to apply"
               className={cn(
                 "h-[30px] w-[220px] rounded-lg border bg-background px-2.5 font-mono text-[12.5px] outline-none placeholder:text-faint-foreground",
-                typed === serverId ? "border-env-prod/70" : "border-control-border",
+                confirmWord(serverId, null).ok(typed) ? "border-env-prod/70" : "border-control-border",
               )}
             />
           )}

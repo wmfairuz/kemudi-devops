@@ -13,6 +13,7 @@ import { errorMessage, vhostCreate, vhostProbe, type Env, type VhostCreated, typ
 import { generateVhost, socketFor, vhostProblems, type HttpsMode, type VhostOptions } from "@/lib/nginxVhost";
 import { cn } from "@/lib/utils";
 import { askConfirm } from "@/stores/confirm";
+import { confirmWord } from "@/lib/actions";
 import { toastError } from "@/stores/toasts";
 
 export interface VhostRequest {
@@ -106,7 +107,7 @@ function VhostGenerator({ request }: { request: VhostRequest }) {
   const generated = useMemo(() => generateVhost(opts), [JSON.stringify(opts)]);
   const config = edited ?? generated;
   const problems = probe ? vhostProblems(opts, probe.sites, fileName) : [];
-  const canCreate = problems.length === 0 && config.trim() !== "" && (!prod || typed === serverId) && phase.kind === "form";
+  const canCreate = problems.length === 0 && config.trim() !== "" && (!prod || confirmWord(serverId, null).ok(typed)) && phase.kind === "form";
 
   const createIt = async () => {
     if (!canCreate) return;
@@ -330,11 +331,11 @@ function VhostGenerator({ request }: { request: VhostRequest }) {
                 spellCheck={false}
                 onChange={(e) => setTyped(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && void createIt()}
-                placeholder={`type ${serverId} to create`}
+                placeholder={`type ${confirmWord(serverId, null).word} to create`}
                 aria-label="Type the server name to create"
                 className={cn(
                   "h-[30px] w-[240px] rounded-lg border bg-background px-2.5 font-mono text-[12.5px] outline-none placeholder:text-faint-foreground",
-                  typed === serverId ? "border-env-prod/70" : "border-control-border",
+                  confirmWord(serverId, null).ok(typed) ? "border-env-prod/70" : "border-control-border",
                 )}
               />
             ) : null}

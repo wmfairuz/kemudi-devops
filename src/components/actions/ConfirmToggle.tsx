@@ -7,7 +7,7 @@ import { toastError } from "@/stores/toasts";
 const LEVELS: { value: Confirm; label: string; hint: string }[] = [
   { value: "none", label: "Don't ask", hint: "Run on click (⌥-click still lets you edit first)" },
   { value: "warn", label: "Warn", hint: "Show the command; one click to run" },
-  { value: "type", label: "Type name", hint: "Show the command; type the server name to run" },
+  { value: "type", label: "Type name", hint: "Show the command; type the app's (or server's) name to run" },
 ];
 
 export const confirmLabel = (c: Confirm) => LEVELS.find((l) => l.value === c)?.label ?? c;

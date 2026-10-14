@@ -534,6 +534,8 @@ export interface ActionParam {
 }
 
 export interface RenderedAction extends ActionRef {
+  /** Acts on the whole server though started from an app: confirm by the server. */
+  serverWide: boolean;
   label: string;
   title: string;
   command: string;

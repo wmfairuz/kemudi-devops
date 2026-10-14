@@ -8,6 +8,7 @@ import { Modal, ModalFooter, ModalHeader } from "@/components/kit/Modal";
 import { errorMessage, workflowScript, type Workflow } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { runWorkflow, serversTouched, stepTitle } from "@/lib/workflows";
+import { confirmWord } from "@/lib/actions";
 import { useConfig } from "@/stores/config";
 import { useWorkflows } from "@/stores/workflows";
 
@@ -31,7 +32,9 @@ function RunDialog({ wf, from: initialFrom }: { wf: Workflow; from: number }) {
   const close = () => useWorkflows.getState().close();
   const touched = serversTouched(config, wf, from);
   const prodServer = touched.find((s) => s.env === "prod");
-  const ok = wf.steps.length > 0 && (!prodServer || typed.trim() === prodServer.id);
+  // Pinned to an app on that server: type the app (it says what ships).
+  const confirm = prodServer ? confirmWord(prodServer.id, wf.pinServer === prodServer.id ? (wf.pinApp ?? null) : null) : null;
+  const ok = wf.steps.length > 0 && (!confirm || confirm.ok(typed));
 
   useEffect(() => {
     if (script === null) return;
@@ -145,11 +148,11 @@ function RunDialog({ wf, from: initialFrom }: { wf: Workflow; from: number }) {
             spellCheck={false}
             onChange={(e) => setTyped(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && run()}
-            placeholder={`type ${prodServer.id} to run`}
-            aria-label="Type the production server's name to run"
+            placeholder={`type ${confirm?.word ?? prodServer.id} to run`}
+            aria-label={`Type the production ${confirm?.what ?? "server"}'s name to run`}
             className={cn(
               "h-[30px] w-[220px] rounded-lg border bg-background px-2.5 font-mono text-[12.5px] outline-none placeholder:text-faint-foreground",
-              typed.trim() === prodServer.id ? "border-env-prod/70" : "border-control-border",
+              confirm?.ok(typed) ? "border-env-prod/70" : "border-control-border",
             )}
           />
         )}

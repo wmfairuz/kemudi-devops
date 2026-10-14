@@ -7,6 +7,7 @@ import { Modal, ModalFooter, ModalHeader } from "@/components/kit/Modal";
 import { Field, TextInput } from "@/components/manage/fields";
 import { errorMessage, filesChown, filesPrincipals, type Env, type FileEntry } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
+import { confirmWord } from "@/lib/actions";
 import { toastError, useToasts } from "@/stores/toasts";
 
 const NAME = /^[a-z_][a-z0-9_.-]{0,31}$/;
@@ -42,7 +43,7 @@ export function ChownDialog({
   const prod = env === "prod";
   const isDir = entry.kind === "dir" || entry.toDir;
   const changed = owner !== entry.owner || group !== entry.group;
-  const ok = NAME.test(owner) && NAME.test(group) && (changed || recursive) && (!prod || typed === serverId) && !busy;
+  const ok = NAME.test(owner) && NAME.test(group) && (changed || recursive) && (!prod || confirmWord(serverId, null).ok(typed)) && !busy;
 
   const apply = async () => {
     if (!ok) return;
@@ -120,11 +121,11 @@ export function ChownDialog({
               value={typed}
               spellCheck={false}
               onChange={(e) => setTyped(e.target.value)}
-              placeholder={`type ${serverId} to apply`}
+              placeholder={`type ${confirmWord(serverId, null).word} to apply`}
               aria-label="Type the server name to apply"
               className={cn(
                 "h-[30px] w-[220px] rounded-lg border bg-background px-2.5 font-mono text-[12.5px] outline-none placeholder:text-faint-foreground",
-                typed === serverId ? "border-env-prod/70" : "border-control-border",
+                confirmWord(serverId, null).ok(typed) ? "border-env-prod/70" : "border-control-border",
               )}
             />
           )}
