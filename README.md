@@ -887,7 +887,7 @@ would seem to stop working). Tabs come back through session restore.
 | ⌘, | Settings (terminal font, size, line height, scrollback, ⌥ as Meta, shell integration, editor) |
 | ⌘Y | History |
 | / | Focus the sidebar filter |
-| double-click tab | Rename; middle-click closes |
+| double-click tab | Rename; middle-click closes; drag a tab to move it along the strip (Home stays first; ⌘1–9 follow the new order) |
 | Kemudi ▸ Environment… | PATH, ssh-agent and tools the terminals see |
 
 ## Status

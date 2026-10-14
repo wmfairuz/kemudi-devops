@@ -120,6 +120,12 @@ interface TabsState {
   snippetsOpen: boolean;
   openSnippets(): void;
   closeSnippets(): void;
+  /** The tab strip's order after Home, as you dragged it: "details",
+   *  "history", "snippets", "workflows" and group ids. Not listed: in their
+   *  usual place, at the end. */
+  stripOrder: string[];
+  /** Reorder the strip (and the tabs, so ⌘1–9 follow it). */
+  setStripOrder(keys: string[]): void;
   workflowsOpen: boolean;
   /** The Workflows tab: the newest run, else the page with no run picked. */
   openWorkflows(): void;
@@ -299,6 +305,20 @@ export const useTabs = create<TabsState>((set, get) => {
     detailsOpen: false,
     snippetsOpen: false,
     workflowsOpen: false,
+    stripOrder: [],
+
+    setStripOrder(keys) {
+      const rank = (id: string) => {
+        const i = keys.indexOf(id);
+        return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+      };
+      // Tabs (not runs) in the new order; runs keep their place.
+      const plain = get().groups.filter((g) => !g.workflow);
+      const sorted = [...plain].sort((a, b) => rank(a.id) - rank(b.id));
+      let k = 0;
+      const groups = get().groups.map((g) => (g.workflow ? g : sorted[k++]!));
+      set({ stripOrder: keys, groups });
+    },
 
     openWorkflows() {
       const runs = get().groups.filter((g) => g.workflow);

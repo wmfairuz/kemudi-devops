@@ -182,22 +182,43 @@ export function TabStrip() {
   const workflowsFront = useTabs((s) => s.activeId === WORKFLOWS_ID || !!groupOf(s, s.activeId)?.workflow);
   const setOverlay = useUi((s) => s.setOverlay);
 
+  // Everything after Home, in the order you dragged it to (new ones last).
+  const stripOrder = useTabs((s) => s.stripOrder);
+  const items: { key: string; node: React.ReactNode }[] = [];
+  if (detailsOpen) items.push({ key: "details", node: <DetailsTab active={activeId === DETAILS_ID} /> });
+  if (historyOpen) items.push({ key: "history", node: <HistoryTab active={activeId === HISTORY_ID} /> });
+  if (snippetsOpen) items.push({ key: "snippets", node: <SnippetsTab active={activeId === SNIPPETS_ID} /> });
+  if (workflowsOpen) items.push({ key: "workflows", node: <WorkflowsTab active={workflowsFront} /> });
+  for (const g of groups.filter((x) => !x.workflow)) {
+    const ids = leaves(g.layout);
+    const panes = tabs.filter((t) => ids.includes(t.id));
+    const tab = panes.find((t) => t.id === g.focus) ?? panes[0];
+    if (tab) items.push({ key: g.id, node: <TabItem tab={tab} group={g} panes={panes} active={!!activeId && ids.includes(activeId)} /> });
+  }
+  const rank = (key: string, i: number) => {
+    const at = stripOrder.indexOf(key);
+    return at < 0 ? 100_000 + i : at;
+  };
+  const ordered = items.map((it, i) => ({ ...it, r: rank(it.key, i) })).sort((a, b) => a.r - b.r);
+  const drag = useStripDrag(ordered.map((o) => o.key));
+
   return (
     <div role="tablist" className="flex h-11 flex-none bg-sidebar">
       <div className="flex min-w-0 flex-[0_1_auto] overflow-hidden">
         <HomeTab active={activeId === HOME_ID || activeId === null} />
-        {detailsOpen && <DetailsTab active={activeId === DETAILS_ID} />}
-        {historyOpen && <HistoryTab active={activeId === HISTORY_ID} />}
-        {snippetsOpen && <SnippetsTab active={activeId === SNIPPETS_ID} />}
-        {workflowsOpen && <WorkflowsTab active={workflowsFront} />}
-        {groups.filter((g) => !g.workflow).map((g) => {
-          const ids = leaves(g.layout);
-          const panes = tabs.filter((t) => ids.includes(t.id));
-          const tab = panes.find((t) => t.id === g.focus) ?? panes[0];
-          return tab ? (
-            <TabItem key={g.id} tab={tab} group={g} panes={panes} active={!!activeId && ids.includes(activeId)} />
-          ) : null;
-        })}
+        {ordered.map((o) => (
+          <div
+            key={o.key}
+            data-strip-key={o.key}
+            onPointerDown={(e) => drag.start(e, o.key)}
+            className={cn("relative flex min-w-0 flex-[0_1_auto]", drag.dragging === o.key && "opacity-50")}
+          >
+            {o.node}
+            {drag.over?.key === o.key && (
+              <span className={cn("pointer-events-none absolute top-1.5 bottom-1.5 z-10 w-[3px] rounded bg-primary", drag.over.after ? "-right-[2px]" : "-left-[2px]")} />
+            )}
+          </div>
+        ))}
       </div>
       <button
         title="New local shell (⌘T) · ⌥-click: SSH to host (⇧⌘T)"
@@ -328,6 +349,46 @@ function DetailsTab({ active }: { active: boolean }) {
       </button>
     </div>
   );
+}
+
+/** Drag a tab along the strip to reorder it (a short press still just
+ *  picks the tab). */
+function useStripDrag(keys: string[]) {
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [over, setOver] = useState<{ key: string; after: boolean } | null>(null);
+  const start = (e: React.PointerEvent, key: string) => {
+    if (e.button !== 0 || (e.target as HTMLElement).closest("button, input")) return;
+    const x0 = e.clientX;
+    let moving = false;
+    let target: { key: string; after: boolean } | null = null;
+    const move = (ev: PointerEvent) => {
+      if (!moving && Math.abs(ev.clientX - x0) < 6) return;
+      moving = true;
+      document.body.style.userSelect = "none";
+      setDragging(key);
+      const el = document.elementFromPoint(ev.clientX, ev.clientY)?.closest<HTMLElement>("[data-strip-key]");
+      if (el && el.dataset.stripKey !== key) {
+        const r = el.getBoundingClientRect();
+        target = { key: el.dataset.stripKey!, after: ev.clientX > r.left + r.width / 2 };
+      } else target = null;
+      setOver(target);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      document.body.style.userSelect = "";
+      setDragging(null);
+      setOver(null);
+      if (!moving || !target) return;
+      const rest = keys.filter((k) => k !== key);
+      const at = rest.indexOf(target.key) + (target.after ? 1 : 0);
+      rest.splice(at, 0, key);
+      useTabs.getState().setStripOrder(rest);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  return { start, dragging, over };
 }
 
 /** The pinned Workflows tab: every run (this session's live, earlier ones
