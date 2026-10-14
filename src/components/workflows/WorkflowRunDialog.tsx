@@ -148,7 +148,7 @@ function RunDialog({ wf, from: initialFrom }: { wf: Workflow; from: number }) {
             spellCheck={false}
             onChange={(e) => setTyped(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && run()}
-            placeholder={`type ${confirm?.word ?? prodServer.id} to run`}
+            placeholder={confirm ? `type ${confirm.short} or ${confirm.word} to run` : `type ${prodServer.id} to run`}
             aria-label={`Type the production ${confirm?.what ?? "server"}'s name to run`}
             className={cn(
               "h-[30px] w-[220px] rounded-lg border bg-background px-2.5 font-mono text-[12.5px] outline-none placeholder:text-faint-foreground",

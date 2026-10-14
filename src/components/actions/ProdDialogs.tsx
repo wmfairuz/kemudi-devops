@@ -172,15 +172,20 @@ export function DangerConfirmDialog() {
         <CommandBlock action={action} command={c.command} editing={c.editing} onChange={c.setCommand} />
         <div className="flex flex-col gap-1.5">
           <div className="text-[12px] text-muted-foreground">
-            Type <span className="rounded-sm bg-muted px-[5px] py-px font-mono text-foreground">{confirm.word}</span> to
-            confirm
+            Type <span className="rounded-sm bg-muted px-[5px] py-px font-mono text-foreground">{confirm.word}</span>
+            {confirm.short.toLowerCase() !== confirm.word.toLowerCase() && (
+              <>
+                {" "}or its initials <span className="rounded-sm bg-muted px-[5px] py-px font-mono text-foreground">{confirm.short}</span>
+              </>
+            )}{" "}
+            to confirm
           </div>
           <input
             id="danger-confirm-input"
             value={typed}
             spellCheck={false}
             autoComplete="off"
-            placeholder={confirm.word}
+            placeholder={confirm.short.toLowerCase() !== confirm.word.toLowerCase() ? `${confirm.short} or ${confirm.word}` : confirm.word}
             onChange={(e) => setTyped(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") run();

@@ -787,7 +787,7 @@ the toggle in its confirm dialog / right-click menu (which edits servers.yaml):
 |---|---|
 | `none` | runs (⌥-click still lets you edit first) |
 | `warn` | shows the full command; one click to run |
-| `type` | shows the command; type a name to run: the **app**'s for an app's action (or a workflow pinned to an app), else the **server**'s. The name as shown or its id, in any case. Server-wide built-ins (nginx, Supervisor, certbot) ask for the server |
+| `type` | shows the command; type a name to run: the **app**'s for an app's action (or a workflow pinned to an app), else the **server**'s. The name as shown, its id, or the initials on its badge (Back Office Prod → `bop`), in any case. Server-wide built-ins (nginx, Supervisor, certbot) ask for the server |
 
 Without `confirm:`, the default is: prod + `danger` → `type`, prod or
 `danger` → `warn`, otherwise `none`.

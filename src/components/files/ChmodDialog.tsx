@@ -186,7 +186,7 @@ export function ChmodDialog({
               value={typed}
               spellCheck={false}
               onChange={(e) => setTyped(e.target.value)}
-              placeholder={`type ${confirmWord(serverId, null).word} to apply`}
+              placeholder={`type ${confirmWord(serverId, null).short} or ${confirmWord(serverId, null).word} to apply`}
               aria-label="Type the server name to apply"
               className={cn(
                 "h-[30px] w-[220px] rounded-lg border bg-background px-2.5 font-mono text-[12.5px] outline-none placeholder:text-faint-foreground",

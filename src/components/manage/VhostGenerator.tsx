@@ -331,7 +331,7 @@ function VhostGenerator({ request }: { request: VhostRequest }) {
                 spellCheck={false}
                 onChange={(e) => setTyped(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && void createIt()}
-                placeholder={`type ${confirmWord(serverId, null).word} to create`}
+                placeholder={`type ${confirmWord(serverId, null).short} or ${confirmWord(serverId, null).word} to create`}
                 aria-label="Type the server name to create"
                 className={cn(
                   "h-[30px] w-[240px] rounded-lg border bg-background px-2.5 font-mono text-[12.5px] outline-none placeholder:text-faint-foreground",
