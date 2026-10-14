@@ -321,7 +321,12 @@ pub fn render_action(
     r: &ActionRef,
     command_override: Option<String>,
 ) -> AppResult<RenderedAction> {
-    let built = builtin(&r.action_id);
+    // Your own action wins over a built-in with the same id (e.g. an app
+    // action called `supervisor-update`).
+    let built = match lookup(config, r) {
+        Ok(_) => None,
+        Err(_) => builtin(&r.action_id),
+    };
     let (server, app, action) = match &built {
         Some(b) => {
             let server = config.server(&r.server_id).ok_or_else(|| {
@@ -731,6 +736,7 @@ servers:
 actions:
   app:
     - { id: pull, label: "Git pull", run: "cd {{ app.path }} && git pull origin {{ app.branch }}" }
+    - { id: supervisor-update, label: "My supervisor update", run: "supervisorctl reread" }
   server:
     - { id: nginx, run: "sudo nginx -t", danger: true }
     - { id: port, run: "nc -vz -w 5 {{ ip }} {{ port | default('22') }}" }
@@ -749,6 +755,16 @@ actions:
             action_id: action.into(),
             values: BTreeMap::new(),
         }
+    }
+
+    #[test]
+    fn own_action_wins_over_a_builtin_id() {
+        let c = config();
+        let mine = render_action(&c, &r(Some("akaun"), "supervisor-update"), None).expect("mine");
+        assert_eq!(mine.label, "My supervisor update");
+        // Where nothing of yours has the id, the built-in still applies.
+        let built = render_action(&c, &r(None, "supervisor-update"), None).expect("built-in");
+        assert_eq!(built.label, "Apply Supervisor changes");
     }
 
     #[test]
