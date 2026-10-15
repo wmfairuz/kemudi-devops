@@ -18,9 +18,9 @@ if [[ -z $__kemudi_hooked ]]; then
     # in it, giving the output some room, like Warp).
     (( __kemudi_ran )) && printf '\e]133;D;%s\a\n' $ec
     __kemudi_ran=0
+    printf '\e]133;A\a'
     # The folder it's in (OSC 7), e.g. for Save as tab config.
     printf '\e]7;file://%s%s\a' "${HOST}" "${PWD}"
-    printf '\e]133;A\a'
   }
   __kemudi_preexec() {
     __kemudi_ran=1

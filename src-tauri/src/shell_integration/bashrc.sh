@@ -16,9 +16,9 @@ if [ -z "$__kemudi_hooked" ]; then
     # After a command: a blank row for the divider (room after the output).
     [ "$__kemudi_ran" = 1 ] && printf '\n'
     __kemudi_ran=0
+    printf '\033]133;A\007'
     # The folder it's in (OSC 7), e.g. for Save as tab config.
     printf '\033]7;file://%s%s\007' "$HOSTNAME" "$PWD"
-    printf '\033]133;A\007'
     return $ec
   }
   PROMPT_COMMAND="__kemudi_prompt${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
