@@ -161,6 +161,7 @@ function TabItem({ tab, group, panes, active }: { tab: Tab; group: Group; panes:
               { label: "Split right", hint: "⌘D", run: () => useTabs.getState().splitActive("row") },
               { label: "Split down", hint: "⇧⌘D", run: () => useTabs.getState().splitActive("col") },
               { label: "Split right: local shell", hint: "⇧⌘L", run: () => useTabs.getState().splitActive("row", true) },
+              { label: "Split down: local shell", hint: "⌥⇧⌘L", run: () => useTabs.getState().splitActive("col", true) },
               { label: "Type in all panes", hint: "⌥⌘I", checked: !!group.broadcast, run: toggleBroadcast },
             ],
             [{ label: panes.length > 1 ? `Close tab (${panes.length} panes)` : "Close tab", run: () => closeGroup(group.id) }],

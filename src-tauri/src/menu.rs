@@ -158,6 +158,12 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
             "Split Right: Local Shell",
             Some("CmdOrCtrl+Shift+L"),
         )?)
+        .item(&item(
+            app,
+            "pane.splitLocalDown",
+            "Split Down: Local Shell",
+            Some("CmdOrCtrl+Alt+Shift+L"),
+        )?)
         .separator()
         .item(&item(
             app,

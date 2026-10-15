@@ -91,6 +91,7 @@ const COMMANDS: Record<string, () => void> = {
   "pane.splitRight": () => useTabs.getState().splitActive("row"),
   "pane.splitDown": () => useTabs.getState().splitActive("col"),
   "pane.splitLocal": () => useTabs.getState().splitActive("row", true),
+  "pane.splitLocalDown": () => useTabs.getState().splitActive("col", true),
   home: () => useTabs.setState({ activeId: HOME_ID }),
   "pane.left": () => useTabs.getState().focusSide("left"),
   "pane.right": () => useTabs.getState().focusSide("right"),
@@ -119,6 +120,7 @@ export function runCommand(id: string): boolean {
 
 /** ⌘ chord → command id. Uses the physical key where Option/Shift change e.key. */
 function commandFor(e: KeyboardEvent): string | null {
+  if (e.shiftKey && e.altKey && e.code === "KeyL") return "pane.splitLocalDown";
   if (e.code === "KeyC" && e.shiftKey) return e.altKey ? "block.copyOutput" : "block.copyCommand";
   if (e.altKey && !e.shiftKey && e.code === "KeyI") return "pane.broadcast";
   if (e.altKey && !e.shiftKey) {

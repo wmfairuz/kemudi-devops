@@ -883,7 +883,7 @@ would seem to stop working). Tabs come back through session restore.
 | ⇧⌘K | Passwords |
 | ⇧⌘S | Snippets page: add, edit, organise (again: back where you were) |
 | ⌘D / ⇧⌘D | Split the pane right / down (same server and folder; an action pane gives a shell there) |
-| ⇧⌘L | Split right with a shell on this Mac (also the terminal's and the tab's right-click menus) |
+| ⇧⌘L / ⌥⇧⌘L | Split right / down with a shell on this Mac (also the terminal's and the tab's right-click menus) |
 | ⇧⌘H | Home (also View ▸ Home) |
 | ⌥⌘ ← → ↑ ↓ | Move between panes |
 | ⌥⌘I | Type in all panes of the tab (on/off): what you type goes to every terminal pane, like Warp's synchronized inputs (and iTerm's broadcast input). The panes get a pink outline and the tab a ⌨ badge; it's off again when Kemudi restarts |

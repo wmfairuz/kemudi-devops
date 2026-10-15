@@ -55,6 +55,7 @@ export function TerminalContextMenu({ state, onClose }: { state: MenuState; onCl
       { label: "Split right", hint: "⌘D", run: () => useTabs.getState().splitActive("row") },
       { label: "Split down", hint: "⇧⌘D", run: () => useTabs.getState().splitActive("col") },
       { label: "Split right: local shell", hint: "⇧⌘L", run: () => useTabs.getState().splitActive("row", true) },
+      { label: "Split down: local shell", hint: "⌥⇧⌘L", run: () => useTabs.getState().splitActive("col", true) },
     ],
     [
       { label: "Find…", hint: "⌘F", run: () => useUi.getState().setSearchOpen(true) },
