@@ -876,7 +876,7 @@ would seem to stop working). Tabs come back through session restore.
 | ⇧⌘[ / ⇧⌘] | Previous / next tab |
 | ⌘F | Find in terminal |
 | ⌘A | Select the command being typed (else everything) |
-| ⌘J | Show/hide the Actions panel |
+| ⌘J | Show/hide the Actions panel (it hides by itself on Home, Workflows, Snippets and History, and is back on tabs and server/app pages) |
 | ⌘⇧P | Fill a saved password (picker) |
 | ⇧⌘K | Passwords |
 | ⇧⌘S | Snippets page: add, edit, organise (again: back where you were) |
