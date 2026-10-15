@@ -141,7 +141,9 @@ interface TabsState {
   /** Close every pane in a group (the tab's ×). */
   closeGroup(groupId: string): void;
   /** Split the focused pane (⌘D right, ⇧⌘D down). */
-  splitActive(dir: Dir): void;
+  /** A pane next to the focused one: the same server and folder, or
+   *  (`local`) a shell on this Mac. */
+  splitActive(dir: Dir, local?: boolean): void;
   /** Open panes as one new tab: side by side, in two rows from four on.
    *  `broadcast`: with Type in all panes on. Returns the pane ids. */
   openGrid(panes: OpenOptions[], opts?: { broadcast?: boolean }): string[];
@@ -442,11 +444,12 @@ export const useTabs = create<TabsState>((set, get) => {
       if (g) set({ activeId: g.focus });
     },
 
-    splitActive(dir) {
+    splitActive(dir, local = false) {
       const s = get();
       const t = s.tabs.find((x) => x.id === s.activeId);
       if (!t) return;
-      get().open({ ...likeOptions(t), into: { from: t.id, dir } });
+      const like = local ? { kind: "local" as const, title: "local · zsh", spawn: ptySpawner({ kind: "local" }) } : likeOptions(t);
+      get().open({ ...like, into: { from: t.id, dir } });
     },
 
     focusSide(side) {

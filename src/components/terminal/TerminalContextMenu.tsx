@@ -5,6 +5,7 @@ import { copyText, readText } from "@/lib/clipboard";
 import type { TerminalSession } from "@/lib/terminalSession";
 import { useSnippets } from "@/stores/snippets";
 import { useToasts } from "@/stores/toasts";
+import { useTabs } from "@/stores/tabs";
 import { useUi } from "@/stores/ui";
 
 export interface MenuState {
@@ -49,6 +50,11 @@ export function TerminalContextMenu({ state, onClose }: { state: MenuState; onCl
     [
       { label: "Select output", disabled: !block, run: () => block && session.blocks.selectOutput(block) },
       { label: "Scroll to top of block", disabled: !block, run: () => block && session.blocks.scrollTo(block) },
+    ],
+    [
+      { label: "Split right", hint: "⌘D", run: () => useTabs.getState().splitActive("row") },
+      { label: "Split down", hint: "⇧⌘D", run: () => useTabs.getState().splitActive("col") },
+      { label: "Split right: local shell", hint: "⇧⌘L", run: () => useTabs.getState().splitActive("row", true) },
     ],
     [
       { label: "Find…", hint: "⌘F", run: () => useUi.getState().setSearchOpen(true) },

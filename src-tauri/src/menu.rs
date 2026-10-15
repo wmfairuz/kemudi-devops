@@ -112,6 +112,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         )?)
         .separator()
         // The pages.
+        .item(&item(app, "home", "Home", Some("CmdOrCtrl+Shift+H"))?)
         .item(&item(app, "history", "History", Some("CmdOrCtrl+Y"))?)
         .item(&item(
             app,
@@ -150,6 +151,12 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
             "pane.splitDown",
             "Split Pane Down",
             Some("CmdOrCtrl+Shift+D"),
+        )?)
+        .item(&item(
+            app,
+            "pane.splitLocal",
+            "Split Right: Local Shell",
+            Some("CmdOrCtrl+Shift+L"),
         )?)
         .separator()
         .item(&item(

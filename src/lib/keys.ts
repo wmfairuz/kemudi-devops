@@ -5,7 +5,7 @@
 // xterm passes every ⌘ chord through (see TerminalSession's key handler);
 // everything else stays in the PTY.
 import { copyCommand, copyOutput } from "@/lib/blockActions";
-import { DETAILS_ID, HISTORY_ID, SNIPPETS_ID, WORKFLOWS_ID, isViewTab, openLocalShell, toggleBroadcast, useTabs } from "@/stores/tabs";
+import { DETAILS_ID, HISTORY_ID, HOME_ID, SNIPPETS_ID, WORKFLOWS_ID, isViewTab, openLocalShell, toggleBroadcast, useTabs } from "@/stores/tabs";
 import { useVault } from "@/stores/vault";
 import { useUpdates } from "@/stores/updates";
 import { openDetails } from "@/stores/manage";
@@ -90,6 +90,8 @@ const COMMANDS: Record<string, () => void> = {
   },
   "pane.splitRight": () => useTabs.getState().splitActive("row"),
   "pane.splitDown": () => useTabs.getState().splitActive("col"),
+  "pane.splitLocal": () => useTabs.getState().splitActive("row", true),
+  home: () => useTabs.setState({ activeId: HOME_ID }),
   "pane.left": () => useTabs.getState().focusSide("left"),
   "pane.right": () => useTabs.getState().focusSide("right"),
   "pane.up": () => useTabs.getState().focusSide("up"),
@@ -133,6 +135,8 @@ function commandFor(e: KeyboardEvent): string | null {
   if (e.shiftKey && e.code === "KeyK") return "passwords";
   if (e.shiftKey && e.code === "KeyS") return "snippets";
   if (e.shiftKey && e.code === "KeyR") return "workflows";
+  if (e.shiftKey && e.code === "KeyH") return "home";
+  if (e.shiftKey && e.code === "KeyL") return "pane.splitLocal";
   if (e.shiftKey) return null;
   const byCode: Record<string, string> = {
     KeyA: "edit.selectAll",
