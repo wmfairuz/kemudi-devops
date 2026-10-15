@@ -55,32 +55,7 @@ export function WorkflowRuns() {
 
   return (
     <aside className="flex w-[300px] min-h-0 flex-none flex-col border-r border-divider bg-sidebar">
-      <div className="flex-none border-b border-divider px-3.5 py-3">
-        <div className="mb-2 text-[11px] font-semibold tracking-wide text-subtle-foreground uppercase">Run</div>
-        {workflows.length === 0 ? (
-          <button onClick={() => useWorkflows.getState().edit(null)} className="text-[12px] text-primary hover:underline">
-            + New workflow
-          </button>
-        ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {workflows.map((w) => (
-              <button
-                key={w.id}
-                onClick={() => useWorkflows.getState().run(w.id)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  useWorkflows.getState().edit(w);
-                }}
-                title={`${w.steps.length} step${w.steps.length === 1 ? "" : "s"} · click: run (shows the steps first) · right-click: edit`}
-                className="flex h-7 cursor-pointer items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/8 px-2 text-[12px] font-medium text-foreground hover:bg-primary/15"
-              >
-                <WorkflowIcon className="size-3.5 text-primary" strokeWidth={1.75} />
-                {w.name}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      <RunList workflows={workflows} />
       <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
         {runs.length > 0 && <div className="px-2 pt-1.5 pb-1 text-[11px] font-semibold tracking-wide text-subtle-foreground uppercase">This session</div>}
         {runs.map(({ g, main }) => (
@@ -131,6 +106,74 @@ export function WorkflowRuns() {
         })}
       </div>
     </aside>
+  );
+}
+
+/** The workflows to run: one per line, a filter, up to half the height
+ *  (scrolls). Click (or ↵ in the filter: the first match) shows the run
+ *  dialog; right-click edits. */
+function RunList({ workflows }: { workflows: Workflow[] }) {
+  const config = useConfig((s) => s.snapshot?.config);
+  const [q, setQ] = useState("");
+  const where = (w: Workflow) => {
+    const server = config?.servers.find((s) => s.id === w.pinServer);
+    const app = w.pinApp ? server?.apps.find((a) => a.id === w.pinApp) : undefined;
+    return app ? `${app.name} on ${server?.name}` : (server?.name ?? "");
+  };
+  const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const shown = workflows.filter((w) => {
+    const hay = `${w.name} ${where(w)}`.toLowerCase();
+    return words.every((x) => hay.includes(x));
+  });
+  return (
+    <div className="flex max-h-[50%] flex-none flex-col border-b border-divider">
+      <div className="flex flex-none items-center gap-2 px-3.5 pt-3 pb-2">
+        <span className="text-[11px] font-semibold tracking-wide text-subtle-foreground uppercase">Run</span>
+        <span className="flex-1" />
+        <button onClick={() => useWorkflows.getState().edit(null)} className="cursor-pointer text-[11.5px] text-primary hover:underline">
+          + New
+        </button>
+      </div>
+      {workflows.length > 4 && (
+        <div className="flex-none px-2.5 pb-1.5">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && shown[0]) useWorkflows.getState().run(shown[0].id);
+              if (e.key === "Escape") setQ("");
+            }}
+            placeholder="Find a workflow (↵ runs the first)"
+            spellCheck={false}
+            className="h-7 w-full rounded-md border border-control-border bg-background px-2 text-[12px] outline-none placeholder:text-faint-foreground focus:border-primary/60"
+          />
+        </div>
+      )}
+      <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
+        {workflows.length === 0 && <div className="px-2 py-1 text-[12px] text-subtle-foreground">No workflows yet.</div>}
+        {workflows.length > 0 && shown.length === 0 && <div className="px-2 py-1 text-[12px] text-subtle-foreground">Nothing matches.</div>}
+        {shown.map((w) => (
+          <button
+            key={w.id}
+            onClick={() => useWorkflows.getState().run(w.id)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              useWorkflows.getState().edit(w);
+            }}
+            title={`${w.steps.length} step${w.steps.length === 1 ? "" : "s"} · click: run (shows the steps first) · right-click: edit`}
+            className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-hover"
+          >
+            <WorkflowIcon className="size-4 flex-none text-primary" strokeWidth={1.75} />
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate text-[12.5px] font-medium text-foreground">{w.name}</span>
+              <span className="truncate text-[11px] text-subtle-foreground">
+                {where(w) || "not pinned"} · {w.steps.length} step{w.steps.length === 1 ? "" : "s"}
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
