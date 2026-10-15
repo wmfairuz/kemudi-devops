@@ -43,6 +43,11 @@ export function spawnPty(
   return invoke<number>("pty_spawn", { spec, cols, rows, onData: data, onEvent: events });
 }
 
+/** A local shell's folder (null for ssh, or when it can't be told). */
+export function ptyCwd(id: number): Promise<string | null> {
+  return invoke("pty_cwd", { id });
+}
+
 /** `data` is text, or raw bytes for xterm's binary (legacy mouse) output. */
 export function writePty(id: number, data: string | number[]): Promise<void> {
   return invoke("pty_write", { id, data });

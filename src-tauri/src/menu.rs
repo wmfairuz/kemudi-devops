@@ -55,6 +55,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .separator()
         .item(&item(app, "server.add", "Add Server…", None)?)
         .item(&item(app, "workflow.new", "New Workflow…", None)?)
+        .item(&item(app, "tab.saveConfig", "Save Tab as Tab Config…", None)?)
         .separator()
         .item(&item(
             app,

@@ -155,6 +155,11 @@ impl PtyRegistry {
         Ok(id)
     }
 
+    /// The process a session runs (its shell, for a plain tab).
+    pub fn pid_of(&self, id: PtyId) -> Option<u32> {
+        self.sessions().get(&id).and_then(|s| s.pid)
+    }
+
     /// The ssh host a session was started for (None: local).
     pub fn host_of(&self, id: PtyId) -> Option<String> {
         self.sessions().get(&id).and_then(|s| s.host.clone())

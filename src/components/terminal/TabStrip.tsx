@@ -10,6 +10,7 @@ import { useConfig } from "@/stores/config";
 import { useManage } from "@/stores/manage";
 import { PopupMenu } from "@/components/kit/PopupMenu";
 import { leaves } from "@/lib/layout";
+import { saveTabAsConfig } from "@/lib/saveTabConfig";
 import { TAB_COLORS, type TabColor } from "@/lib/tabColors";
 import { ColorDot, openTabConfig, useTabConfigs } from "@/components/tabconfigs/TabConfigs";
 import { errorMessage, tabConfigsList, type TabConfigEntry } from "@/lib/ipc";
@@ -142,7 +143,10 @@ function TabItem({ tab, group, panes, active }: { tab: Tab; group: Group; panes:
           title={tab.title}
           onClose={() => setMenu(null)}
           groups={[
-            [{ label: "Rename tab…", run: () => setEditing(true) }],
+            [
+              { label: "Rename tab…", run: () => setEditing(true) },
+              ...(terminals > 0 ? [{ label: "Save as tab config…", run: () => void saveTabAsConfig(group.id) }] : []),
+            ],
             [
               ...(Object.keys(TAB_COLORS) as TabColor[]).map((c) => ({
                 label: TAB_COLORS[c].label,

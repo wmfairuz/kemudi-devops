@@ -5,7 +5,8 @@
 // xterm passes every ⌘ chord through (see TerminalSession's key handler);
 // everything else stays in the PTY.
 import { copyCommand, copyOutput } from "@/lib/blockActions";
-import { DETAILS_ID, HISTORY_ID, HOME_ID, SNIPPETS_ID, WORKFLOWS_ID, isViewTab, openLocalShell, toggleBroadcast, useTabs } from "@/stores/tabs";
+import { DETAILS_ID, HISTORY_ID, HOME_ID, SNIPPETS_ID, WORKFLOWS_ID, groupOf, isViewTab, openLocalShell, toggleBroadcast, useTabs } from "@/stores/tabs";
+import { saveTabAsConfig } from "@/lib/saveTabConfig";
 import { useVault } from "@/stores/vault";
 import { useUpdates } from "@/stores/updates";
 import { openDetails } from "@/stores/manage";
@@ -22,6 +23,11 @@ const COMMANDS: Record<string, () => void> = {
   "server.add": () => openDetails({ kind: "server", serverId: null }),
   "workflow.new": () => useWorkflows.getState().edit(null),
   "tab.ssh": () => useUi.getState().setOverlay("ssh"),
+  "tab.saveConfig": () => {
+    const tabs = useTabs.getState();
+    const g = groupOf(tabs, tabs.activeId);
+    if (g && !g.workflow) void saveTabAsConfig(g.id);
+  },
   "tab.close": () => {
     const tabs = useTabs.getState();
     // With no tabs, ⌘W does nothing rather than closing the window.

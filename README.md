@@ -577,6 +577,11 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   (`~/.warp/tab_configs/`) are listed too, read-only. *New tab config…* /
   *Edit tab configs…* edit them in a form (layout presets: 1 pane, side by
   side, stacked, 3 columns, 2×3 grid); editing a Warp one saves a Kemudi copy.
+  **Save as tab config…** (right-click a tab, or File ▸ Save Tab as Tab
+  Config…) saves the tab as it is: its splits, each local shell in the
+  folder it's in now, and each ssh pane as `ssh -t <host> 'cd <folder> &&
+  exec "$SHELL" -l'` (Session Manager panes and monitors are left out).
+  Kemudi's zsh and bash report their folder (OSC 7) at each prompt.
 - **Tab colours**: right-click a tab for a colour (Red, Crimson, Maroon, Coral,
   Orange, Amber, Gold, Yellow, Brown, Lime, Green, Teal, Cyan, Blue, Indigo,
   Purple, Pink, Gray), rename, split or close. A server's or app's page has a

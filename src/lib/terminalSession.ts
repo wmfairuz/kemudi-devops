@@ -122,6 +122,8 @@ export class TerminalSession {
   private promptValue: PasswordPrompt = null;
   private promptListeners = new Set<(p: PasswordPrompt) => void>();
   status: SessionStatus = "starting";
+  /** The shell's folder, as last reported by OSC 7. */
+  cwd: string | null = null;
   private readonly fontReady: Promise<unknown>;
 
   constructor(
@@ -144,6 +146,18 @@ export class TerminalSession {
       theme: terminalTheme,
     });
     this.blocks = new BlockTracker(this.term);
+    // OSC 7 from our shell hooks: the folder the shell is in now.
+    this.term.parser.registerOscHandler(7, (data) => {
+      const path = /^file:\/\/[^/]*(\/.*)$/.exec(data)?.[1];
+      if (path) {
+        try {
+          this.cwd = decodeURIComponent(path);
+        } catch {
+          this.cwd = path;
+        }
+      }
+      return true;
+    });
     this.term.loadAddon(this.fit);
     this.term.loadAddon(this.search);
     this.term.loadAddon(

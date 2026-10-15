@@ -125,6 +125,7 @@ pub fn run() {
             pty::commands::pty_write,
             pty::commands::pty_resize,
             pty::commands::pty_kill,
+            pty::commands::pty_cwd,
             system::open_url,
             system::env_report,
             system::app_quiet,

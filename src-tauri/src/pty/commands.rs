@@ -207,6 +207,27 @@ pub async fn pty_resize(
     state.ptys.resize(id, pty_size(cols, rows)?)
 }
 
+/// A local shell's current folder (when shell integration doesn't report
+/// it): asked of macOS with `lsof`. None for an ssh tab or when unknown.
+#[tauri::command]
+pub async fn pty_cwd(state: State<'_, AppState>, id: PtyId) -> AppResult<Option<String>> {
+    if state.ptys.host_of(id).is_some() {
+        return Ok(None);
+    }
+    let Some(pid) = state.ptys.pid_of(id) else {
+        return Ok(None);
+    };
+    let out = tokio::process::Command::new("/usr/sbin/lsof")
+        .args(["-a", "-p", &pid.to_string(), "-d", "cwd", "-Fn"])
+        .output()
+        .await;
+    Ok(out.ok().and_then(|o| {
+        String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .find_map(|l| l.strip_prefix('n').map(str::to_string))
+    }))
+}
+
 #[tauri::command]
 pub async fn pty_kill(state: State<'_, AppState>, id: PtyId) -> AppResult<()> {
     state.ptys.kill(id);
