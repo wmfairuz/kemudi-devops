@@ -348,9 +348,14 @@ pub async fn servers_set_group(
     let value = group.as_deref().map(yaml_scalar);
     let edited = ids
         .iter()
-        .try_fold(read(&state)?, |src, id| set_entity_field(&src, id, None, "group", value.as_deref()))
+        .try_fold(read(&state)?, |src, id| {
+            set_entity_field(&src, id, None, "group", value.as_deref())
+        })
         .map_err(AppError::Invalid)?;
-    checked(&edited, |c| ids.iter().all(|id| c.server(id).is_some_and(|s| s.group == group)))?;
+    checked(&edited, |c| {
+        ids.iter()
+            .all(|id| c.server(id).is_some_and(|s| s.group == group))
+    })?;
     save(&app, &state, state.config.path(), &edited)
 }
 

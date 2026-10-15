@@ -8,6 +8,8 @@ import { copyCommand, copyOutput } from "@/lib/blockActions";
 import { DETAILS_ID, HISTORY_ID, SNIPPETS_ID, WORKFLOWS_ID, isViewTab, openLocalShell, toggleBroadcast, useTabs } from "@/stores/tabs";
 import { useVault } from "@/stores/vault";
 import { useUpdates } from "@/stores/updates";
+import { openDetails } from "@/stores/manage";
+import { useWorkflows } from "@/stores/workflows";
 import { useUi } from "@/stores/ui";
 
 function activeSession() {
@@ -17,6 +19,8 @@ function activeSession() {
 
 const COMMANDS: Record<string, () => void> = {
   "tab.new": () => void openLocalShell(),
+  "server.add": () => openDetails({ kind: "server", serverId: null }),
+  "workflow.new": () => useWorkflows.getState().edit(null),
   "tab.ssh": () => useUi.getState().setOverlay("ssh"),
   "tab.close": () => {
     const tabs = useTabs.getState();

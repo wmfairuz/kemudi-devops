@@ -609,7 +609,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   *Only this server*, *All servers* (shared). Each group's **+** adds an
   action there (name, command, on the server or this Mac, danger). Shared
   actions can be hidden on one app (*Hidden here* lists them, with Show).
-- **Snippets page** (Kemudi ▸ Snippets…, ⇧⌘S, ⌘K, or *Manage* in the panel's
+- **Snippets page** (View ▸ Snippets, ⇧⌘S, ⌘K, or *Manage* in the panel's
   Snippets tab): a pinned tab for managing them. It lists every snippet, with
   each one's team, a filter and a team picker. The picked one opens in a
   full-size editor: name, a big command box, team, notes. Save with ⌘S;

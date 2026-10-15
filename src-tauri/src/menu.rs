@@ -33,18 +33,6 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .item(&item(app, "updates.check", "Check for Updates…", None)?)
         .separator()
         .item(&item(app, "settings", "Settings…", Some("CmdOrCtrl+,"))?)
-        .item(&item(
-            app,
-            "passwords",
-            "Passwords…",
-            Some("CmdOrCtrl+Shift+K"),
-        )?)
-        .item(&item(
-            app,
-            "snippets",
-            "Snippets…",
-            Some("CmdOrCtrl+Shift+S"),
-        )?)
         .item(&item(app, "environment", "Environment…", None)?)
         .separator()
         .services()
@@ -64,6 +52,9 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
             "New SSH Tab…",
             Some("CmdOrCtrl+Shift+T"),
         )?)
+        .separator()
+        .item(&item(app, "server.add", "Add Server…", None)?)
+        .item(&item(app, "workflow.new", "New Workflow…", None)?)
         .separator()
         .item(&item(
             app,
@@ -119,6 +110,8 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
             "Command Palette…",
             Some("CmdOrCtrl+K"),
         )?)
+        .separator()
+        // The pages.
         .item(&item(app, "history", "History", Some("CmdOrCtrl+Y"))?)
         .item(&item(
             app,
@@ -126,6 +119,19 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
             "Workflows",
             Some("CmdOrCtrl+Shift+R"),
         )?)
+        .item(&item(
+            app,
+            "snippets",
+            "Snippets",
+            Some("CmdOrCtrl+Shift+S"),
+        )?)
+        .item(&item(
+            app,
+            "passwords",
+            "Passwords…",
+            Some("CmdOrCtrl+Shift+K"),
+        )?)
+        .separator()
         .item(&item(
             app,
             "panel.actions",
@@ -145,6 +151,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
             "Split Pane Down",
             Some("CmdOrCtrl+Shift+D"),
         )?)
+        .separator()
         .item(&item(
             app,
             "pane.left",
