@@ -1,6 +1,8 @@
 import { RotateCcw, Workflow as WorkflowIcon, X } from "lucide-react";
 import { useEffect, useReducer, useState } from "react";
+import { createPortal } from "react-dom";
 
+import { PopupMenu } from "@/components/kit/PopupMenu";
 import { Glyph, Spinner } from "@/components/kit/Spinner";
 import { auditList, type AuditRun, type Workflow } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
@@ -115,6 +117,7 @@ export function WorkflowRuns() {
 function RunList({ workflows }: { workflows: Workflow[] }) {
   const config = useConfig((s) => s.snapshot?.config);
   const [q, setQ] = useState("");
+  const [menu, setMenu] = useState<{ x: number; y: number; w: Workflow } | null>(null);
   const where = (w: Workflow) => {
     const server = config?.servers.find((s) => s.id === w.pinServer);
     const app = w.pinApp ? server?.apps.find((a) => a.id === w.pinApp) : undefined;
@@ -158,9 +161,9 @@ function RunList({ workflows }: { workflows: Workflow[] }) {
             onClick={() => useWorkflows.getState().run(w.id)}
             onContextMenu={(e) => {
               e.preventDefault();
-              useWorkflows.getState().edit(w);
+              setMenu({ x: e.clientX, y: e.clientY, w });
             }}
-            title={`${w.steps.length} step${w.steps.length === 1 ? "" : "s"} · click: run (shows the steps first) · right-click: edit`}
+            title={`${w.steps.length} step${w.steps.length === 1 ? "" : "s"} · click: run (shows the steps first) · right-click: edit, duplicate`}
             className="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-hover"
           >
             <WorkflowIcon className="size-4 flex-none text-primary" strokeWidth={1.75} />
@@ -173,6 +176,23 @@ function RunList({ workflows }: { workflows: Workflow[] }) {
           </button>
         ))}
       </div>
+      {menu &&
+        createPortal(
+          <PopupMenu
+            x={menu.x}
+            y={menu.y}
+            title={menu.w.name}
+            onClose={() => setMenu(null)}
+            groups={[
+              [
+                { label: "Run…", run: () => useWorkflows.getState().run(menu.w.id) },
+                { label: "Edit…", run: () => useWorkflows.getState().edit(menu.w) },
+                { label: "Duplicate…", run: () => useWorkflows.getState().duplicate(menu.w) },
+              ],
+            ]}
+          />,
+          document.body,
+        )}
     </div>
   );
 }

@@ -316,7 +316,10 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   the pinned **Workflows** tab (with a spinner while one runs). On its left are
   your workflows, one per line with where they're pinned and their step
   count, plus a filter (↵ runs the first match). The list scrolls and uses up
-  to half the height. Click one to run it, right-click to edit. Then **This session**'s
+  to half the height. Click one to run it; right-click for Run, Edit or
+  **Duplicate** (also a button in the workflow editor): a new workflow
+  that starts as a copy, named "… (copy)", saved only when you click Add
+  workflow. Then **This session**'s
   runs (live: click one to see its steps and output on the right) and
   **Earlier** runs from History (when, how long, ✓ or the step it stopped at).
   Hover a run for **Run again** or **From step N**; each run is a new line at

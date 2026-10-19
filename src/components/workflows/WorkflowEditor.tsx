@@ -17,7 +17,14 @@ import { useWorkflows } from "@/stores/workflows";
 export function WorkflowEditor() {
   const editing = useWorkflows((s) => s.editing);
   if (!editing) return null;
-  return <Editor key={editing.workflow?.id ?? "new"} workflow={editing.workflow} pin={editing.pin} />;
+  return (
+    <Editor
+      key={editing.workflow?.id ?? (editing.copyOf ? `copy:${editing.copyOf.id}` : "new")}
+      workflow={editing.workflow}
+      pin={editing.pin}
+      copyOf={editing.copyOf}
+    />
+  );
 }
 
 type Kind = WorkflowStep["kind"];
@@ -69,14 +76,17 @@ const area =
   "min-h-[34px] w-full resize-y rounded-lg border border-control-border bg-background px-2.5 py-1.5 font-mono text-[12.5px] leading-[18px] text-foreground outline-none focus:border-primary/60";
 
 /** New / edit a workflow: a name, where it's pinned, and its steps. */
-function Editor({ workflow, pin }: { workflow: Workflow | null; pin?: { server: string; app: string | null } }) {
+function Editor({ workflow, pin, copyOf }: { workflow: Workflow | null; pin?: { server: string; app: string | null }; copyOf?: Workflow }) {
   const config = useConfig((s) => s.snapshot?.config);
   const servers = config?.servers ?? NO_SERVERS;
-  const [name, setName] = useState(workflow?.name ?? "");
-  const [pinServer, setPinServer] = useState<string>(workflow?.pinServer ?? pin?.server ?? "");
-  const [pinApp, setPinApp] = useState<string>(workflow?.pinApp ?? pin?.app ?? "");
-  const [view, setView] = useState<"steps" | "terminal">(workflow?.view ?? "steps");
-  const [steps, setSteps] = useState<Row[]>(() => (workflow?.steps ?? []).map((s) => ({ ...s, key: nextKey++ })));
+  // Duplicate: a new workflow that starts as a copy (steps cloned, so
+  // editing them leaves the original alone).
+  const from = workflow ?? copyOf;
+  const [name, setName] = useState(workflow?.name ?? (copyOf ? `${copyOf.name} (copy)` : ""));
+  const [pinServer, setPinServer] = useState<string>(from?.pinServer ?? pin?.server ?? "");
+  const [pinApp, setPinApp] = useState<string>(from?.pinApp ?? pin?.app ?? "");
+  const [view, setView] = useState<"steps" | "terminal">(from?.view ?? "steps");
+  const [steps, setSteps] = useState<Row[]>(() => (from?.steps ?? []).map((s) => ({ ...structuredClone(s), key: nextKey++ })));
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState<{ from: number; to: number } | null>(null);
   const id = workflow ? workflow.id : freeId(name, (config?.workflows ?? []).map((w) => w.id), "workflow");
@@ -164,9 +174,9 @@ function Editor({ workflow, pin }: { workflow: Workflow | null; pin?: { server: 
   const pinnedServer = servers.find((s) => s.id === pinServer);
 
   return (
-    <Modal open onOpenChange={(o) => !o && void close()} title={workflow ? `Edit ${workflow.name}` : "New workflow"} width={860}>
+    <Modal open onOpenChange={(o) => !o && void close()} title={workflow ? `Edit ${workflow.name}` : copyOf ? `Duplicate ${copyOf.name}` : "New workflow"} width={860}>
       <ModalHeader>
-        <span className="text-[15px] font-semibold">{workflow ? `Edit ${workflow.name}` : "New workflow"}</span>
+        <span className="text-[15px] font-semibold">{workflow ? `Edit ${workflow.name}` : copyOf ? `Duplicate ${copyOf.name}` : "New workflow"}</span>
         <span className="text-[12.5px] text-muted-foreground">
           Steps run one after another in one terminal tab, so you answer prompts there. Commands run in an interactive shell (yours on this
           Mac, bash on servers), so aliases work. The first failing step stops the run.
@@ -255,6 +265,24 @@ function Editor({ workflow, pin }: { workflow: Workflow | null; pin?: { server: 
         {workflow && (
           <Btn variant="ghost" className="text-env-prod-fg" onClick={() => void remove()}>
             Delete…
+          </Btn>
+        )}
+        {workflow && (
+          <Btn
+            variant="ghost"
+            title="A new workflow from what's in this form; this one stays as saved"
+            onClick={() =>
+              useWorkflows.getState().duplicate({
+                ...workflow,
+                name: name.trim() || workflow.name,
+                pinServer: pinServer || null,
+                pinApp: pinServer && pinApp ? pinApp : null,
+                view,
+                steps: steps.map(({ key: _key, ...s }) => s),
+              })
+            }
+          >
+            Duplicate
           </Btn>
         )}
         <span className="flex-1 truncate text-[12px] text-subtle-foreground">{name.trim() || steps.length ? problems[0] ?? "" : ""}</span>
