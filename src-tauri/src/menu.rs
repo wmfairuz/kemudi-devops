@@ -50,6 +50,12 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
             app,
             "tab.ssh",
             "New SSH Tab…",
+            Some("CmdOrCtrl+Alt+T"),
+        )?)
+        .item(&item(
+            app,
+            "tab.reopen",
+            "Reopen Closed Tab",
             Some("CmdOrCtrl+Shift+T"),
         )?)
         .separator()

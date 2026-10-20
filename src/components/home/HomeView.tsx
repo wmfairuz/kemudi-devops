@@ -86,7 +86,7 @@ export function HomeView() {
               <SquareTerminal className="size-4" /> New terminal <Hint className="text-primary-foreground/60">⌘T</Hint>
             </Btn>
             <Btn variant="outline" className="pr-2.5" onClick={() => useUi.getState().setOverlay("ssh")}>
-              SSH to host… <Hint>⇧⌘T</Hint>
+              SSH to host… <Hint>⌥⌘T</Hint>
             </Btn>
             <Btn variant="outline" onClick={() => openDetails({ kind: "server", serverId: null })}>
               <Plus className="size-4" /> Add server

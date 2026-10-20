@@ -227,7 +227,7 @@ export function TabStrip() {
         ))}
       </div>
       <button
-        title="New local shell (⌘T) · ⌥-click: SSH to host (⇧⌘T)"
+        title="New local shell (⌘T) · ⌥-click: SSH to host (⌥⌘T)"
         onClick={(e) => (e.altKey ? setOverlay("ssh") : openLocalShell())}
         className="flex h-11 w-9 flex-none items-center justify-center text-[19px] text-subtle-foreground shadow-[inset_0_-1px_0_var(--divider)] hover:text-foreground"
       >

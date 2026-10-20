@@ -21,6 +21,7 @@ import { useFleetUi } from "@/stores/fleetUi";
 import { useConfig } from "@/stores/config";
 import { useWorkflows } from "@/stores/workflows";
 import { useUi } from "@/stores/ui";
+import { reopenClosed } from "@/stores/session";
 
 type Item = Searchable & { key: string } & (
     | { type: "action"; server: Server; app: App | null; action: Action }
@@ -83,7 +84,8 @@ function buildItems(servers: Server[], tabs: Tab[], snippets: Snippet[], close: 
   });
   items.push(
     cmd("New local shell", () => openLocalShell(), "⌘T"),
-    cmd("SSH to host…", () => useUi.getState().setOverlay("ssh"), "⇧⌘T"),
+    cmd("SSH to host…", () => useUi.getState().setOverlay("ssh"), "⌥⌘T"),
+    cmd("Reopen closed tab", () => reopenClosed(), "⇧⌘T"),
     cmd("History", () => useTabs.getState().openHistory(), "⌘Y"),
     cmd("Settings…", () => useUi.getState().setOverlay("settings"), "⌘,"),
     cmd("Passwords…", () => useUi.getState().setOverlay("passwords"), "⇧⌘K"),

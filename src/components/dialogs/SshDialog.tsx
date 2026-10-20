@@ -14,7 +14,7 @@ export function isValidHost(h: string): boolean {
   return h.length > 0 && h.length <= 255 && !h.startsWith("-") && HOST_RE.test(h);
 }
 
-/** ⇧⌘T: open an ssh tab to any alias from ~/.ssh/config (or typed). */
+/** ⌥⌘T: open an ssh tab to any alias from ~/.ssh/config (or typed). */
 export function SshDialog() {
   const open = useUi((s) => s.overlay === "ssh");
   const setOverlay = useUi((s) => s.setOverlay);

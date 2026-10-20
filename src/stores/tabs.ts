@@ -7,7 +7,7 @@ import { create } from "zustand";
 import type { ConfigLayout, PtyEvent } from "@/lib/ipc";
 import { ptySpawner, setInputMirror, TerminalSession, type SessionOptions, type Spawner } from "@/lib/terminalSession";
 import { maybeNotifyFinished } from "@/lib/notify";
-import { leaves, neighbour, remove, setRatio, split, type Dir, type Layout, type Side } from "@/lib/layout";
+import { leaves, neighbour, remove, save as saveLayout, setRatio, split, type Dir, type Layout, type SavedLayout, type Side } from "@/lib/layout";
 import type { TabColor } from "@/lib/tabColors";
 import type { StepTracker } from "@/lib/stepTracker";
 import { useConfig } from "@/stores/config";
@@ -156,6 +156,58 @@ interface TabsState {
   openConfig(opts: { title: string; color?: TabColor; layout: ConfigLayout }): void;
   /** Session restore: replace groups (layouts over existing pane ids). */
   restoreGroups(groups: { layout: Layout; focus: string; color?: TabColor }[]): void;
+  /** Put panes (each in a tab of its own) into one tab with `layout`. */
+  adoptGroup(layout: Layout, focus: string, color?: TabColor): void;
+}
+
+/** A closed pane, as much as it takes to open it again (⇧⌘T): where it
+ *  was, never what ran in it. */
+export interface ClosedPane {
+  kind: Tab["kind"];
+  title: string;
+  renamed: boolean;
+  host?: string;
+  instance?: string;
+  cwd?: string;
+  serverId?: string;
+  appId?: string;
+  local?: boolean;
+  prod: boolean;
+}
+
+/** A closed tab (its panes and splits), or one pane closed out of a split
+ *  (`beside`: a pane of the tab it was in, to split again). */
+export interface Closed {
+  panes: ClosedPane[];
+  layout: SavedLayout | null;
+  focus: number;
+  color?: TabColor;
+  beside?: string;
+}
+
+/** Recently closed, newest last (⇧⌘T reopens). */
+export const closedTabs: Closed[] = [];
+
+function closedPane(t: Tab): ClosedPane {
+  const local = t.kind === "local" || t.local || !t.host;
+  return {
+    kind: t.kind,
+    title: t.title,
+    renamed: t.renamed,
+    host: t.host,
+    instance: t.instance,
+    // A local shell comes back in the folder it was in (OSC 7).
+    cwd: local && !t.instance ? (t.session.cwd ?? t.cwd) : t.cwd,
+    serverId: t.serverId,
+    appId: t.appId ?? undefined,
+    local: t.local,
+    prod: t.prod,
+  };
+}
+
+function remember(c: Closed) {
+  closedTabs.push(c);
+  if (closedTabs.length > 20) closedTabs.shift();
 }
 
 let nextGroup = 1;
@@ -409,6 +461,15 @@ export const useTabs = create<TabsState>((set, get) => {
     close(id) {
       const tab = get().tabs.find((t) => t.id === id);
       if (!tab) return;
+      const g = groupOf(get(), id);
+      if (g && !g.workflow) {
+        const ids = leaves(g.layout);
+        if (ids.length > 1) {
+          remember({ panes: [closedPane(tab)], layout: null, focus: 0, beside: ids.find((x) => x !== id) });
+        } else {
+          remember({ panes: [closedPane(tab)], layout: null, focus: 0, color: g.color });
+        }
+      }
       tab.session.dispose();
       drop([id]);
     },
@@ -417,6 +478,15 @@ export const useTabs = create<TabsState>((set, get) => {
       const g = get().groups.find((x) => x.id === groupId);
       if (!g) return;
       const ids = leaves(g.layout);
+      if (!g.workflow) {
+        const panes = ids.flatMap((id) => get().tabs.filter((t) => t.id === id));
+        remember({
+          panes: panes.map(closedPane),
+          layout: ids.length > 1 ? saveLayout(g.layout, (id) => ids.indexOf(id)) : null,
+          focus: Math.max(0, ids.indexOf(g.focus)),
+          color: g.color,
+        });
+      }
       for (const t of get().tabs) if (ids.includes(t.id)) t.session.dispose();
       drop(ids);
     },
@@ -511,6 +581,18 @@ export const useTabs = create<TabsState>((set, get) => {
 
     setRatio(groupId, splitId, ratio) {
       set((s) => ({ groups: s.groups.map((g) => (g.id === groupId ? { ...g, layout: setRatio(g.layout, splitId, ratio) } : g)) }));
+    },
+
+    adoptGroup(layout, focus, color) {
+      set((s) => {
+        const ids = new Set(leaves(layout));
+        const g: Group = { id: `g${nextGroup++}`, layout, focus, color };
+        return {
+          groups: [...s.groups.filter((x) => !leaves(x.layout).every((id) => ids.has(id))), g],
+          tabs: s.tabs.map((t) => (ids.has(t.id) ? { ...t, groupId: g.id } : t)),
+          activeId: focus,
+        };
+      });
     },
 
     restoreGroups(saved) {

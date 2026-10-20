@@ -7,11 +7,35 @@
 import { copyCommand, copyOutput } from "@/lib/blockActions";
 import { DETAILS_ID, HISTORY_ID, HOME_ID, SNIPPETS_ID, WORKFLOWS_ID, groupOf, isViewTab, openLocalShell, toggleBroadcast, useTabs } from "@/stores/tabs";
 import { saveTabAsConfig } from "@/lib/saveTabConfig";
+import { leaves } from "@/lib/layout";
+import { askConfirm, useConfirm } from "@/stores/confirm";
+import { useConfirmClose } from "@/stores/confirmClose";
+import { reopenClosed } from "@/stores/session";
 import { useVault } from "@/stores/vault";
 import { useUpdates } from "@/stores/updates";
 import { openDetails } from "@/stores/manage";
 import { useWorkflows } from "@/stores/workflows";
 import { useUi } from "@/stores/ui";
+
+/** ⌘W on a pane: asks first when Settings says so (⇧⌘T reopens anyway). */
+async function closeActive(id: string) {
+  const tabs = useTabs.getState();
+  const tab = tabs.tabs.find((t) => t.id === id);
+  if (!tab) return;
+  if (useConfirmClose.getState().enabled) {
+    // A second ⌘W while it asks does nothing.
+    if (useConfirm.getState().ask) return;
+    const g = groupOf(tabs, id);
+    const panes = g ? leaves(g.layout).length : 1;
+    const ok = await askConfirm(
+      panes > 1 ? `Close this pane?` : `Close ${tab.title}?`,
+      `${tab.state === "running" ? "It's still running: closing stops it. " : ""}⇧⌘T opens it again (a fresh shell, where it was).`,
+      "Close",
+    );
+    if (!ok) return;
+  }
+  useTabs.getState().close(id);
+}
 
 function activeSession() {
   const { tabs, activeId } = useTabs.getState();
@@ -35,8 +59,9 @@ const COMMANDS: Record<string, () => void> = {
     else if (tabs.activeId === DETAILS_ID) tabs.closeDetails();
     else if (tabs.activeId === SNIPPETS_ID) tabs.closeSnippets();
     else if (tabs.activeId === WORKFLOWS_ID) tabs.closeWorkflows();
-    else if (tabs.activeId) tabs.close(tabs.activeId);
+    else if (tabs.activeId) void closeActive(tabs.activeId);
   },
+  "tab.reopen": () => reopenClosed(),
   "tab.prev": () => useTabs.getState().activateRelative(-1),
   "tab.next": () => useTabs.getState().activateRelative(1),
   // The Workflows tab (its runs); again: back where you were.
@@ -129,6 +154,7 @@ function commandFor(e: KeyboardEvent): string | null {
   if (e.shiftKey && e.altKey && e.code === "KeyL") return "pane.splitLocalDown";
   if (e.code === "KeyC" && e.shiftKey) return e.altKey ? "block.copyOutput" : "block.copyCommand";
   if (e.altKey && !e.shiftKey && e.code === "KeyI") return "pane.broadcast";
+  if (e.altKey && !e.shiftKey && e.code === "KeyT") return "tab.ssh";
   if (e.altKey && !e.shiftKey) {
     const side = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" }[e.code];
     return side ? `pane.${side}` : null;
@@ -138,7 +164,7 @@ function commandFor(e: KeyboardEvent): string | null {
   if (!e.shiftKey && /^Digit[1-9]$/.test(e.code)) return `tab.${e.code.slice(5)}`;
   if (e.shiftKey && e.code === "BracketLeft") return "tab.prev";
   if (e.shiftKey && e.code === "BracketRight") return "tab.next";
-  if (e.shiftKey && e.code === "KeyT") return "tab.ssh";
+  if (e.shiftKey && e.code === "KeyT") return "tab.reopen";
   if (e.shiftKey && e.code === "KeyP") return "vault.fill";
   if (e.shiftKey && e.code === "KeyK") return "passwords";
   if (e.shiftKey && e.code === "KeyS") return "snippets";

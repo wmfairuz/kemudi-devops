@@ -3,7 +3,8 @@
 import { sessionLoad, sessionSave } from "@/lib/ipc";
 import { ptySpawner } from "@/lib/terminalSession";
 
-import { openFiles, openHealth, openLogs, openMonitor, openQueues, openTune, useTabs, type Tab } from "./tabs";
+import { closedTabs, openFiles, openHealth, openLogs, openMonitor, openQueues, openTune, useTabs, type OpenOptions, type Tab } from "./tabs";
+import { useToasts } from "./toasts";
 import { leaves, load as loadLayout, save as saveLayout, type SavedLayout } from "@/lib/layout";
 import { isTabColor } from "@/lib/tabColors";
 
@@ -38,7 +39,7 @@ function isSaved(v: unknown): v is Saved {
   return typeof v === "object" && v !== null && (v as Saved).version === 1 && Array.isArray((v as Saved).tabs);
 }
 
-function restoreTab(t: SavedTab): string {
+function restoreTab(t: SavedTab, into?: OpenOptions["into"]): string {
   const { open, rename } = useTabs.getState();
   // A monitor comes back as a monitor (from what was saved; the config may
   // not be loaded yet).
@@ -80,7 +81,8 @@ function restoreTab(t: SavedTab): string {
       appId: t.cwd && t.appId ? t.appId : undefined,
       cwd: t.cwd,
       prod: t.prod,
-      background: true,
+      background: !into,
+      into,
       spawn: ptySpawner({ kind: "ssm", serverId: t.serverId, instance: t.instance, cwd: t.cwd }),
     });
     if (t.renamed) rename(id, t.title);
@@ -102,12 +104,44 @@ function restoreTab(t: SavedTab): string {
     // the Actions panel and "run in this shell" still know it.
     appId: !local && t.cwd && t.appId ? t.appId : undefined,
     prod: t.prod,
-    background: true,
+    background: !into,
+    into,
     cwd: local ? undefined : t.cwd,
-    spawn: ptySpawner(local ? { kind: "local" } : { kind: "ssh", host: t.host ?? "", cwd: t.cwd }),
+    // A local shell starts in its folder when one was kept (a tab config's,
+    // or where a reopened shell was).
+    spawn: ptySpawner(local ? { kind: "local", cwd: t.cwd } : { kind: "ssh", host: t.host ?? "", cwd: t.cwd }),
   });
   if (t.renamed) rename(id, t.title);
   return id;
+}
+
+/** ⇧⌘T: open the last closed tab again (its panes and splits; a pane
+ *  closed out of a split goes back next to its old neighbour). Shells start
+ *  fresh where they were: nothing is re-run, and scrollback is gone. */
+export function reopenClosed(): void {
+  const c = closedTabs.pop();
+  if (!c) {
+    useToasts.getState().push("No closed tabs to reopen", "info");
+    return;
+  }
+  const s = useTabs.getState();
+  if (c.beside && c.panes[0] && s.tabs.some((t) => t.id === c.beside)) {
+    const id = restoreTab(c.panes[0], { from: c.beside, dir: "row" });
+    useTabs.getState().activate(id);
+    return;
+  }
+  const ids = c.panes.map((p) => restoreTab(p));
+  const layout = c.layout ? loadLayout(c.layout, (i) => ids[i]) : null;
+  const focus = ids[c.focus] ?? ids[0];
+  if (!focus) return;
+  if (layout) useTabs.getState().adoptGroup(layout, focus, c.color);
+  else {
+    if (c.color) {
+      const g = useTabs.getState().groups.find((x) => leaves(x.layout).includes(focus));
+      if (g) useTabs.getState().setColor(g.id, c.color);
+    }
+    useTabs.getState().activate(focus);
+  }
 }
 
 let started = false;
@@ -120,7 +154,7 @@ export async function initSession(): Promise<void> {
   try {
     const saved = await sessionLoad();
     if (isSaved(saved) && useTabs.getState().tabs.length === 0) {
-      const ids = saved.tabs.map(restoreTab);
+      const ids = saved.tabs.map((t) => restoreTab(t));
       if (saved.groups) {
         const groups = saved.groups.flatMap((g) => {
           const layout = loadLayout(g.layout, (i) => ids[i]);

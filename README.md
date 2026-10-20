@@ -888,8 +888,9 @@ would seem to stop working). Tabs come back through session restore.
 |---|---|
 | ⌘K | Command palette: actions, apps, servers, tabs, commands (`pull akaun stg`); ↵ runs, ⌘↵ edits first |
 | ⌘T | New local shell tab |
-| ⇧⌘T | SSH to a host alias from `~/.ssh/config` |
-| ⌘W | Close the pane (the tab goes with its last pane) |
+| ⌥⌘T | SSH to a host alias from `~/.ssh/config` |
+| ⌘W | Close the pane (the tab goes with its last pane). Settings ▸ *Ask before ⌘W closes a tab* makes it ask first (↵ closes, esc keeps it) |
+| ⇧⌘T | Reopen what you closed last (up to 20 back): a tab comes back with its splits and colour, a pane goes back next to its old neighbour. Shells start fresh where they were (a local shell in its last folder, ssh in its app's folder); nothing re-runs and scrollback is gone. Workflow runs aren't kept (they're in History). Also File ▸ Reopen Closed Tab and ⌘K |
 | ⌘1–8, ⌘9 | Go to tab n, last tab |
 | ⇧⌘[ / ⇧⌘] | Previous / next tab |
 | ⌘F | Find in terminal |

@@ -13,6 +13,7 @@ import { toastError, useToasts } from "@/stores/toasts";
 import { getVersion } from "@tauri-apps/api/app";
 import { useUpdates } from "@/stores/updates";
 import { useUi } from "@/stores/ui";
+import { useConfirmClose } from "@/stores/confirmClose";
 
 const FONTS = ["Menlo", "SF Mono", "Monaco", "JetBrains Mono", "Fira Code", "Cascadia Code", "Source Code Pro", "Hack"];
 
@@ -40,6 +41,7 @@ function SettingsForm() {
   const [diskAlerts, setDiskAlerts] = useState(useDiskAlerts.getState().enabled);
   const [sslAlerts, setSslAlerts] = useState(useSslAlerts.getState().enabled);
   const [updatesAtLaunch, setUpdatesAtLaunch] = useState(useUpdates.getState().atLaunch);
+  const [confirmClose, setConfirmClose] = useState(useConfirmClose.getState().enabled);
   const [version, setVersion] = useState("");
   useEffect(() => void getVersion().then(setVersion, () => {}), []);
   const [downloads, setDownloads] = useState<string | null>(downloadDir());
@@ -74,6 +76,7 @@ function SettingsForm() {
       useDiskAlerts.getState().setEnabled(diskAlerts);
       useSslAlerts.getState().setEnabled(sslAlerts);
       useUpdates.getState().setAtLaunch(updatesAtLaunch);
+      useConfirmClose.getState().setEnabled(confirmClose);
       setDownloadDir(downloads);
       useToasts.getState().push("Settings saved", "info");
       close();
@@ -168,6 +171,17 @@ function SettingsForm() {
               Shell integration
               <span className="block text-[11px] text-subtle-foreground">
                 Command blocks (copy command / output), click to move the cursor, ⌘A. New tabs only.
+              </span>
+            </span>
+          </label>
+          <div className="mt-1 text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">Tabs</div>
+          <label className="flex cursor-pointer items-start gap-2 text-[12px] text-muted-foreground">
+            <input type="checkbox" className="mt-0.5" checked={confirmClose} onChange={(e) => setConfirmClose(e.target.checked)} />
+            <span>
+              Ask before ⌘W closes a tab
+              <span className="block text-[11px] text-subtle-foreground">
+                ↵ closes it, esc keeps it. The × on a tab closes without asking. Either way ⇧⌘T reopens what you closed last
+                (a fresh shell where it was).
               </span>
             </span>
           </label>
