@@ -323,9 +323,8 @@ export const useTabs = create<TabsState>((set, get) => {
     },
 
     openWorkflows() {
-      const runs = get().groups.filter((g) => g.workflow);
-      const last = runs[runs.length - 1];
-      set({ workflowsOpen: true, activeId: last ? last.focus : WORKFLOWS_ID });
+      // The cards and the runs; a run's terminal only on request.
+      set({ workflowsOpen: true, activeId: WORKFLOWS_ID });
     },
 
     closeWorkflows() {

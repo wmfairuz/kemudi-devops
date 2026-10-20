@@ -6,7 +6,7 @@ import { killPty, workflowBranchRun, workflowRun, workflowWatchRun, type Config,
 import { StepTracker } from "@/lib/stepTracker";
 import { localHms } from "@/lib/time";
 import { useConfig } from "@/stores/config";
-import { useTabs, type WorkflowRunState } from "@/stores/tabs";
+import { useTabs, WORKFLOWS_ID, type WorkflowRunState } from "@/stores/tabs";
 import { useToasts } from "@/stores/toasts";
 import { useWorkflows } from "@/stores/workflows";
 
@@ -72,6 +72,13 @@ function whenEnded(id: string, done: (code: number | undefined, closed: boolean)
   });
 }
 
+/** After opening a run's extra panes (which takes the focus): back to the
+ *  Workflows tab's cards if that's where the user was, else the run. */
+function stayPut(id: string, before: string | null) {
+  if (before === WORKFLOWS_ID) useTabs.setState({ activeId: WORKFLOWS_ID });
+  else useTabs.getState().activate(id);
+}
+
 function patchRun(id: string, patch: Partial<WorkflowRunState>) {
   const tab = useTabs.getState().tabs.find((t) => t.id === id);
   if (tab?.workflow) useTabs.getState().update(id, { workflow: { ...tab.workflow, ...patch } });
@@ -117,6 +124,7 @@ export function runWorkflow(wf: Workflow, from = 1): string {
   const openBranches = (k: number) => {
     const step = wf.steps[k - 1];
     if (step?.kind !== "parallel" || !token) return;
+    const before = useTabs.getState().activeId;
     const ids: string[] = [];
     step.branches.forEach((b, i) => {
       const n = i + 1;
@@ -151,13 +159,14 @@ export function runWorkflow(wf: Workflow, from = 1): string {
     });
     const run = useTabs.getState().tabs.find((t) => t.id === id)?.workflow;
     patchRun(id, { branches: { ...(run?.branches ?? {}), [k]: ids } });
-    useTabs.getState().activate(id);
+    stayPut(id, before);
   };
 
   // A watch step: its command in a pane under the run.
   const openWatch = (k: number) => {
     const step = wf.steps[k - 1];
     if (step?.kind !== "watch") return;
+    const before = useTabs.getState().activeId;
     const wid = useTabs.getState().open({
       kind: "action",
       title: `watch · ${stepTitle(config, step)}`,
@@ -173,7 +182,7 @@ export function runWorkflow(wf: Workflow, from = 1): string {
     });
     const run = useTabs.getState().tabs.find((t) => t.id === id)?.workflow;
     patchRun(id, { watches: { ...(run?.watches ?? {}), [k]: { tab: wid, keep: step.keep } } });
-    useTabs.getState().activate(id);
+    stayPut(id, before);
   };
 
   const opened = useTabs.getState().tabs.find((t) => t.id === id);
@@ -191,6 +200,11 @@ export function runWorkflow(wf: Workflow, from = 1): string {
       },
     });
   }
+  // The Workflows tab: the run opens (expanded) at the top of its runs; a
+  // workflow set to open in the terminal shows its terminal instead.
+  const group = useTabs.getState().tabs.find((t) => t.id === id)?.groupId;
+  if (group) useWorkflows.getState().expand(group);
+  if (wf.view !== "terminal") useTabs.setState({ activeId: WORKFLOWS_ID });
   whenEnded(id, (code, closed) => {
     tracker?.exited(code);
     // Watches stop with the run (unless kept).

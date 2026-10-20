@@ -35,15 +35,6 @@ export function WorkflowStepsView({ tab }: { tab: Tab }) {
     const timer = setInterval(rerender, 1000);
     return () => clearInterval(timer);
   }, [t, t.finished]);
-  const [open, setOpen] = useState<Set<number>>(new Set());
-  const toggle = (n: number) =>
-    setOpen((s) => {
-      const next = new Set(s);
-      if (next.has(n)) next.delete(n);
-      else next.add(n);
-      return next;
-    });
-
   const cur = t.current;
   const failed = t.steps.findIndex((s) => s.status === "failed") + 1;
   const ran = t.steps.filter((s) => s.startedAt);
@@ -85,7 +76,35 @@ export function WorkflowStepsView({ tab }: { tab: Tab }) {
           <TerminalSquare className="size-3.5" /> Output
         </button>
       </div>
-      <ol className="flex flex-col gap-1 px-4 py-3">
+      <StepsList tab={tab} />
+    </div>
+  );
+}
+
+/** A run's steps: progress, each step's output on demand, an answer box
+ *  when one waits for input, Run from here when one fails. Compact: in a
+ *  run's row in the Workflows tab. */
+export function StepsList({ tab, compact = false }: { tab: Tab; compact?: boolean }) {
+  const run = tab.workflow!;
+  const t = run.tracker;
+  const [, rerender] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => t.subscribe(rerender), [t]);
+  useEffect(() => {
+    if (t.finished) return;
+    const timer = setInterval(rerender, 1000);
+    return () => clearInterval(timer);
+  }, [t, t.finished]);
+  const [open, setOpen] = useState<Set<number>>(new Set());
+  const toggle = (n: number) =>
+    setOpen((s) => {
+      const next = new Set(s);
+      if (next.has(n)) next.delete(n);
+      else next.add(n);
+      return next;
+    });
+  const indent = compact ? "ml-7" : "ml-[52px]";
+  return (
+    <ol className={cn("flex flex-col gap-1", compact ? "px-1 py-1.5" : "px-4 py-3")}>
         {t.steps.map((s, i) => {
           const n = i + 1;
           const showOut = open.has(n) || (s.status === "failed" && !open.has(-n));
@@ -96,12 +115,12 @@ export function WorkflowStepsView({ tab }: { tab: Tab }) {
             <li key={n} className={cn("rounded-lg px-3 py-2", (s.status === "running" || s.status === "paused") && "bg-white/[0.04]", s.status === "failed" && "bg-[#ff5555]/[0.07]")}>
               <div className="flex items-center gap-3">
                 <StepIcon state={s} />
-                <span className="w-5 text-right text-[12px] text-[#6272a4]">{n}</span>
+                {!compact && <span className="w-5 text-right text-[12px] text-[#6272a4]">{n}</span>}
                 <span className={cn("min-w-0 flex-1 truncate", s.status === "pending" || s.status === "skipped" ? "text-[#8a8ea8]" : "")}>
-                  {run.titles[i]}
+                  {compact ? `${n}. ${run.titles[i]}` : run.titles[i]}
                 </span>
-                <span className="text-[11px] text-[#6272a4] uppercase">{s.status === "skipped" ? "skipped" : KIND[run.kinds[i] ?? ""]}</span>
-                <span className="w-14 text-right text-[12px] text-[#b6b8c8]">
+                {!compact && <span className="text-[11px] text-[#6272a4] uppercase">{s.status === "skipped" ? "skipped" : KIND[run.kinds[i] ?? ""]}</span>}
+                <span className={cn("text-right text-[12px] text-[#b6b8c8]", compact ? "w-9" : "w-14")}>
                   {s.startedAt ? clock((s.endedAt ?? Date.now()) - s.startedAt) : ""}
                 </span>
                 {(s.status === "done" || s.status === "failed") && (
@@ -115,12 +134,12 @@ export function WorkflowStepsView({ tab }: { tab: Tab }) {
                 )}
               </div>
               {tail && !waiting && run.kinds[i] !== "parallel" && run.kinds[i] !== "watch" && (
-                <div className="mt-1 ml-[52px] truncate text-[12px] text-[#8a8ea8]">{tail}</div>
+                <div className={cn("mt-1 truncate text-[12px] text-[#8a8ea8]", indent)}>{tail}</div>
               )}
-              {run.kinds[i] === "parallel" && run.branches?.[n] && <Branches ids={run.branches[n]!} />}
-              {run.kinds[i] === "watch" && run.watches?.[n] && <WatchRow id={run.watches[n]!.tab} keep={run.watches[n]!.keep} />}
+              {run.kinds[i] === "parallel" && run.branches?.[n] && <Branches ids={run.branches[n]!} indent={indent} />}
+              {run.kinds[i] === "watch" && run.watches?.[n] && <WatchRow id={run.watches[n]!.tab} keep={run.watches[n]!.keep} indent={indent} />}
               {s.status === "failed" && (
-                <div className="mt-1.5 ml-[52px] flex items-center gap-2 text-[12px]">
+                <div className={cn("mt-1.5 flex flex-wrap items-center gap-2 text-[12px]", indent)}>
                   <span className="text-[#ff5555]">exit {s.code ?? "?"}</span>
                   <button
                     onClick={() => useWorkflows.getState().run(run.id, n)}
@@ -131,7 +150,7 @@ export function WorkflowStepsView({ tab }: { tab: Tab }) {
                 </div>
               )}
               {s.status === "paused" && (
-                <div className="mt-2 ml-[52px] flex items-center gap-2">
+                <div className={cn("mt-2 flex items-center gap-2", indent)}>
                   <button
                     onClick={() => tab.session.send("\r")}
                     className="h-7 cursor-pointer rounded-md bg-[#50fa7b] px-3 text-[12px] font-medium text-[#282a36] hover:brightness-110"
@@ -146,9 +165,9 @@ export function WorkflowStepsView({ tab }: { tab: Tab }) {
                   </button>
                 </div>
               )}
-              {waiting && s.status === "running" && <Answer tab={tab} text={waiting.text} secret={waiting.secret} yesNo={waiting.yesNo} box={waiting.box} />}
+              {waiting && s.status === "running" && <Answer tab={tab} text={waiting.text} secret={waiting.secret} yesNo={waiting.yesNo} box={waiting.box} indent={indent} />}
               {showOut && out && (
-                <pre className="selectable mt-2 ml-[52px] max-h-[320px] overflow-auto rounded-md bg-black/25 px-3 py-2 text-[12px] leading-[17px] whitespace-pre-wrap text-[#e2e2dc]">
+                <pre className={cn("selectable mt-2 max-h-[320px] overflow-auto rounded-md bg-black/25 px-3 py-2 text-[12px] leading-[17px] whitespace-pre-wrap text-[#e2e2dc]", indent)}>
                   {out}
                 </pre>
               )}
@@ -156,7 +175,6 @@ export function WorkflowStepsView({ tab }: { tab: Tab }) {
           );
         })}
       </ol>
-    </div>
   );
 }
 
@@ -179,7 +197,7 @@ function StepIcon({ state }: { state: StepState }) {
 
 /** The step's question, with a box to answer it (typed into the terminal
  *  with ↵). Passwords: hidden, or Fill from the vault. Yes/no: buttons. */
-function Answer({ tab, text, secret, yesNo, box }: { tab: Tab; text: string; secret: boolean; yesNo: boolean; box?: "confirm" | "choice" | "text" }) {
+function Answer({ tab, text, secret, yesNo, box, indent }: { tab: Tab; text: string; secret: boolean; yesNo: boolean; box?: "confirm" | "choice" | "text"; indent: string }) {
   const [value, setValue] = useState("");
   const entries = useVault((s) => s.entries);
   const loaded = useVault((s) => s.loaded);
@@ -194,10 +212,10 @@ function Answer({ tab, text, secret, yesNo, box }: { tab: Tab; text: string; sec
   };
   const btn = "h-7 cursor-pointer rounded-md px-3 text-[12px]";
   return (
-    <div className="mt-2 ml-[52px] flex flex-col gap-2 rounded-md border border-[#f1fa8c]/30 bg-[#f1fa8c]/[0.06] px-3 py-2">
+    <div className={cn("mt-2 flex flex-col gap-2 rounded-md border border-[#f1fa8c]/30 bg-[#f1fa8c]/[0.06] px-3 py-2", indent)}>
       <div className="text-[12px] whitespace-pre-wrap text-[#f1fa8c]">{text}</div>
       <form
-        className="flex items-center gap-2"
+        className="flex flex-wrap items-center gap-2"
         onSubmit={(e) => {
           e.preventDefault();
           send(value);
@@ -259,7 +277,7 @@ function Answer({ tab, text, secret, yesNo, box }: { tab: Tab; text: string; sec
 }
 
 /** A parallel step's panes: each branch's state; click to go to it. */
-function Branches({ ids }: { ids: string[] }) {
+function Branches({ ids, indent }: { ids: string[]; indent: string }) {
   const tabs = useTabs((s) => s.tabs);
   const [, rerender] = useReducer((x: number) => x + 1, 0);
   // Their trackers (waiting for an answer) live outside the store.
@@ -268,7 +286,7 @@ function Branches({ ids }: { ids: string[] }) {
     return () => offs.forEach((off) => off?.());
   }, [ids, tabs]);
   return (
-    <ol className="mt-1.5 ml-[52px] flex flex-col gap-0.5">
+    <ol className={cn("mt-1.5 flex flex-col gap-0.5", indent)}>
       {ids.map((id) => {
         const t = tabs.find((x) => x.id === id);
         if (!t) return null;
@@ -299,13 +317,13 @@ function Branches({ ids }: { ids: string[] }) {
 }
 
 /** A watch step's pane: show it, or stop it. */
-function WatchRow({ id, keep }: { id: string; keep: boolean }) {
+function WatchRow({ id, keep, indent }: { id: string; keep: boolean; indent: string }) {
   const tab = useTabs((s) => s.tabs.find((t) => t.id === id));
-  if (!tab) return <div className="mt-1 ml-[52px] text-[12px] text-[#8a8ea8]">its pane was closed</div>;
+  if (!tab) return <div className={cn("mt-1 text-[12px] text-[#8a8ea8]", indent)}>its pane was closed</div>;
   const running = tab.state === "running";
   const btn = "h-6 cursor-pointer rounded-md border border-white/15 px-2.5 text-[12px] text-[#b6b8c8] hover:bg-white/10 hover:text-[#f8f8f2]";
   return (
-    <div className="mt-1.5 ml-[52px] flex items-center gap-2 text-[12px] text-[#8a8ea8]">
+    <div className={cn("mt-1.5 flex items-center gap-2 text-[12px] text-[#8a8ea8]", indent)}>
       <span className="flex-1">
         {running ? `watching in a pane below${keep ? " (stays after the run)" : " until the run ends"}` : "stopped"}
       </span>

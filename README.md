@@ -312,20 +312,28 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   type and ↵ (hidden for passwords, with *Fill* from your Passwords), or
   *yes* / *no* for yes/no questions. The script marks each step with an
   invisible terminal escape (`\e]6973;…`) that the view reads.
-- **The Workflows tab**: runs don't open tabs of their own. Each one is a line in
-  the pinned **Workflows** tab (with a spinner while one runs). On its left are
-  your workflows, one per line with where they're pinned and their step
-  count, plus a filter (↵ runs the first match). The list scrolls and uses up
-  to half the height. Click one to run it; right-click for Run, Edit or
-  **Duplicate** (also a button in the workflow editor): a new workflow
-  that starts as a copy, named "… (copy)", saved only when you click Add
-  workflow. Then **This session**'s
-  runs (live: click one to see its steps and output on the right) and
-  **Earlier** runs from History (when, how long, ✓ or the step it stopped at).
-  Hover a run for **Run again** or **From step N**; each run is a new line at
-  the top. ✕ closes a run (it stays in History); closing the tab clears the
-  finished ones, and a running one carries on. Runs aren't restored after a
-  restart, only listed under Earlier.
+- **The Workflows tab**: runs don't open tabs of their own; they all live in
+  the pinned **Workflows** tab (with a spinner while one runs). In the
+  middle, your workflows as **cards**: name, its first steps, where it's
+  pinned, a PROD tag when it touches production, and **▶** (or click the
+  card) to run it: the run dialog shows the steps first. A filter on top (↵
+  runs the first match), **+ New workflow**, and right-click for Run, Edit or
+  **Duplicate** (also a button in the workflow editor): a new workflow that
+  starts as a copy, named "… (copy)", saved only when you click Add
+  workflow. On the right, the **runs**, newest first: a new run appears at the
+  top, open, while the cards stay put. An open run shows its steps (✓, ✗,
+  time), any step's output, an answer box when it waits for input (a
+  password, a yes/no), **Run from here** at a failed step, **Stop**,
+  **Terminal** (its whole terminal over the cards; **◂ Workflows** goes
+  back) and, when it failed, **SSH into <app>**: a shell in the app (or
+  folder) of the step that failed, else where the workflow is pinned. The
+  column widens while a run is open. Click a run to open or close it; hover
+  for run again or ✕. **Earlier** runs come from History (when, how long, ✓
+  or the step it stopped at, with From step N, run again and SSH into on
+  hover). A workflow set to open in the Terminal shows its terminal instead.
+  ✕ closes a run (it stays in History); closing the tab clears the finished
+  ones, and a running one carries on. Runs aren't restored after a restart,
+  only listed under Earlier.
 - **Reorder servers**: drag a server by its row in the sidebar and drop it
   on another server (upper half: before it; lower half: after it). Its apps
   and settings go with it; comments above it in the config stay put.

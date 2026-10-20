@@ -41,7 +41,7 @@ import { useDiskAlerts } from "@/stores/diskAlerts";
 import { useSslAlerts } from "@/stores/sslAlerts";
 import { useStatus } from "@/stores/status";
 import { activeTab, DETAILS_ID, groupOf, HISTORY_ID, HOME_ID, SNIPPETS_ID, useTabs, WORKFLOWS_ID } from "@/stores/tabs";
-import { WorkflowRuns } from "@/components/workflows/WorkflowRuns";
+import { WorkflowCards, WorkflowRuns } from "@/components/workflows/WorkflowRuns";
 
 export default function App() {
   const active = useTabs(activeTab);
@@ -49,7 +49,8 @@ export default function App() {
   const showHistory = useTabs((s) => s.activeId === HISTORY_ID);
   const showDetails = useTabs((s) => s.activeId === DETAILS_ID);
   const showSnippets = useTabs((s) => s.activeId === SNIPPETS_ID);
-  // The Workflows tab: its runs on the left, the picked one on the right.
+  // The Workflows tab: workflow cards, its runs on the right (a run's
+  // terminal over the cards when asked for).
   const noRun = useTabs((s) => s.activeId === WORKFLOWS_ID);
   const showRuns = useTabs((s) => s.activeId === WORKFLOWS_ID || !!groupOf(s, s.activeId)?.workflow);
   const showHome = useTabs((s) => s.activeId === HOME_ID || s.activeId === null);
@@ -127,19 +128,15 @@ export default function App() {
         <main className="relative flex min-w-0 flex-1 flex-col">
           <TabStrip />
           <div className="relative flex min-h-0 flex-1">
-            {showRuns && <WorkflowRuns />}
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
               {hasTabs && <TerminalPane />}
               {showHome && <HomeView />}
               {showHistory && <HistoryView />}
               {showDetails && <DetailsView />}
               {showSnippets && <SnippetsView />}
-              {noRun && (
-                <div className="dracula absolute inset-0 flex items-center justify-center bg-terminal px-8 text-center text-[13px] text-subtle-foreground">
-                  Pick a run on the left, or run a workflow.
-                </div>
-              )}
+              {noRun && <WorkflowCards />}
             </div>
+            {showRuns && <WorkflowRuns />}
           </div>
         </main>
         <ActionsPanel />

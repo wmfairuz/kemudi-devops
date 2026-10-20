@@ -2,7 +2,8 @@ import { useCallback, useRef, useState } from "react";
 
 import type { Layout } from "@/lib/layout";
 import { cn } from "@/lib/utils";
-import { groupOf, isViewTab, terminalPanes, useTabs, type Group, type Tab } from "@/stores/tabs";
+import { groupOf, isViewTab, terminalPanes, useTabs, WORKFLOWS_ID, type Group, type Tab } from "@/stores/tabs";
+import { useWorkflows } from "@/stores/workflows";
 import { useUi } from "@/stores/ui";
 
 import { TerminalContextMenu, type MenuState } from "./TerminalContextMenu";
@@ -40,6 +41,9 @@ export function TerminalPane() {
   // open every SSH connection at launch.
   const shown = useRef(new Set<string>());
   if (front) shown.current.add(front.id);
+  // Workflow runs start at once, even while the Workflows tab shows its
+  // cards (their terminals stay hidden underneath).
+  for (const g of groups) if (g.workflow) shown.current.add(g.id);
   for (const id of shown.current) if (!groups.some((g) => g.id === id)) shown.current.delete(id);
 
   return (
@@ -129,11 +133,19 @@ function LayoutView({
             {tab.workflow?.view === "steps" && <WorkflowStepsView tab={tab} />}
             {tab.workflow?.view === "output" && (
               <button
-                onClick={() => setWorkflowView(tab, "steps")}
+                onClick={() => {
+                  // A run's own terminal: back to the Workflows tab (its steps
+                  // are in the run's row). A branch pane: its steps.
+                  if (tab.workflow?.part) setWorkflowView(tab, "steps");
+                  else {
+                    useWorkflows.getState().expand(tab.groupId);
+                    useTabs.setState({ activeId: WORKFLOWS_ID });
+                  }
+                }}
                 className="absolute top-2 right-4 z-10 flex h-7 cursor-pointer items-center gap-1.5 rounded-md border border-white/15 bg-[#343746] px-2.5 font-mono text-[12px] text-[#b6b8c8] shadow hover:text-[#f8f8f2]"
-                title="Back to the steps"
+                title={tab.workflow?.part ? "Back to the steps" : "Back to the workflows"}
               >
-                Steps ▸
+                {tab.workflow?.part ? "Steps ▸" : "◂ Workflows"}
               </button>
             )}
           </>
