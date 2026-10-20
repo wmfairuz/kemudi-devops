@@ -725,6 +725,8 @@ pub struct WorkflowForm {
     pub pin_app: Option<String>,
     #[serde(default)]
     pub view: super::schema::WorkflowView,
+    #[serde(default)]
+    pub fleet: super::schema::FleetMode,
     pub steps: Vec<StepForm>,
 }
 
@@ -885,6 +887,9 @@ fn workflow_yaml(f: &WorkflowForm) -> Vec<String> {
     if f.view == super::schema::WorkflowView::Terminal {
         out.push("  view: terminal".into());
     }
+    if f.fleet == super::schema::FleetMode::AllAtOnce {
+        out.push("  fleet: all-at-once".into());
+    }
     out.push("  steps:".into());
     step_lines(&f.steps, 4, &mut out);
     out
@@ -1019,6 +1024,7 @@ mod workflow_tests {
             pin_server: Some("stg".into()),
             pin_app: Some("shop".into()),
             view: crate::config::schema::WorkflowView::Terminal,
+            fleet: crate::config::schema::FleetMode::AllAtOnce,
             steps: vec![
                 StepForm {
                     label: Some("Merge & push".into()),
@@ -1091,6 +1097,7 @@ mod workflow_tests {
         assert_eq!(w.name, "Ship it: \"now\"");
         assert_eq!(w.pin_app.as_deref(), Some("shop"));
         assert_eq!(w.view, crate::config::schema::WorkflowView::Terminal);
+        assert_eq!(w.fleet, crate::config::schema::FleetMode::AllAtOnce);
         assert_eq!(w.steps.len(), 5, "{out}");
         assert!(
             matches!(&w.steps[3].kind, crate::config::schema::StepKind::Parallel { branches } if branches.len() == 2)

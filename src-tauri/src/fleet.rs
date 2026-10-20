@@ -29,7 +29,7 @@ pub struct Instance {
 }
 
 /// `--profile p --region r`, for whichever are set.
-fn aws_opts(asg: &Asg) -> Vec<String> {
+pub fn aws_opts(asg: &Asg) -> Vec<String> {
     let mut out = Vec::new();
     if let Some(p) = &asg.profile {
         out.extend(["--profile".to_string(), p.clone()]);

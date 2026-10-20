@@ -481,6 +481,9 @@ export interface Workflow {
   pinApp: string | null;
   /** How a run opens: progress (`steps`) or the terminal. */
   view: "steps" | "terminal";
+  /** Steps on an AWS Auto Scaling group: each instance in turn (stopping
+   *  at the first failure), or all at once, a pane each. */
+  fleet: "one-by-one" | "all-at-once";
   steps: WorkflowStep[];
   line: number | null;
 }

@@ -86,6 +86,7 @@ function Editor({ workflow, pin, copyOf }: { workflow: Workflow | null; pin?: { 
   const [pinServer, setPinServer] = useState<string>(from?.pinServer ?? pin?.server ?? "");
   const [pinApp, setPinApp] = useState<string>(from?.pinApp ?? pin?.app ?? "");
   const [view, setView] = useState<"steps" | "terminal">(from?.view ?? "steps");
+  const [fleet, setFleet] = useState<Workflow["fleet"]>(from?.fleet ?? "one-by-one");
   const [steps, setSteps] = useState<Row[]>(() => (from?.steps ?? []).map((s) => ({ ...structuredClone(s), key: nextKey++ })));
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState<{ from: number; to: number } | null>(null);
@@ -130,6 +131,10 @@ function Editor({ workflow, pin, copyOf }: { workflow: Workflow | null; pin?: { 
     window.addEventListener("pointerup", up);
   };
 
+  // Steps on an Auto Scaling group (they run on its instances).
+  const onAsg = (id: string) => !!servers.find((x) => x.id === id)?.asg;
+  const fleetSteps = steps.flatMap((s, i) => ((s.kind === "server" || s.kind === "action") && onAsg(s.server) ? [i + 1] : []));
+
   const problems: string[] = [];
   if (!name.trim()) problems.push("Give it a name.");
   if (steps.length === 0) problems.push("Add a step.");
@@ -145,6 +150,7 @@ function Editor({ workflow, pin, copyOf }: { workflow: Workflow | null; pin?: { 
         pinServer: pinServer || null,
         pinApp: pinServer && pinApp ? pinApp : null,
         view,
+        fleet,
         steps: steps.map(({ key: _key, ...s }) => ({ ...s, label: s.label?.trim() || null })),
       });
       useToasts.getState().push(workflow ? `Saved ${name.trim()}` : `Added ${name.trim()}`, "info");
@@ -166,7 +172,7 @@ function Editor({ workflow, pin, copyOf }: { workflow: Workflow | null; pin?: { 
     }
   };
   const close = async () => {
-    const changed = workflow ? name !== workflow.name || view !== workflow.view || JSON.stringify(steps.map(({ key: _k, ...s }) => s)) !== JSON.stringify(workflow.steps) : name || steps.length;
+    const changed = workflow ? name !== workflow.name || view !== workflow.view || fleet !== workflow.fleet || JSON.stringify(steps.map(({ key: _k, ...s }) => s)) !== JSON.stringify(workflow.steps) : name || steps.length;
     if (changed && !(await askConfirm("Discard your changes?", "The workflow stays as it was.", "Discard"))) return;
     useWorkflows.getState().close();
   };
@@ -228,6 +234,26 @@ function Editor({ workflow, pin, copyOf }: { workflow: Workflow | null; pin?: { 
           </Field>
         </div>
 
+        {fleetSteps.length > 0 && (
+          <div className="flex items-center gap-3 rounded-lg border border-control-border px-3 py-2">
+            <span className="text-[12px] font-medium text-foreground">On AWS Auto Scaling groups</span>
+            <Segmented
+              label="On AWS Auto Scaling groups"
+              value={fleet}
+              onChange={setFleet}
+              options={[
+                { value: "one-by-one", label: "One after another" },
+                { value: "all-at-once", label: "All at once" },
+              ]}
+            />
+            <span className="min-w-0 flex-1 text-[11.5px] leading-4 text-subtle-foreground">
+              {fleet === "one-by-one"
+                ? `Step${fleetSteps.length > 1 ? "s" : ""} ${fleetSteps.join(", ")} run on each running instance in turn, in the run's terminal; the first failure stops it (the rest aren't touched).`
+                : `Step${fleetSteps.length > 1 ? "s" : ""} ${fleetSteps.join(", ")} run on every instance at the same time, a pane each; the run goes on once all of them succeed.`}
+            </span>
+          </div>
+        )}
+
         <div className="flex flex-col gap-2">
           {steps.map((s, i) => (
             <div key={s.key} data-step={i} className="relative">
@@ -278,6 +304,7 @@ function Editor({ workflow, pin, copyOf }: { workflow: Workflow | null; pin?: { 
                 pinServer: pinServer || null,
                 pinApp: pinServer && pinApp ? pinApp : null,
                 view,
+                fleet,
                 steps: steps.map(({ key: _key, ...s }) => s),
               })
             }

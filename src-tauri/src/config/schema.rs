@@ -38,8 +38,21 @@ pub struct RawWorkflow {
     pub pin: Option<RawPin>,
     /// How a run opens: `steps` (progress, the default) or `terminal`.
     pub view: Option<WorkflowView>,
+    /// Steps on an Auto Scaling group: `one-by-one` (default) or `all-at-once`.
+    pub fleet: Option<FleetMode>,
     #[serde(default)]
     pub steps: Vec<RawStep>,
+}
+
+/// How a step on an AWS Auto Scaling group runs: on each instance one
+/// after another, stopping at the first failure (the default), or on all of
+/// them at once, a pane each.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum FleetMode {
+    #[default]
+    OneByOne,
+    AllAtOnce,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -409,6 +422,7 @@ pub struct Workflow {
     pub pin_server: Option<String>,
     pub pin_app: Option<String>,
     pub view: WorkflowView,
+    pub fleet: FleetMode,
     pub steps: Vec<Step>,
     /// 1-based line in servers.yaml.
     pub line: Option<usize>,

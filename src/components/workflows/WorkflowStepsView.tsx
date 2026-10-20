@@ -136,7 +136,7 @@ export function StepsList({ tab, compact = false }: { tab: Tab; compact?: boolea
               {tail && !waiting && run.kinds[i] !== "parallel" && run.kinds[i] !== "watch" && (
                 <div className={cn("mt-1 truncate text-[12px] text-[#8a8ea8]", indent)}>{tail}</div>
               )}
-              {run.kinds[i] === "parallel" && run.branches?.[n] && <Branches ids={run.branches[n]!} indent={indent} />}
+              {run.branches?.[n] && <Branches ids={run.branches[n]!} indent={indent} />}
               {run.kinds[i] === "watch" && run.watches?.[n] && <WatchRow id={run.watches[n]!.tab} keep={run.watches[n]!.keep} indent={indent} />}
               {s.status === "failed" && (
                 <div className={cn("mt-1.5 flex flex-wrap items-center gap-2 text-[12px]", indent)}>

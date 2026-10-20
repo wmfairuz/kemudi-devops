@@ -279,6 +279,22 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
         - { action: clear-cache, server: shop-prod, app: shop }
   ```
 
+  **On an AWS Auto Scaling group** (a server that connects with Session
+  Manager), a server or action step runs on each of its running instances,
+  looked up when the step starts (oldest first). The editor shows *On AWS
+  Auto Scaling groups* when a step uses one:
+  - **One after another** (the default): each instance in turn, in the run's
+    terminal (prompts answered there as usual); the first failure stops it,
+    and the instances after it aren't touched.
+  - **All at once** (`fleet: all-at-once` on the workflow): a pane per
+    instance, like *At once* below; the run goes on once all succeed.
+
+  Session Manager doesn't hand back a command's exit code, so the command
+  on the instance prints it at the end (an invisible marker) and Kemudi
+  reads it from the session's output; a session that ends without one
+  counts as failed. Watches and steps inside *At once* can't use an Auto
+  Scaling group.
+
   Two more step types:
   - **At once** (`parallel:` with two or more this-Mac / server / action
     steps): when the run gets there, each opens in its own pane beside the

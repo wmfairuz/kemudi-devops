@@ -121,14 +121,21 @@ export function runWorkflow(wf: Workflow, from = 1): string {
 
   // A parallel step: a pane per branch (the first to the right, the rest
   // under it), each with its own Steps view (and answer box).
-  const openBranches = (k: number) => {
+  // A step on an Auto Scaling group, all at once: a pane per instance
+  // (`count`, from the run, which looked them up).
+  const openBranches = (k: number, count: number) => {
     const step = wf.steps[k - 1];
-    if (step?.kind !== "parallel" || !token) return;
+    if (!step || !token) return;
+    const parts =
+      step.kind === "parallel"
+        ? step.branches.map((b) => stepTitle(config, b))
+        : Array.from({ length: count }, (_, i) => `${stepTitle(config, step)} · instance ${i + 1}`);
+    if (parts.length === 0) return;
     const before = useTabs.getState().activeId;
     const ids: string[] = [];
-    step.branches.forEach((b, i) => {
+    parts.forEach((part, i) => {
       const n = i + 1;
-      const title = `${k}.${n} · ${stepTitle(config, b)}`;
+      const title = `${k}.${n} · ${part}`;
       let bid: string | null = null;
       bid = useTabs.getState().open({
         kind: "action",
@@ -140,7 +147,7 @@ export function runWorkflow(wf: Workflow, from = 1): string {
         prod,
         state: "running",
         into: { from: i === 0 ? id : ids[i - 1]!, dir: i === 0 ? "row" : "col" },
-        intro: blockIntro(`workflow ${wf.name} · step ${k}.${n} · ${localHms()}`, stepTitle(config, b)),
+        intro: blockIntro(`workflow ${wf.name} · step ${k}.${n} · ${localHms()}`, part),
         spawn: (cols, rows, onData, onEvent) =>
           workflowBranchRun(wf.id, k, n, token, cols, rows, onData, onEvent).then((info) => {
             if (info.auditId !== null && bid) useTabs.getState().update(bid, { auditId: info.auditId });
@@ -152,7 +159,7 @@ export function runWorkflow(wf: Workflow, from = 1): string {
       if (pane) {
         const tracker = new StepTracker(pane.session.term, 1, 1);
         useTabs.getState().update(bid, {
-          workflow: { id: wf.id, name: title, from: 1, titles: [stepTitle(config, b)], kinds: [b.kind], tracker, view: "steps", part: true },
+          workflow: { id: wf.id, name: title, from: 1, titles: [part], kinds: [step.kind === "parallel" ? (step.branches[i]?.kind ?? "server") : step.kind], tracker, view: "steps", part: true },
         });
         whenEnded(bid, (code) => tracker.exited(code));
       }

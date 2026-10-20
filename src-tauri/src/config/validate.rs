@@ -545,6 +545,7 @@ impl Validator<'_> {
                 pin_server,
                 pin_app,
                 view: rw.view.unwrap_or_default(),
+                fleet: rw.fleet.unwrap_or_default(),
                 steps,
                 line,
             });
