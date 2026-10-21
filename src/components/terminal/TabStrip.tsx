@@ -217,7 +217,13 @@ export function TabStrip() {
             key={o.key}
             data-strip-key={o.key}
             onPointerDown={(e) => drag.start(e, o.key)}
-            className={cn("relative flex min-w-0 flex-[0_1_auto]", drag.dragging === o.key && "opacity-50")}
+            // History, Snippets and Workflows keep their size (their tab
+            // can't shrink); terminal tabs and a details page shrink.
+            className={cn(
+              "relative flex",
+              FIXED.includes(o.key) ? "flex-none" : "min-w-0 flex-[0_1_auto]",
+              drag.dragging === o.key && "opacity-50",
+            )}
           >
             {o.node}
             {drag.over?.key === o.key && (
@@ -339,11 +345,11 @@ function DetailsTab({ active }: { active: boolean }) {
         if (e.button === 0) useTabs.getState().openDetails();
       }}
       className={cn(
-        "flex h-11 max-w-[240px] flex-none items-center gap-2.5 border-r border-divider pr-2.5 pl-3 text-[13px]",
+        "flex h-11 max-w-[240px] min-w-0 flex-[0_1_auto] items-center gap-2.5 border-r border-divider pr-2.5 pl-3 text-[13px]",
         active ? "bg-background text-foreground" : "text-dim-foreground shadow-[inset_0_-1px_0_var(--divider)] hover:text-foreground",
       )}
     >
-      <Badge id={badgeId} name={label} size={20} className="rounded-[5px]" />
+      <Badge id={badgeId} name={label} size={20} className="flex-none rounded-[5px]" />
       <span className="truncate">{label}</span>
       <button
         aria-label="Close details"
@@ -356,6 +362,9 @@ function DetailsTab({ active }: { active: boolean }) {
     </div>
   );
 }
+
+/** Pinned tabs that never shrink in a full strip. */
+const FIXED = ["history", "snippets", "workflows"];
 
 /** Drag a tab along the strip to reorder it (a short press still just
  *  picks the tab). */
