@@ -1,10 +1,9 @@
 import { Plus, RotateCw, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { create } from "zustand";
 
 import { Btn } from "@/components/kit/Btn";
 import { EnvTag } from "@/components/kit/EnvTag";
-import { Hint } from "@/components/kit/Kbd";
-import { Modal, ModalFooter, ModalHeader } from "@/components/kit/Modal";
 import { Field, TextInput } from "@/components/manage/fields";
 import { triggerAction } from "@/lib/actions";
 import { isAsg } from "@/lib/fleet";
@@ -12,7 +11,6 @@ import { asgInstances, baselineCheck, baselineSave, errorMessage, type Baseline,
 import { cn } from "@/lib/utils";
 import { useConfig } from "@/stores/config";
 import { toastError, useToasts } from "@/stores/toasts";
-import { useUi } from "@/stores/ui";
 
 /** What it says about one repo or line, and how worrying. */
 type Item = { text: string; tone: "ok" | "warn" | "bad" | "dim" };
@@ -114,18 +112,13 @@ export function BaselineSection({ server, instance }: { server: Server; instance
 
 type Row = { state: "busy" } | { state: "done"; results: { instance: string | null; status: BaselineStatus | string }[] };
 
-/** Settings ▸ Server baseline: what every server should have, and a check
- *  of every server against it. */
-export function BaselineDialog() {
-  const open = useUi((s) => s.overlay === "baseline");
-  if (!open) return null;
-  return <BaselineForm />;
-}
-
 const blank: Baseline = { dir: "/opt/www", repos: [], bashrc: [] };
 
-function BaselineForm() {
-  const close = () => useUi.getState().setOverlay("none");
+const useBaselineRows = create<{ rows: Record<string, Row> }>(() => ({ rows: {} }));
+
+/** The Baseline tab (Settings ▸ Server baseline, ⌘K): what every server
+ *  should have, and a check of every server against it. */
+export function BaselineView() {
   const config = useConfig((s) => s.snapshot?.config);
   const saved = config?.baseline ?? null;
   const servers = config?.servers ?? [];
@@ -133,7 +126,9 @@ function BaselineForm() {
   const [repos, setRepos] = useState(saved?.repos.length ? saved.repos : [{ name: "", url: "" }]);
   const [lines, setLines] = useState((saved?.bashrc ?? []).join("\n"));
   const [busy, setBusy] = useState(false);
-  const [rows, setRows] = useState<Record<string, Row>>({});
+  // Kept while you switch tabs (e.g. to watch an install, then back).
+  const rows = useBaselineRows((x) => x.rows);
+  const setRows = (f: (r: Record<string, Row>) => Record<string, Row>) => useBaselineRows.setState((x) => ({ rows: f(x.rows) }));
 
   const form: Baseline = {
     dir: dir.trim() || "/opt/www",
@@ -184,123 +179,119 @@ function BaselineForm() {
   };
 
   return (
-    <Modal open onOpenChange={(o) => !o && close()} title="Server baseline" width={900}>
-      <ModalHeader>
-        <span className="text-[15px] font-semibold">Server baseline</span>
-        <span className="text-[12.5px] text-muted-foreground">
-          What every server should have: these repos cloned into one folder, and these lines in root's ~/.bashrc. Checking is read-only;
-          Install / update clones what's missing, pulls what's there (fast-forward only) and adds missing lines, as root.
+    <div className="light-ui absolute inset-0 flex flex-col bg-background text-foreground">
+      <div className="flex h-12 flex-none items-center gap-2 border-b border-divider px-4">
+        <span className="text-[14px] font-semibold">Server baseline</span>
+        <span className="min-w-0 flex-1 truncate text-[12px] text-subtle-foreground">
+          What every server should have. Checking is read-only; Install / update clones what's missing, pulls what's there (fast-forward
+          only) and adds missing lines, as root.
         </span>
-      </ModalHeader>
-      <div className="flex max-h-[min(70vh,720px)] flex-col gap-4 overflow-y-auto px-5 pb-4">
-        <div className="grid grid-cols-[200px_minmax(0,1fr)] gap-3">
-          <Field label="Folder" hint="Created when missing">
-            {(fid) => <TextInput id={fid} value={dir} onChange={(e) => setDir(e.target.value)} placeholder="/opt/www" />}
-          </Field>
+        <Btn size="sm" variant="primary" disabled={!dirty || busy} onClick={() => void save()}>
+          {busy ? "Saving…" : dirty ? "Save" : "Saved"}
+        </Btn>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto flex max-w-[1180px] flex-col gap-5 px-6 py-5">
+          <div className="grid grid-cols-[180px_minmax(0,1fr)] gap-4">
+            <Field label="Folder" hint="Created when missing">
+              {(fid) => <TextInput id={fid} value={dir} onChange={(e) => setDir(e.target.value)} placeholder="/opt/www" />}
+            </Field>
+            <Field label="Lines in root's ~/.bashrc" hint="One per line; added when missing">
+              {(fid) => (
+                <textarea
+                  id={fid}
+                  value={lines}
+                  onChange={(e) => setLines(e.target.value)}
+                  rows={2}
+                  spellCheck={false}
+                  placeholder="alias deploy='/opt/www/laravel-helper/laravel-helper -uifr -d'"
+                  className="w-full resize-y rounded-lg border border-control-border bg-background px-2.5 py-1.5 font-mono text-[12px] outline-none focus:border-primary/60"
+                />
+              )}
+            </Field>
+          </div>
           <div className="flex flex-col gap-1.5">
-            <span className="text-[12px] font-medium text-muted-foreground">Repos (each in Folder/name)</span>
-            {repos.map((r, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <TextInput
-                  aria-label="Name"
-                  className="w-[170px] flex-none"
-                  value={r.name}
-                  placeholder="server-helper"
-                  onChange={(e) => setRepos((l) => l.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
-                />
-                <TextInput
-                  aria-label="Git URL"
-                  value={r.url}
-                  placeholder="https://github.com/you/server-helper.git"
-                  onChange={(e) => setRepos((l) => l.map((x, j) => (j === i ? { ...x, url: e.target.value } : x)))}
-                />
-                <button
-                  aria-label="Remove repo"
-                  onClick={() => setRepos((l) => l.filter((_, j) => j !== i))}
-                  className="flex size-7 flex-none cursor-pointer items-center justify-center rounded-md text-subtle-foreground hover:bg-hover hover:text-foreground"
-                >
-                  <X className="size-3.5" />
-                </button>
-              </div>
-            ))}
-            <button
-              onClick={() => setRepos((l) => [...l, { name: "", url: "" }])}
-              className="flex w-fit cursor-pointer items-center gap-1 text-[12px] text-primary hover:underline"
-            >
-              <Plus className="size-3.5" /> Add repo
-            </button>
+              <span className="text-[12px] font-medium text-muted-foreground">Repos (each in Folder/name)</span>
+              {repos.map((r, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <TextInput
+                    aria-label="Name"
+                    className="w-[200px] flex-none"
+                    value={r.name}
+                    placeholder="server-helper"
+                    onChange={(e) => setRepos((l) => l.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
+                  />
+                  <TextInput
+                    aria-label="Git URL"
+                    value={r.url}
+                    placeholder="https://github.com/you/server-helper.git"
+                    onChange={(e) => setRepos((l) => l.map((x, j) => (j === i ? { ...x, url: e.target.value } : x)))}
+                  />
+                  <button
+                    aria-label="Remove repo"
+                    onClick={() => setRepos((l) => l.filter((_, j) => j !== i))}
+                    className="flex size-7 flex-none cursor-pointer items-center justify-center rounded-md text-subtle-foreground hover:bg-hover hover:text-foreground"
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={() => setRepos((l) => [...l, { name: "", url: "" }])}
+                className="flex w-fit cursor-pointer items-center gap-1 text-[12px] text-primary hover:underline"
+              >
+                <Plus className="size-3.5" /> Add repo
+              </button>
+            </div>
+
+          <div className="flex items-center gap-2 border-t border-divider pt-4">
+            <span className="text-[13px] font-semibold">Servers</span>
+            <span className="text-[12px] text-subtle-foreground">{dirty ? "save first to check against these changes" : "AWS servers: each instance"}</span>
+            <span className="flex-1" />
+            <Btn size="sm" variant="outline" disabled={!saved || dirty} onClick={() => void checkAll()}>
+              <RotateCw className="size-3" /> Check all servers
+            </Btn>
+          </div>
+          <div className="flex flex-col divide-y divide-divider rounded-lg border border-divider">
+            {servers.map((s) => {
+              const row = rows[s.id];
+              return (
+                <div key={s.id} className="flex items-start gap-3 px-3 py-2">
+                  <span className="flex w-[220px] flex-none items-center gap-1.5 pt-0.5">
+                    <span className="truncate text-[12.5px] font-medium">{s.name}</span>
+                    <EnvTag env={s.env} />
+                  </span>
+                  <span className="min-w-0 flex-1 text-[12px]">
+                    {!row && <span className="text-subtle-foreground">not checked</span>}
+                    {row?.state === "busy" && <span className="text-subtle-foreground">checking…</span>}
+                    {row?.state === "done" &&
+                      row.results.map((r) => (
+                        <div key={r.instance ?? "-"} className="flex flex-col gap-0.5 py-0.5">
+                          {r.instance && <span className="font-mono text-[11px] text-subtle-foreground">{r.instance}</span>}
+                          {typeof r.status === "string" ? (
+                            <span className="text-env-prod-fg">{r.status}</span>
+                          ) : r.status.complete && r.status.repos.every((x) => x.state === "ok") ? (
+                            <span className="text-[#17702a]">✓ all there, up to date</span>
+                          ) : (
+                            <BaselineChips status={r.status} />
+                          )}
+                        </div>
+                      ))}
+                  </span>
+                  <span className="flex flex-none gap-1">
+                    <Btn size="sm" variant="ghost" disabled={!saved || dirty || row?.state === "busy"} onClick={() => void checkOne(s)}>
+                      Check
+                    </Btn>
+                    <Btn size="sm" variant="outline" disabled={!saved || dirty} onClick={() => installBaseline(s.id)}>
+                      Install / update…
+                    </Btn>
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
-        <Field label="Lines in root's ~/.bashrc" hint="One per line; added when missing (e.g. an alias)">
-          {(fid) => (
-            <textarea
-              id={fid}
-              value={lines}
-              onChange={(e) => setLines(e.target.value)}
-              rows={3}
-              spellCheck={false}
-              placeholder="alias deploy='/opt/www/laravel-helper/laravel-helper -uifr -d'"
-              className="w-full resize-y rounded-lg border border-control-border bg-background px-2.5 py-1.5 font-mono text-[12.5px] outline-none focus:border-primary/60"
-            />
-          )}
-        </Field>
-
-        <div className="flex items-center gap-2 border-t border-divider pt-3">
-          <span className="text-[13px] font-semibold">Servers</span>
-          <span className="text-[12px] text-subtle-foreground">{dirty ? "save first to check against these changes" : "AWS servers: each instance"}</span>
-          <span className="flex-1" />
-          <Btn size="sm" variant="outline" disabled={!saved || dirty} onClick={() => void checkAll()}>
-            Check all servers
-          </Btn>
-        </div>
-        <div className="flex flex-col divide-y divide-divider rounded-lg border border-divider">
-          {servers.map((s) => {
-            const row = rows[s.id];
-            return (
-              <div key={s.id} className="flex items-start gap-3 px-3 py-2">
-                <span className="flex w-[190px] flex-none items-center gap-1.5 pt-0.5">
-                  <span className="truncate text-[12.5px] font-medium">{s.name}</span>
-                  <EnvTag env={s.env} />
-                </span>
-                <span className="min-w-0 flex-1 text-[12px]">
-                  {!row && <span className="text-subtle-foreground">not checked</span>}
-                  {row?.state === "busy" && <span className="text-subtle-foreground">checking…</span>}
-                  {row?.state === "done" &&
-                    row.results.map((r) => (
-                      <div key={r.instance ?? "-"} className="flex flex-col gap-0.5 py-0.5">
-                        {r.instance && <span className="font-mono text-[11px] text-subtle-foreground">{r.instance}</span>}
-                        {typeof r.status === "string" ? (
-                          <span className="text-env-prod-fg">{r.status}</span>
-                        ) : r.status.complete && r.status.repos.every((x) => x.state === "ok") ? (
-                          <span className="text-[#17702a]">✓ all there, up to date</span>
-                        ) : (
-                          <BaselineChips status={r.status} />
-                        )}
-                      </div>
-                    ))}
-                </span>
-                <span className="flex flex-none gap-1">
-                  <Btn size="sm" variant="ghost" disabled={!saved || dirty || row?.state === "busy"} onClick={() => void checkOne(s)}>
-                    Check
-                  </Btn>
-                  <Btn size="sm" variant="outline" disabled={!saved || dirty} onClick={() => installBaseline(s.id)}>
-                    Install / update…
-                  </Btn>
-                </span>
-              </div>
-            );
-          })}
-        </div>
       </div>
-      <ModalFooter>
-        <span className="flex-1" />
-        <Btn variant="outline" className="pr-2.5" onClick={close}>
-          Close <Hint>esc</Hint>
-        </Btn>
-        <Btn variant="primary" disabled={!dirty || busy} onClick={() => void save()}>
-          {busy ? "Saving…" : "Save"}
-        </Btn>
-      </ModalFooter>
-    </Modal>
+    </div>
   );
 }

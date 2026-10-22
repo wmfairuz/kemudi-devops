@@ -14,6 +14,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { useUpdates } from "@/stores/updates";
 import { useUi } from "@/stores/ui";
 import { useConfirmClose } from "@/stores/confirmClose";
+import { useTabs } from "@/stores/tabs";
 
 const FONTS = ["Menlo", "SF Mono", "Monaco", "JetBrains Mono", "Fira Code", "Cascadia Code", "Source Code Pro", "Hack"];
 
@@ -182,7 +183,10 @@ function SettingsForm() {
                 Repos and ~/.bashrc lines every server should have; check them all, install what's missing.
               </span>
             </span>
-            <Btn size="sm" variant="outline" onClick={() => useUi.getState().setOverlay("baseline")}>
+            <Btn size="sm" variant="outline" onClick={() => {
+                close();
+                useTabs.getState().openBaseline();
+              }}>
               Server baseline…
             </Btn>
           </div>

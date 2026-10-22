@@ -33,7 +33,7 @@ interface Saved {
 }
 
 /** The pinned tabs' names in the strip order. */
-const PINNED = ["details", "history", "snippets", "workflows"];
+const PINNED = ["details", "history", "snippets", "workflows", "baseline"];
 
 function isSaved(v: unknown): v is Saved {
   return typeof v === "object" && v !== null && (v as Saved).version === 1 && Array.isArray((v as Saved).tabs);

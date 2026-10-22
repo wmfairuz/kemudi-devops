@@ -40,9 +40,9 @@ import { initSession } from "@/stores/session";
 import { useDiskAlerts } from "@/stores/diskAlerts";
 import { useSslAlerts } from "@/stores/sslAlerts";
 import { useStatus } from "@/stores/status";
-import { activeTab, DETAILS_ID, groupOf, HISTORY_ID, HOME_ID, SNIPPETS_ID, useTabs, WORKFLOWS_ID } from "@/stores/tabs";
+import { activeTab, BASELINE_ID, DETAILS_ID, groupOf, HISTORY_ID, HOME_ID, SNIPPETS_ID, useTabs, WORKFLOWS_ID } from "@/stores/tabs";
 import { WorkflowCards, WorkflowRuns } from "@/components/workflows/WorkflowRuns";
-import { BaselineDialog } from "@/components/baseline/Baseline";
+import { BaselineView } from "@/components/baseline/Baseline";
 
 export default function App() {
   const active = useTabs(activeTab);
@@ -50,13 +50,14 @@ export default function App() {
   const showHistory = useTabs((s) => s.activeId === HISTORY_ID);
   const showDetails = useTabs((s) => s.activeId === DETAILS_ID);
   const showSnippets = useTabs((s) => s.activeId === SNIPPETS_ID);
+  const showBaseline = useTabs((s) => s.activeId === BASELINE_ID);
   // The Workflows tab: workflow cards, its runs on the right (a run's
   // terminal over the cards when asked for).
   const noRun = useTabs((s) => s.activeId === WORKFLOWS_ID);
   const showRuns = useTabs((s) => s.activeId === WORKFLOWS_ID || !!groupOf(s, s.activeId)?.workflow);
   const showHome = useTabs((s) => s.activeId === HOME_ID || s.activeId === null);
   const filterRef = useRef<HTMLInputElement>(null);
-  const title = showHistory ? "Kemudi Devops — History" : showSnippets ? "Kemudi Devops — Snippets" : showRuns ? "Kemudi Devops — Workflows" : active ? `Kemudi Devops — ${active.title}` : "Kemudi Devops";
+  const title = showHistory ? "Kemudi Devops — History" : showSnippets ? "Kemudi Devops — Snippets" : showBaseline ? "Kemudi Devops — Server baseline" : showRuns ? "Kemudi Devops — Workflows" : active ? `Kemudi Devops — ${active.title}` : "Kemudi Devops";
 
   useEffect(() => useConfig.getState().init(), []);
   useEffect(() => useStatus.getState().init(), []);
@@ -135,6 +136,7 @@ export default function App() {
               {showHistory && <HistoryView />}
               {showDetails && <DetailsView />}
               {showSnippets && <SnippetsView />}
+              {showBaseline && <BaselineView />}
               {noRun && <WorkflowCards />}
             </div>
             {showRuns && <WorkflowRuns />}
@@ -147,7 +149,6 @@ export default function App() {
       <PasswordsDialog />
       <FillPicker />
       <SettingsDialog />
-      <BaselineDialog />
       <ActionDialogs />
       <ActionMenu />
       <EntityMenu />

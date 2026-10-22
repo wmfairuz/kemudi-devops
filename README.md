@@ -592,8 +592,8 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   Thresholds (amber / red): CPU 80/90%, memory 80/90%, disk 80/90%, swap
   50/80%, 1-minute load per core 1/2; a card turns amber/red with its worst
   metric.
-- **Server baseline** (Settings ▸ Server baseline…, or ⌘K): what every
-  server should have: git repos cloned into one folder (`/opt/www` by
+- **Server baseline** (Settings ▸ Server baseline…, or ⌘K: a pinned
+  **Baseline** tab; ⌘W closes it): what every server should have: git repos cloned into one folder (`/opt/www` by
   default, created when missing) and lines in root's `~/.bashrc` (e.g. an
   alias). *Check all servers* (or a row's *Check*, or the Baseline section
   of a server's Health tab) is read-only: each repo is there, missing, or
