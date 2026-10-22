@@ -519,6 +519,15 @@ export interface BaselineStatus {
 }
 
 export const baselineSave = (baseline: Baseline): Promise<ConfigSnapshot> => invoke("baseline_save", { baseline });
+export interface BaselineInstall {
+  ok: boolean;
+  output: string;
+  /** Root needs a password there (only a terminal can type it). */
+  needsPassword: boolean;
+}
+/** Install / update without a terminal (an AWS server's `instance`). */
+export const baselineInstall = (serverId: string, instance: string | null = null): Promise<BaselineInstall> =>
+  invoke("baseline_install", { serverId, instance });
 /** Read-only; an AWS server's `instance` (else its first). */
 export const baselineCheck = (serverId: string, instance: string | null = null): Promise<BaselineStatus> =>
   invoke("baseline_check", { serverId, instance });

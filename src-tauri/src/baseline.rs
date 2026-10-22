@@ -175,6 +175,64 @@ else echo "cloning into {d_plain}"; asroot git clone {url} {d} || bad=1; fi
     s
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallResult {
+    pub ok: bool,
+    /// What it printed (colours stripped).
+    pub output: String,
+    /// Root needs a password here (sudo can't ask without a terminal).
+    pub needs_password: bool,
+}
+
+/// `\e[…m` colours and other escape sequences out of `s`.
+fn plain(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut it = s.chars().peekable();
+    while let Some(c) = it.next() {
+        if c == '\u{1b}' {
+            if it.peek() == Some(&'[') {
+                it.next();
+                for d in it.by_ref() {
+                    if d.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            }
+            continue;
+        }
+        if c != '\r' {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Install / update without a terminal: the same script, over ssh (or on an
+/// AWS server's `instance`, as root through Run Command). sudo can't ask
+/// for a password here: where root needs one, it says so.
+#[tauri::command]
+pub async fn baseline_install(
+    state: State<'_, AppState>,
+    server_id: String,
+    instance: Option<String>,
+) -> AppResult<InstallResult> {
+    let b = state
+        .config
+        .config()
+        .and_then(|c| c.baseline.clone())
+        .ok_or_else(|| AppError::Invalid("no server baseline set up yet (Settings ▸ Server baseline)".into()))?;
+    // Always ends with its exit code, so a failure still hands back what it said.
+    let script = format!("{}\necho \"@@exit $?\"\n", install_script(&b));
+    let out = crate::monitor::run_on(&state, &server_id, instance.as_deref(), &script, 300).await?;
+    let output = plain(&out);
+    let ok = output.lines().any(|l| l.trim() == "@@exit 0");
+    let needs_password = !ok
+        && (output.contains("a terminal is required") || output.contains("a password is required") || output.contains("no tty present"));
+    let output = output.lines().filter(|l| !l.starts_with("@@exit")).collect::<Vec<_>>().join("\n").trim().to_string();
+    Ok(InstallResult { ok, output, needs_password })
+}
+
 /// Check a server (an AWS server: `instance`, else its first) against the
 /// baseline. Read-only.
 #[tauri::command]
@@ -241,6 +299,11 @@ mod tests {
         .expect("render");
         assert_eq!(r.command, install_script(c.baseline.as_ref().expect("baseline")));
         assert!(r.server_wide);
+    }
+
+    #[test]
+    fn strips_colours() {
+        assert_eq!(plain("\u{1b}[1;36m── tools\u{1b}[0m\r\nok"), "── tools\nok");
     }
 
     #[test]

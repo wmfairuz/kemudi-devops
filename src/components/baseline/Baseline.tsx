@@ -4,12 +4,14 @@ import { create } from "zustand";
 
 import { Btn } from "@/components/kit/Btn";
 import { EnvTag } from "@/components/kit/EnvTag";
+import { Spinner } from "@/components/kit/Spinner";
 import { Field, TextInput } from "@/components/manage/fields";
 import { triggerAction } from "@/lib/actions";
 import { isAsg } from "@/lib/fleet";
-import { asgInstances, baselineCheck, baselineSave, errorMessage, type Baseline, type BaselineStatus, type Server } from "@/lib/ipc";
+import { asgInstances, baselineCheck, baselineInstall, baselineSave, errorMessage, type Baseline, type BaselineInstall, type BaselineStatus, type Server } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { useConfig } from "@/stores/config";
+import { askConfirm } from "@/stores/confirm";
 import { toastError, useToasts } from "@/stores/toasts";
 
 /** What it says about one repo or line, and how worrying. */
@@ -65,10 +67,114 @@ export function BaselineChips({ status }: { status: BaselineStatus }) {
   );
 }
 
-/** Install / update the baseline on a server (an AWS server: every
- *  instance, a pane each). Production asks for its name first. */
-export function installBaseline(serverId: string) {
+/** Install / update in a terminal tab (an AWS server: a pane per
+ *  instance), for where root needs a password. Production asks first. */
+function installBaseline(serverId: string) {
   void triggerAction({ serverId, appId: null, actionId: "baseline" });
+}
+
+type Result = { instance: string | null; status: BaselineStatus | string; install?: BaselineInstall };
+type Row = { state: "busy" | "installing" } | { state: "done"; results: Result[] };
+
+/** Per server: checking, installing, or what came back. Kept while you
+ *  switch tabs. */
+const useBaselineRows = create<{ rows: Record<string, Row> }>(() => ({ rows: {} }));
+const setRow = (id: string, row: Row) => useBaselineRows.setState((x) => ({ rows: { ...x.rows, [id]: row } }));
+
+/** An AWS server's running instances (each checked and installed), else
+ *  the server itself. */
+async function targets(s: Server): Promise<(string | null)[]> {
+  return isAsg(s) ? (await asgInstances(s.id)).map((i) => i.id) : [null];
+}
+
+async function checkServer(s: Server) {
+  setRow(s.id, { state: "busy" });
+  let results: Result[];
+  try {
+    results = await Promise.all(
+      (await targets(s)).map(async (instance) => ({
+        instance,
+        status: await baselineCheck(s.id, instance).catch((e: unknown) => errorMessage(e)),
+      })),
+    );
+  } catch (e) {
+    results = [{ instance: null, status: errorMessage(e) }];
+  }
+  setRow(s.id, { state: "done", results });
+}
+
+/** Install / update in the background (no terminal), then check again.
+ *  Production asks first. */
+async function installServer(s: Server): Promise<void> {
+  if (
+    s.env === "prod" &&
+    !(await askConfirm(
+      `Install / update the baseline on ${s.name}?`,
+      "Production. As root: clones the missing repos, pulls the others (fast-forward only: local changes stop it) and adds missing ~/.bashrc lines.",
+      "Install",
+    ))
+  )
+    return;
+  setRow(s.id, { state: "installing" });
+  let results: Result[];
+  try {
+    results = await Promise.all(
+      (await targets(s)).map(async (instance) => {
+        const install = await baselineInstall(s.id, instance).catch(
+          (e: unknown): BaselineInstall => ({ ok: false, output: errorMessage(e), needsPassword: false }),
+        );
+        const status = await baselineCheck(s.id, instance).catch((e: unknown) => errorMessage(e));
+        return { instance, status, install };
+      }),
+    );
+  } catch (e) {
+    results = [{ instance: null, status: errorMessage(e) }];
+  }
+  setRow(s.id, { state: "done", results });
+  const failed = results.some((r) => r.install && !r.install.ok);
+  useToasts.getState().push(failed ? `Baseline on ${s.name}: not all of it worked` : `Baseline in place on ${s.name}`, failed ? "error" : "info");
+}
+
+/** One server's (or instance's) outcome: the install's, then the check's. */
+function ResultView({ r, server }: { r: Result; server: Server }) {
+  const [open, setOpen] = useState(false);
+  const link = "cursor-pointer text-primary hover:underline";
+  return (
+    <div className="flex flex-col gap-0.5 py-0.5">
+      {r.instance && <span className="font-mono text-[11px] text-subtle-foreground">{r.instance}</span>}
+      {r.install && (
+        <span className="flex flex-wrap items-center gap-x-2">
+          {r.install.ok ? (
+            <span className="text-[#17702a]">✓ installed / updated</span>
+          ) : (
+            <span className="text-env-prod-fg">{r.install.needsPassword ? "✗ root needs a password here" : "✗ didn't finish"}</span>
+          )}
+          {r.install.output && (
+            <button className={link} onClick={() => setOpen(!open)}>
+              {open ? "Hide details" : "Details"}
+            </button>
+          )}
+          {r.install.needsPassword && (
+            <button className={link} onClick={() => installBaseline(server.id)} title="In a terminal tab, where sudo can ask for the password">
+              Open in terminal
+            </button>
+          )}
+        </span>
+      )}
+      {open && r.install && (
+        <pre className="selectable max-h-[260px] overflow-auto rounded-md bg-hover/60 px-2 py-1.5 font-mono text-[11px] leading-4 whitespace-pre-wrap">
+          {r.install.output}
+        </pre>
+      )}
+      {typeof r.status === "string" ? (
+        <span className="text-env-prod-fg">{r.status}</span>
+      ) : r.status.complete && r.status.repos.every((x) => x.state === "ok") ? (
+        <span className="text-[#17702a]">✓ all there, up to date</span>
+      ) : (
+        <BaselineChips status={r.status} />
+      )}
+    </div>
+  );
 }
 
 /** A server's Health tab: is the baseline there? (read-only) */
@@ -87,6 +193,9 @@ export function BaselineSection({ server, instance }: { server: Server; instance
     if (baseline) void check();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseline, server.id, instance]);
+  const row = useBaselineRows((x) => x.rows[server.id]);
+  const installing = row?.state === "installing";
+  const mine = row?.state === "done" ? (row.results.find((r) => r.instance === instance) ?? row.results[0]) : undefined;
   if (!baseline) return null;
   return (
     <section className="flex flex-col gap-1.5">
@@ -99,22 +208,24 @@ export function BaselineSection({ server, instance }: { server: Server; instance
         <Btn size="sm" variant="ghost" onClick={() => void check()} disabled={state === "busy"}>
           <RotateCw className={cn("size-3", state === "busy" && "animate-spin")} /> Check
         </Btn>
-        <Btn size="sm" variant="outline" onClick={() => installBaseline(server.id)}>
-          Install / update…
+        <Btn
+          size="sm"
+          variant="outline"
+          disabled={installing}
+          onClick={() => void installServer(server).then(() => check())}
+        >
+          {installing ? <Spinner size={10} /> : null} {installing ? "Installing…" : "Install / update"}
         </Btn>
       </div>
+      {mine?.install && <ResultView r={{ ...mine, status: typeof state === "object" && state ? state : mine.status, instance: null }} server={server} />}
       {state === "busy" && <span className="text-[0.85em] text-subtle-foreground">Checking {baseline.repos.map((r) => r.name).join(", ")}…</span>}
       {typeof state === "string" && state !== "busy" && <span className="text-[0.85em] text-env-prod-fg">{state}</span>}
-      {typeof state === "object" && state && <BaselineChips status={state} />}
+      {!mine?.install && typeof state === "object" && state && <BaselineChips status={state} />}
     </section>
   );
 }
 
-type Row = { state: "busy" } | { state: "done"; results: { instance: string | null; status: BaselineStatus | string }[] };
-
 const blank: Baseline = { dir: "/opt/www", repos: [], bashrc: [] };
-
-const useBaselineRows = create<{ rows: Record<string, Row> }>(() => ({ rows: {} }));
 
 /** The Baseline tab (Settings ▸ Server baseline, ⌘K): what every server
  *  should have, and a check of every server against it. */
@@ -126,9 +237,7 @@ export function BaselineView() {
   const [repos, setRepos] = useState(saved?.repos.length ? saved.repos : [{ name: "", url: "" }]);
   const [lines, setLines] = useState((saved?.bashrc ?? []).join("\n"));
   const [busy, setBusy] = useState(false);
-  // Kept while you switch tabs (e.g. to watch an install, then back).
   const rows = useBaselineRows((x) => x.rows);
-  const setRows = (f: (r: Record<string, Row>) => Record<string, Row>) => useBaselineRows.setState((x) => ({ rows: f(x.rows) }));
 
   const form: Baseline = {
     dir: dir.trim() || "/opt/www",
@@ -152,22 +261,7 @@ export function BaselineView() {
     }
   };
 
-  const checkOne = async (s: Server) => {
-    setRows((r) => ({ ...r, [s.id]: { state: "busy" } }));
-    let results: { instance: string | null; status: BaselineStatus | string }[];
-    try {
-      const instances = isAsg(s) ? (await asgInstances(s.id)).map((i) => i.id) : [null];
-      results = await Promise.all(
-        instances.map(async (instance) => ({
-          instance,
-          status: await baselineCheck(s.id, instance).catch((e: unknown) => errorMessage(e)),
-        })),
-      );
-    } catch (e) {
-      results = [{ instance: null, status: errorMessage(e) }];
-    }
-    setRows((r) => ({ ...r, [s.id]: { state: "done", results } }));
-  };
+  const checkOne = checkServer;
 
   const checkAll = async () => {
     // Four at a time: each is an ssh (or Session Manager) connection.
@@ -264,26 +358,24 @@ export function BaselineView() {
                   <span className="min-w-0 flex-1 text-[12px]">
                     {!row && <span className="text-subtle-foreground">not checked</span>}
                     {row?.state === "busy" && <span className="text-subtle-foreground">checking…</span>}
-                    {row?.state === "done" &&
-                      row.results.map((r) => (
-                        <div key={r.instance ?? "-"} className="flex flex-col gap-0.5 py-0.5">
-                          {r.instance && <span className="font-mono text-[11px] text-subtle-foreground">{r.instance}</span>}
-                          {typeof r.status === "string" ? (
-                            <span className="text-env-prod-fg">{r.status}</span>
-                          ) : r.status.complete && r.status.repos.every((x) => x.state === "ok") ? (
-                            <span className="text-[#17702a]">✓ all there, up to date</span>
-                          ) : (
-                            <BaselineChips status={r.status} />
-                          )}
-                        </div>
-                      ))}
+                    {row?.state === "installing" && (
+                      <span className="flex items-center gap-1.5 text-subtle-foreground">
+                        <Spinner size={10} /> installing / updating, then checking again…
+                      </span>
+                    )}
+                    {row?.state === "done" && row.results.map((r) => <ResultView key={r.instance ?? "-"} r={r} server={s} />)}
                   </span>
                   <span className="flex flex-none gap-1">
                     <Btn size="sm" variant="ghost" disabled={!saved || dirty || row?.state === "busy"} onClick={() => void checkOne(s)}>
                       Check
                     </Btn>
-                    <Btn size="sm" variant="outline" disabled={!saved || dirty} onClick={() => installBaseline(s.id)}>
-                      Install / update…
+                    <Btn
+                      size="sm"
+                      variant="outline"
+                      disabled={!saved || dirty || row?.state === "installing" || row?.state === "busy"}
+                      onClick={() => void installServer(s)}
+                    >
+                      Install / update
                     </Btn>
                   </span>
                 </div>

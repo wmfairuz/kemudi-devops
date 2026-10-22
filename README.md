@@ -600,10 +600,13 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   has newer commits on its remote (asked with `git ls-remote`, nothing
   fetched), and each line is there or not (unknown when root's `~/.bashrc`
   can't be read without a password). AWS servers are checked on each
-  instance. *Install / update…* runs as root in a tab (production asks for
-  the server's name; AWS servers: a pane per instance): clones what's
-  missing, `git pull --ff-only` what's there (local changes stop it,
-  nothing is overwritten) and adds missing lines. Saved as one line:
+  instance. *Install / update* runs as root in the background, no terminal
+  (production asks first; AWS servers: on each instance through Run
+  Command): clones what's missing, `git pull --ff-only` what's there (local
+  changes stop it, nothing is overwritten) and adds missing lines. The row
+  shows a spinner, then ✓ or ✗ with *Details* (what it printed), and checks
+  again. Where root needs a password (sudo can't ask without a terminal)
+  it says so and offers *Open in terminal*. Saved as one line:
 
   ```yaml
   baseline: { dir: /opt/www, repos: [{ name: server-tools, url: "https://github.com/acme/server-tools.git" }], bashrc: ["alias deploy='/opt/www/server-tools/deploy'"] }

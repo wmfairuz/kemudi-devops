@@ -153,6 +153,7 @@ pub fn run() {
             config::settings_form::settings_save,
             config::settings_form::baseline_save,
             baseline::baseline_check,
+            baseline::baseline_install,
             ssh_hosts::ssh_host_info,
             ssh_hosts::ssh_host_save,
             ssh_hosts::ssh_keys,
