@@ -113,6 +113,11 @@ const COMMANDS: Record<string, () => void> = {
     if (tabs.activeId === SNIPPETS_ID) tabs.closeSnippets();
     else tabs.openSnippets();
   },
+  baseline: () => {
+    const tabs = useTabs.getState();
+    if (tabs.activeId === BASELINE_ID) tabs.closeBaseline();
+    else tabs.openBaseline();
+  },
   environment: () => useUi.getState().setOverlay("environment"),
   "panel.actions": () => useUi.getState().toggleActionsPanel(),
   "vault.fill": () => {
@@ -169,6 +174,7 @@ function commandFor(e: KeyboardEvent): string | null {
   if (e.shiftKey && e.code === "KeyP") return "vault.fill";
   if (e.shiftKey && e.code === "KeyK") return "passwords";
   if (e.shiftKey && e.code === "KeyS") return "snippets";
+  if (e.shiftKey && e.code === "KeyB") return "baseline";
   if (e.shiftKey && e.code === "KeyR") return "workflows";
   if (e.shiftKey && e.code === "KeyH") return "home";
   if (e.shiftKey && e.code === "KeyL") return "pane.splitLocal";

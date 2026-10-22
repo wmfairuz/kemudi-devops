@@ -592,8 +592,8 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   Thresholds (amber / red): CPU 80/90%, memory 80/90%, disk 80/90%, swap
   50/80%, 1-minute load per core 1/2; a card turns amber/red with its worst
   metric.
-- **Server baseline** (Settings ▸ Server baseline…, or ⌘K: a pinned
-  **Baseline** tab; ⌘W closes it): what every server should have: git repos cloned into one folder (`/opt/www` by
+- **Server baseline** (View ▸ Server Baseline ⇧⌘B, Settings ▸ Server
+  baseline…, or ⌘K: a pinned **Baseline** tab; ⌘W closes it): what every server should have: git repos cloned into one folder (`/opt/www` by
   default, created when missing) and lines in root's `~/.bashrc` (e.g. an
   alias). *Check all servers* (or a row's *Check*, or the Baseline section
   of a server's Health tab) is read-only: each repo is there, missing, or
@@ -934,6 +934,7 @@ would seem to stop working). Tabs come back through session restore.
 | ⌘⇧P | Fill a saved password (picker) |
 | ⇧⌘K | Passwords |
 | ⇧⌘S | Snippets page: add, edit, organise (again: back where you were) |
+| ⇧⌘B | Server baseline: what every server should have, check and install (again: back where you were) |
 | ⌘D / ⇧⌘D | Split the pane right / down (same server and folder; an action pane gives a shell there) |
 | ⇧⌘L / ⌥⇧⌘L | Split right / down with a shell on this Mac (also the terminal's and the tab's right-click menus) |
 | ⇧⌘H | Home (also View ▸ Home) |

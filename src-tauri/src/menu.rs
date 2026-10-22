@@ -135,6 +135,12 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         )?)
         .item(&item(
             app,
+            "baseline",
+            "Server Baseline",
+            Some("CmdOrCtrl+Shift+B"),
+        )?)
+        .item(&item(
+            app,
             "passwords",
             "Passwords…",
             Some("CmdOrCtrl+Shift+K"),
