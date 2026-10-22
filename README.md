@@ -592,6 +592,23 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   Thresholds (amber / red): CPU 80/90%, memory 80/90%, disk 80/90%, swap
   50/80%, 1-minute load per core 1/2; a card turns amber/red with its worst
   metric.
+- **Claude (MCP)**: Kemudi is also an MCP server, so a Claude session can
+  list and run your workflows ("run Deploy MyLesen Stg"). Add it once:
+
+  ```bash
+  claude mcp add kemudi -s user -- "/Applications/Kemudi Devops.app/Contents/MacOS/kemudi" --mcp
+  ```
+
+  (or the dev build: `src-tauri/target/debug/kemudi --mcp`). Tools:
+  `list_workflows`, `run_workflow` (by id or name, optional `from_step`;
+  waits up to 10 minutes and returns each step's result and output, else a
+  run id), `get_run`, `recent_runs`. `kemudi --mcp` talks to the running
+  Kemudi app through a private Unix socket in its data folder (mode 600; no
+  network). Runs start in the Workflows tab like any other: you watch them,
+  answer their prompts, can stop them. One that touches production brings
+  Kemudi to the front with its run dialog ("Claude asked to run this"):
+  type the name and Run, or Cancel, and Claude is told no. With Kemudi
+  closed, Claude is told to open it.
 - **Server baseline** (View ▸ Server Baseline ⇧⌘B, Settings ▸ Server
   baseline…, or ⌘K: a pinned **Baseline** tab; ⌘W closes it): what every server should have: git repos cloned into one folder (`/opt/www` by
   default, created when missing) and lines in root's `~/.bashrc` (e.g. an

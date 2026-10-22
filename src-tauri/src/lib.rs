@@ -11,6 +11,7 @@ mod files;
 mod fleet;
 mod health;
 mod logs;
+mod mcp;
 mod menu;
 mod monitor;
 mod newapp;
@@ -87,6 +88,12 @@ fn open_audit() -> Result<Arc<AuditLog>, String> {
         .map_err(|e| e.to_string())
 }
 
+/// `kemudi --mcp`: Kemudi as a stdio MCP server for Claude (it talks to the
+/// running app; see mcp.rs).
+pub fn mcp_bridge() {
+    mcp::bridge();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
@@ -105,6 +112,8 @@ pub fn run() {
             let _ = app.emit("menu", event.id().as_ref());
         })
         .setup(|app| {
+            // A Claude session's `kemudi --mcp` reaches the app through this.
+            mcp::serve(app.handle().clone());
             let handle = app.handle().clone();
             std::thread::spawn(move || {
                 let env = &*handle.state::<AppState>().env;
@@ -154,6 +163,7 @@ pub fn run() {
             config::settings_form::baseline_save,
             baseline::baseline_check,
             baseline::baseline_install,
+            mcp::mcp_reply,
             ssh_hosts::ssh_host_info,
             ssh_hosts::ssh_host_save,
             ssh_hosts::ssh_keys,

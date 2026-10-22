@@ -118,7 +118,7 @@ pub fn step_title(config: &Config, kind: &StepKind) -> String {
     }
 }
 
-fn title_of(config: &Config, step: &Step) -> String {
+pub(crate) fn title_of(config: &Config, step: &Step) -> String {
     step.label
         .clone()
         .unwrap_or_else(|| step_title(config, &step.kind))
@@ -694,7 +694,7 @@ fn audit_server(config: &Config, wf: &Workflow) -> String {
         .unwrap_or_else(|| "local".into())
 }
 
-fn touches_prod(config: &Config, wf: &Workflow, from: usize) -> bool {
+pub(crate) fn touches_prod(config: &Config, wf: &Workflow, from: usize) -> bool {
     servers_used(config, wf, from)
         .iter()
         .any(|s| config.server(s).is_some_and(|x| x.env == Env::Prod))

@@ -43,6 +43,7 @@ import { useStatus } from "@/stores/status";
 import { activeTab, BASELINE_ID, DETAILS_ID, groupOf, HISTORY_ID, HOME_ID, SNIPPETS_ID, useTabs, WORKFLOWS_ID } from "@/stores/tabs";
 import { WorkflowCards, WorkflowRuns } from "@/components/workflows/WorkflowRuns";
 import { BaselineView } from "@/components/baseline/Baseline";
+import { initMcp } from "@/lib/mcp";
 
 export default function App() {
   const active = useTabs(activeTab);
@@ -61,6 +62,7 @@ export default function App() {
 
   useEffect(() => useConfig.getState().init(), []);
   useEffect(() => useStatus.getState().init(), []);
+  useEffect(() => initMcp(), []);
   useEffect(() => useDiskAlerts.getState().init(), []);
   useEffect(() => useSslAlerts.getState().init(), []);
   // Restores tabs once and saves them for the app's lifetime.

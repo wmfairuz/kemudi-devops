@@ -16,14 +16,14 @@ export function WorkflowRunDialog() {
   const running = useWorkflows((s) => s.running);
   const wf = useConfig((s) => s.snapshot?.config?.workflows.find((w) => w.id === running?.id));
   if (!running || !wf) return null;
-  return <RunDialog key={`${wf.id}/${running.from}`} wf={wf} from={running.from} />;
+  return <RunDialog key={`${wf.id}/${running.from}`} wf={wf} from={running.from} requestedBy={running.request?.by} />;
 }
 
 const KIND: Record<string, string> = { local: "this Mac", server: "server", action: "action", pause: "pause", parallel: "at once", watch: "watch" };
 
 /** Run a workflow: its steps (click one to start there), the exact script,
  *  and on production the server's name typed first. */
-function RunDialog({ wf, from: initialFrom }: { wf: Workflow; from: number }) {
+function RunDialog({ wf, from: initialFrom, requestedBy }: { wf: Workflow; from: number; requestedBy?: string }) {
   const config = useConfig((s) => s.snapshot?.config);
   const [from, setFrom] = useState(initialFrom);
   const [script, setScript] = useState<string | null>(null);
@@ -59,8 +59,11 @@ function RunDialog({ wf, from: initialFrom }: { wf: Workflow; from: number }) {
 
   const run = () => {
     if (!ok) return;
+    // Asked for (Claude): it's told the run started, and follows it.
+    const request = useWorkflows.getState().running?.request;
+    const tabId = runWorkflow(wf, from);
+    request?.start(tabId);
     close();
-    runWorkflow(wf, from);
   };
 
   return (
@@ -74,6 +77,11 @@ function RunDialog({ wf, from: initialFrom }: { wf: Workflow; from: number }) {
             <Pencil className="size-3.5" /> Edit
           </Btn>
         </div>
+        {requestedBy && (
+          <span className="rounded-md border border-primary/30 bg-primary/8 px-2.5 py-1.5 text-[12.5px] text-foreground">
+            <b>{requestedBy}</b> asked to run this. Run it to go ahead ({requestedBy} sees the result), or Cancel to tell {requestedBy} no.
+          </span>
+        )}
         <span className="text-[12.5px] text-muted-foreground">
           Runs in one terminal tab, top to bottom; answer prompts (passwords, questions) there. Steps at once and watches open their own panes
           beside it. The first step that fails stops it, and you can run again from that step. Click a step to start there.
