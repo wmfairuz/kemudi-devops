@@ -494,7 +494,34 @@ export interface Config {
   servers: Server[];
   terminal: TerminalSettings;
   editor: Editor | null;
+  /** What every server should have (Settings ▸ Server baseline). */
+  baseline: Baseline | null;
 }
+
+export interface BaselineRepo {
+  /** Its folder under `dir`. */
+  name: string;
+  url: string;
+}
+
+export interface Baseline {
+  dir: string;
+  repos: BaselineRepo[];
+  /** Lines root's ~/.bashrc must have. */
+  bashrc: string[];
+}
+
+export interface BaselineStatus {
+  repos: { name: string; state: "ok" | "behind" | "ahead" | "missing" | "notgit" | "unknown"; at: string | null }[];
+  /** present null: root's ~/.bashrc couldn't be read. */
+  lines: { line: string; present: boolean | null }[];
+  complete: boolean;
+}
+
+export const baselineSave = (baseline: Baseline): Promise<ConfigSnapshot> => invoke("baseline_save", { baseline });
+/** Read-only; an AWS server's `instance` (else its first). */
+export const baselineCheck = (serverId: string, instance: string | null = null): Promise<BaselineStatus> =>
+  invoke("baseline_check", { serverId, instance });
 
 export interface Diag {
   message: string;

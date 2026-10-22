@@ -27,6 +27,35 @@ pub struct RawConfig {
     /// pauses) run one after another in one terminal tab.
     #[serde(default)]
     pub workflows: Vec<RawWorkflow>,
+    /// What every server should have: repos cloned into one folder, and
+    /// lines in root's ~/.bashrc (Settings ▸ Server baseline).
+    pub baseline: Option<Baseline>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Baseline {
+    /// Where the repos go (`/opt/www` by default; created when missing).
+    #[serde(default = "opt_www")]
+    pub dir: String,
+    #[serde(default)]
+    pub repos: Vec<BaselineRepo>,
+    /// Lines root's ~/.bashrc must have (added when missing), e.g. an alias.
+    #[serde(default)]
+    pub bashrc: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BaselineRepo {
+    /// Its folder under `dir`.
+    pub name: String,
+    /// What `git clone` gets.
+    pub url: String,
+}
+
+fn opt_www() -> String {
+    "/opt/www".into()
 }
 
 #[derive(Debug, Deserialize)]
@@ -412,6 +441,7 @@ pub struct Config {
     pub terminal: TerminalSettings,
     pub editor: Option<Editor>,
     pub workflows: Vec<Workflow>,
+    pub baseline: Option<Baseline>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]

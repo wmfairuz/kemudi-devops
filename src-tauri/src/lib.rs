@@ -1,6 +1,7 @@
 mod actions;
 mod app_inspect;
 mod audit;
+mod baseline;
 mod certs;
 mod config;
 mod discover;
@@ -150,6 +151,8 @@ pub fn run() {
             config::action_forms::action_add,
             config::action_forms::action_remove,
             config::settings_form::settings_save,
+            config::settings_form::baseline_save,
+            baseline::baseline_check,
             ssh_hosts::ssh_host_info,
             ssh_hosts::ssh_host_save,
             ssh_hosts::ssh_keys,

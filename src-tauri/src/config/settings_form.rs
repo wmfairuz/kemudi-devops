@@ -6,7 +6,7 @@ use tauri::{AppHandle, State};
 
 use super::commands::save;
 use super::locate::{set_map_key, set_top_key, yaml_scalar};
-use super::schema::{Editor, TerminalSettings};
+use super::schema::{Baseline, BaselineRepo, Editor, TerminalSettings};
 use super::Snapshot;
 use crate::error::{AppError, AppResult};
 use crate::AppState;
@@ -122,4 +122,84 @@ pub async fn settings_save(
         ));
     }
     save(&app, &state, &path, &edited)
+}
+
+/// Settings ▸ Server baseline: saved as one `baseline:` line (none: the
+/// key goes).
+#[tauri::command]
+pub async fn baseline_save(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    baseline: Baseline,
+) -> AppResult<Snapshot> {
+    let b = Baseline {
+        dir: baseline.dir.trim().trim_end_matches('/').to_string(),
+        repos: baseline
+            .repos
+            .iter()
+            .map(|r| BaselineRepo { name: r.name.trim().to_string(), url: r.url.trim().to_string() })
+            .collect(),
+        bashrc: baseline
+            .bashrc
+            .iter()
+            .map(|l| l.trim_end().to_string())
+            .filter(|l| !l.trim().is_empty())
+            .collect(),
+    };
+    let empty = b.repos.is_empty() && b.bashrc.is_empty();
+    if !empty {
+        if let Some(p) = crate::baseline::problems(&b).first() {
+            return Err(AppError::Invalid(p.clone()));
+        }
+    }
+    let value = (!empty).then(|| baseline_yaml(&b));
+    let path = state.config.path().clone();
+    let source = std::fs::read_to_string(&path)?;
+    let edited = set_top_key(&source, "baseline", value.as_deref()).map_err(AppError::Invalid)?;
+    let out = super::validate::parse(&edited);
+    if let Some(e) = out.errors.first() {
+        return Err(AppError::Invalid(format!("not saved: {}", e.message)));
+    }
+    let ok = out.config.is_some_and(|c| if empty { c.baseline.is_none() } else { c.baseline.as_ref() == Some(&b) });
+    if !ok {
+        return Err(AppError::Invalid("Kemudi couldn't save this change automatically".into()));
+    }
+    save(&app, &state, &path, &edited)
+}
+
+/// `{ dir: …, repos: [{ name: …, url: … }], bashrc: [ … ] }` on one line.
+fn baseline_yaml(b: &Baseline) -> String {
+    let repos: Vec<String> = b
+        .repos
+        .iter()
+        .map(|r| format!("{{ name: {}, url: {} }}", yaml_scalar(&r.name), yaml_scalar(&r.url)))
+        .collect();
+    let lines: Vec<String> = b.bashrc.iter().map(|l| yaml_scalar(l)).collect();
+    format!(
+        "{{ dir: {}, repos: [{}], bashrc: [{}] }}",
+        yaml_scalar(&b.dir),
+        repos.join(", "),
+        lines.join(", ")
+    )
+}
+
+#[cfg(test)]
+mod baseline_tests {
+    use super::*;
+
+    #[test]
+    fn baseline_round_trips() {
+        let b = Baseline {
+            dir: "/opt/www".into(),
+            repos: vec![
+                BaselineRepo { name: "server-helper".into(), url: "https://example.com/acme/server-helper.git".into() },
+                BaselineRepo { name: "laravel-helper".into(), url: "git@example.com:acme/laravel-helper.git".into() },
+            ],
+            bashrc: vec!["alias deploy='/opt/www/laravel-helper/laravel-helper -uifr -d'".into(), "export A=\"b c\" # note".into()],
+        };
+        let src = format!("servers: []\nbaseline: {}\n", baseline_yaml(&b));
+        let out = super::super::validate::parse(&src);
+        assert!(out.errors.is_empty(), "{:?}\n{src}", out.errors);
+        assert_eq!(out.config.expect("config").baseline, Some(b));
+    }
 }

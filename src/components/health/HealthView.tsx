@@ -2,6 +2,7 @@ import { RotateCw, ShieldAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Btn } from "@/components/kit/Btn";
+import { BaselineSection } from "@/components/baseline/Baseline";
 import { EnvTag } from "@/components/kit/EnvTag";
 import { certsList, errorMessage, healthCheck, healthComposerAudit, openUrl, type CertbotCert, type ComposerAudit, type Health, type HealthCert } from "@/lib/ipc";
 import { CertRenewDialog } from "./CertRenewDialog";
@@ -236,6 +237,7 @@ export function HealthView({ tab, visible }: { tab: Tab; visible: boolean }) {
                 </div>
               </Section>
             )}
+            {server && <BaselineSection server={server} instance={tab.instance ?? null} />}
             <Section
               title="SSL certificates"
               extra={

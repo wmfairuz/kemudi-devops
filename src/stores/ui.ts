@@ -38,7 +38,7 @@ function storedWidth(): number {
 
 import type { ActionRef, Confirm, Env } from "@/lib/ipc";
 
-export type Overlay = "none" | "ssh" | "environment" | "palette" | "settings" | "passwords";
+export type Overlay = "none" | "ssh" | "environment" | "palette" | "settings" | "passwords" | "baseline";
 
 /** Right-click menu on an action button (for that one action). */
 export interface ActionMenu {

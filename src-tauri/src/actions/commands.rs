@@ -94,6 +94,27 @@ fn plain_name(s: &str) -> bool {
 /// Built-in actions offered outside servers.yaml (from Inspect), e.g.
 /// `supervisor-restart:<program>`. Treated as danger: prod asks for the
 /// server name, like any danger action.
+/// `builtin`, plus those made from the config: `baseline` (Install /
+/// update baseline, from Settings ▸ Server baseline).
+pub fn builtin_for(config: &Config, id: &str) -> Option<Action> {
+    if id == "baseline" {
+        let b = config.baseline.as_ref()?;
+        return Some(Action {
+            id: id.to_string(),
+            label: "Install / update baseline".to_string(),
+            run: crate::baseline::install_script(b),
+            shared: false,
+            inherited: false,
+            team: None,
+            danger: false,
+            confirm: None,
+            kind: ActionKind::Ssh,
+            line: None,
+        });
+    }
+    builtin(id)
+}
+
 pub fn builtin(id: &str) -> Option<Action> {
     if let Some(cmd) = id.strip_prefix("laravel:") {
         // After a .env edit: a cached config ignores .env until re-cached.
@@ -328,7 +349,7 @@ pub fn render_action(
     // action called `supervisor-update`).
     let built = match lookup(config, r) {
         Ok(_) => None,
-        Err(_) => builtin(&r.action_id),
+        Err(_) => builtin_for(config, &r.action_id),
     };
     let (server, app, action) = match &built {
         Some(b) => {

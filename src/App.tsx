@@ -42,6 +42,7 @@ import { useSslAlerts } from "@/stores/sslAlerts";
 import { useStatus } from "@/stores/status";
 import { activeTab, DETAILS_ID, groupOf, HISTORY_ID, HOME_ID, SNIPPETS_ID, useTabs, WORKFLOWS_ID } from "@/stores/tabs";
 import { WorkflowCards, WorkflowRuns } from "@/components/workflows/WorkflowRuns";
+import { BaselineDialog } from "@/components/baseline/Baseline";
 
 export default function App() {
   const active = useTabs(activeTab);
@@ -146,6 +147,7 @@ export default function App() {
       <PasswordsDialog />
       <FillPicker />
       <SettingsDialog />
+      <BaselineDialog />
       <ActionDialogs />
       <ActionMenu />
       <EntityMenu />

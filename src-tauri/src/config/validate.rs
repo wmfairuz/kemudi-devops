@@ -57,6 +57,7 @@ pub fn parse(source: &str) -> Outcome {
             terminal: TerminalSettings::default(),
             editor: None,
             workflows: vec![],
+            baseline: None,
         }
     } else {
         match serde_norway::from_str(source) {
@@ -471,12 +472,23 @@ impl Validator<'_> {
             servers.push(self.resolve_server(rs, &path, &inherited_apps, &server_base));
         }
         let workflows = self.resolve_workflows(raw.workflows, &servers);
+        // A baseline with a mistake isn't used (nothing is checked or
+        // installed from it) until it's fixed.
+        let baseline = raw.baseline.and_then(|b| {
+            let problems = crate::baseline::problems(&b);
+            let line = self.find("baseline", "", 0);
+            for p in &problems {
+                self.error(Diag::new(format!("baseline: {p}")).at(line).path("baseline"));
+            }
+            problems.is_empty().then_some(b)
+        });
         Config {
             teams,
             servers,
             terminal: raw.terminal,
             editor: raw.editor,
             workflows,
+            baseline,
         }
     }
 
