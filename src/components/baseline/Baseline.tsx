@@ -11,6 +11,7 @@ import { isAsg } from "@/lib/fleet";
 import { asgInstances, baselineCheck, baselineInstall, baselineSave, errorMessage, type Baseline, type BaselineInstall, type BaselineStatus, type Server } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { useConfig } from "@/stores/config";
+import { useCurrentTeam, useTeamServers } from "@/stores/team";
 import { askConfirm } from "@/stores/confirm";
 import { toastError, useToasts } from "@/stores/toasts";
 
@@ -174,7 +175,7 @@ function ResultView({ r, server }: { r: Result; server: Server }) {
       )}
       {typeof r.status === "string" ? (
         <span className="text-env-prod-fg">{r.status}</span>
-      ) : r.status.complete && r.status.repos.every((x) => x.state === "ok") ? (
+      ) : r.status.complete && r.status.repos.every((x) => x.state === "ok") && r.status.lines.every((l) => l.present === true && l.count <= 1) ? (
         <span className="text-[#17702a]">✓ all there, up to date</span>
       ) : (
         <BaselineChips status={r.status} />
@@ -238,7 +239,9 @@ const blank: Baseline = { dir: "/opt/www", repos: [], bashrc: [] };
 export function BaselineView() {
   const config = useConfig((s) => s.snapshot?.config);
   const saved = config?.baseline ?? null;
-  const servers = config?.servers ?? [];
+  // The team in front (the sidebar's switcher), like the sidebar and Home.
+  const servers = useTeamServers();
+  const team = useCurrentTeam();
   const [dir, setDir] = useState(saved?.dir ?? blank.dir);
   const [repos, setRepos] = useState(saved?.repos.length ? saved.repos : [{ name: "", url: "" }]);
   const [lines, setLines] = useState((saved?.bashrc ?? []).join("\n"));
@@ -346,7 +349,10 @@ export function BaselineView() {
 
           <div className="flex items-center gap-2 border-t border-divider pt-4">
             <span className="text-[13px] font-semibold">Servers</span>
-            <span className="text-[12px] text-subtle-foreground">{dirty ? "save first to check against these changes" : "AWS servers: each instance"}</span>
+            <span className="text-[12px] text-subtle-foreground">
+              {team ? `${team.name} · ` : ""}
+              {servers.length} · {dirty ? "save first to check against these changes" : "AWS servers: each instance"}
+            </span>
             <span className="flex-1" />
             <Btn size="sm" variant="outline" disabled={!saved || dirty} onClick={() => void checkAll()}>
               <RotateCw className="size-3" /> Check all servers

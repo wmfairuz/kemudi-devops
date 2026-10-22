@@ -602,7 +602,8 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   can't be read without a password). An `alias NAME=…` line is matched by
   its name: a server with its own, different `alias NAME` keeps it (shown as
   *your own … (kept)*; Install never adds a second one), and two
-  definitions are flagged (the last one wins). AWS servers are checked on each
+  definitions are flagged (the last one wins). The servers listed (and
+  checked by *Check all servers*) are the team in front, like the sidebar. AWS servers are checked on each
   instance. *Install / update* runs as root in the background, no terminal
   (production asks first; AWS servers: on each instance through Run
   Command): clones what's missing, `git pull --ff-only` what's there (local
