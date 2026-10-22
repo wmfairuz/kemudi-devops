@@ -35,14 +35,20 @@ function items(s: BaselineStatus): Item[] {
         return { text: `${r.name} ✓${at} (couldn't ask its remote)`, tone: "dim" };
     }
   });
+  const cut = (t: string) => (t.length > 48 ? `${t.slice(0, 46)}…` : t);
   for (const l of s.lines) {
-    const short = l.line.length > 48 ? `${l.line.slice(0, 46)}…` : l.line;
+    const short = cut(l.line);
+    const name = /^\s*alias\s+([\w-]+)=/.exec(l.line)?.[1];
     out.push(
-      l.present === true
-        ? { text: `~/.bashrc: ${short} ✓`, tone: "ok" }
-        : l.present === false
-          ? { text: `~/.bashrc: missing ${short}`, tone: "bad" }
-          : { text: `~/.bashrc: couldn't read (needs root)`, tone: "dim" },
+      l.present === true && l.count > 1
+        ? { text: `~/.bashrc: alias ${name} defined ${l.count} times (the last one wins)`, tone: "warn" }
+        : l.present === true
+          ? { text: `~/.bashrc: ${short} ✓`, tone: "ok" }
+          : l.other
+            ? { text: `~/.bashrc: your own ${cut(l.other)} (kept)`, tone: "dim" }
+            : l.present === false
+              ? { text: `~/.bashrc: missing ${short}`, tone: "bad" }
+              : { text: `~/.bashrc: couldn't read (needs root)`, tone: "dim" },
     );
   }
   return out;

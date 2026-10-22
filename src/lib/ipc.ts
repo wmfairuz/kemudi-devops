@@ -514,7 +514,14 @@ export interface Baseline {
 export interface BaselineStatus {
   repos: { name: string; state: "ok" | "behind" | "ahead" | "missing" | "notgit" | "unknown"; at: string | null }[];
   /** present null: root's ~/.bashrc couldn't be read. */
-  lines: { line: string; present: boolean | null }[];
+  lines: {
+    line: string;
+    present: boolean | null;
+    /** An alias line: your own, different definition (kept, counts as there). */
+    other: string | null;
+    /** Definitions of that alias (more than one: the last wins). */
+    count: number;
+  }[];
   complete: boolean;
 }
 

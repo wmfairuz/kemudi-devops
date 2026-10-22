@@ -46,6 +46,14 @@ pub fn problems(b: &Baseline) -> Vec<String> {
     out
 }
 
+/// `alias NAME=…` → NAME (letters, digits, - _): such a line is matched by
+/// the alias's name, not word for word.
+fn alias_name(line: &str) -> Option<&str> {
+    let rest = line.trim_start().strip_prefix("alias ")?.trim_start();
+    let (name, _) = rest.split_once('=')?;
+    (!name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')).then_some(name)
+}
+
 /// `asroot cmd…`: as root directly, else sudo (which may ask), else `sudo su -c`.
 const ROOT_FN: &str = r#"asroot(){ if [ "$(id -u)" = 0 ]; then "$@"; elif sudo -n true 2>/dev/null || ! sudo -n su -c true 2>/dev/null; then sudo "$@"; else sudo su -c "$*"; fi; }"#;
 
@@ -68,11 +76,27 @@ elif [ -e "$d" ]; then echo "state notgit"; else echo "state missing"; fi
         ));
     }
     s.push_str("echo @@bashrc\n");
+    if !b.bashrc.is_empty() {
+        // Root's ~/.bashrc, read once (into the shell, not sent back).
+        s.push_str("if [ -r /root/.bashrc ]; then RC=$(cat /root/.bashrc); rcok=1; elif sudo -n true 2>/dev/null; then RC=$(sudo -n cat /root/.bashrc); rcok=1; else rcok=0; fi\n");
+    }
     for (i, l) in b.bashrc.iter().enumerate() {
         let q = shell_quote(l);
-        s.push_str(&format!(
-            "if [ -r /root/.bashrc ]; then grep -qxF -- {q} /root/.bashrc && echo 'line {i} yes' || echo 'line {i} no'; elif sudo -n true 2>/dev/null; then sudo -n grep -qxF -- {q} /root/.bashrc && echo 'line {i} yes' || echo 'line {i} no'; else echo 'line {i} unknown'; fi\n"
-        ));
+        // An alias is matched by its name: a different definition is yours
+        // (kept), two of them: the last one wins.
+        let line = match alias_name(l) {
+            Some(name) => {
+                let re = shell_quote(&format!("^[[:space:]]*alias[[:space:]]+{name}="));
+                format!(
+                    r#"if [ $rcok = 0 ]; then echo 'line {i} unknown'; else n=$(printf '%s\n' "$RC" | grep -cE {re}); if printf '%s\n' "$RC" | grep -qxF -- {q}; then echo "line {i} yes $n"; elif [ "$n" -gt 0 ]; then echo "line {i} other $(printf '%s\n' "$RC" | grep -E {re} | tail -n1)"; else echo 'line {i} no'; fi; fi"#
+                )
+            }
+            None => format!(
+                r#"if [ $rcok = 0 ]; then echo 'line {i} unknown'; elif printf '%s\n' "$RC" | grep -qxF -- {q}; then echo 'line {i} yes 1'; else echo 'line {i} no'; fi"#
+            ),
+        };
+        s.push_str(&line);
+        s.push('\n');
     }
     s.push_str("echo @@end\n");
     s
@@ -96,6 +120,11 @@ pub struct LineStatus {
     pub line: String,
     /// None: couldn't read root's ~/.bashrc (no root, no passwordless sudo).
     pub present: Option<bool>,
+    /// An alias line: your own, different definition of that alias (kept).
+    pub other: Option<String>,
+    /// How many definitions of that alias there are (more than one: the
+    /// last wins).
+    pub count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -112,7 +141,11 @@ pub fn parse(b: &Baseline, out: &str) -> Result<BaselineStatus, String> {
         return Err("the check didn't finish".into());
     }
     let mut repos: Vec<RepoStatus> = Vec::new();
-    let mut lines: Vec<LineStatus> = b.bashrc.iter().map(|l| LineStatus { line: l.clone(), present: None }).collect();
+    let mut lines: Vec<LineStatus> = b
+        .bashrc
+        .iter()
+        .map(|l| LineStatus { line: l.clone(), present: None, other: None, count: 0 })
+        .collect();
     let mut cur: Option<usize> = None;
     for raw in out.lines() {
         let line = raw.trim_end_matches('\r');
@@ -126,20 +159,29 @@ pub fn parse(b: &Baseline, out: &str) -> Result<BaselineStatus, String> {
         } else if let (Some(i), Some(st)) = (cur, line.strip_prefix("state ")) {
             repos[i].state = st.trim().to_string();
         } else if let Some(rest) = line.strip_prefix("line ") {
-            let mut w = rest.split_whitespace();
+            let mut w = rest.splitn(3, ' ');
             if let (Some(Ok(i)), Some(v)) = (w.next().map(str::parse::<usize>), w.next()) {
+                let more = w.next().unwrap_or("").trim();
                 if let Some(l) = lines.get_mut(i) {
-                    l.present = match v {
-                        "yes" => Some(true),
-                        "no" => Some(false),
-                        _ => None,
-                    };
+                    match v {
+                        "yes" => {
+                            l.present = Some(true);
+                            l.count = more.parse().unwrap_or(1);
+                        }
+                        "no" => l.present = Some(false),
+                        "other" => {
+                            l.present = Some(false);
+                            l.other = Some(more.to_string()).filter(|o| !o.is_empty());
+                        }
+                        _ => l.present = None,
+                    }
                 }
             }
         }
     }
+    // Your own (different) definition of an alias counts as there.
     let complete = repos.iter().all(|r| matches!(r.state.as_str(), "ok" | "behind" | "ahead" | "unknown"))
-        && lines.iter().all(|l| l.present == Some(true));
+        && lines.iter().all(|l| l.present == Some(true) || l.other.is_some());
     Ok(BaselineStatus { repos, lines, complete })
 }
 
@@ -167,8 +209,16 @@ else echo "cloning into {d_plain}"; asroot git clone {url} {d} || bad=1; fi
     }
     for l in &b.bashrc {
         let q = shell_quote(l);
+        // Never a second definition of an alias you already have.
+        let other = match alias_name(l) {
+            Some(name) => format!(
+                r#"elif asroot grep -qE {re} /root/.bashrc 2>/dev/null; then echo "kept your own alias {name} (differs from the baseline)"; "#,
+                re = shell_quote(&format!("^[[:space:]]*alias[[:space:]]+{name}="))
+            ),
+            None => String::new(),
+        };
         s.push_str(&format!(
-            "if asroot grep -qxF -- {q} /root/.bashrc 2>/dev/null; then echo \"already there: \"{q}; else printf '%s\\n' {q} | asroot tee -a /root/.bashrc >/dev/null && echo \"added: \"{q} || bad=1; fi\n"
+            "if asroot grep -qxF -- {q} /root/.bashrc 2>/dev/null; then echo \"already there: \"{q}; {other}else printf '%s\\n' {q} | asroot tee -a /root/.bashrc >/dev/null && echo \"added: \"{q} || bad=1; fi\n"
         ));
     }
     s.push_str("[ $bad = 0 ] && printf '\\n\\033[32m✓ baseline in place\\033[0m\\n' || printf '\\n\\033[31m✗ not all of it worked (see above)\\033[0m\\n'\n[ $bad = 0 ]");
@@ -299,6 +349,48 @@ mod tests {
         .expect("render");
         assert_eq!(r.command, install_script(c.baseline.as_ref().expect("baseline")));
         assert!(r.server_wide);
+    }
+
+    /// An alias is matched by its name: your own definition is kept (never
+    /// a second one), and two definitions are reported.
+    #[test]
+    fn aliases_by_name() {
+        assert_eq!(alias_name("alias deploy='x -d'"), Some("deploy"));
+        assert_eq!(alias_name("export A=1"), None);
+        let b = Baseline {
+            dir: "/opt/www".into(),
+            repos: vec![],
+            bashrc: vec!["alias deploy='/opt/tools/run -uifr -d'".into()],
+        };
+        let t = std::env::temp_dir().join(format!("kemudi-alias-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&t);
+        std::fs::create_dir_all(&t).expect("dir");
+        let rc = t.join("bashrc");
+        let run = |script: &str| {
+            let script = format!("asroot(){{ \"$@\"; }}\nsudo(){{ return 1; }}\n{}", script.replace("/root/.bashrc", &rc.to_string_lossy()))
+                .replace(ROOT_FN, "");
+            let out = std::process::Command::new("bash").args(["-c", &script]).output().expect("bash");
+            String::from_utf8_lossy(&out.stdout).to_string()
+        };
+        // Yours differs: kept, and the check says so (not "missing").
+        std::fs::write(&rc, "alias deploy='/opt/tools/run -uifrc -d'\n").expect("rc");
+        let st = parse(&b, &run(&check_script(&b))).expect("parse");
+        assert_eq!(st.lines[0].present, Some(false));
+        assert_eq!(st.lines[0].other.as_deref(), Some("alias deploy='/opt/tools/run -uifrc -d'"));
+        assert!(st.complete);
+        let out = run(&install_script(&b));
+        assert!(out.contains("kept your own alias deploy"), "{out}");
+        assert_eq!(std::fs::read_to_string(&rc).expect("rc").matches("alias deploy").count(), 1);
+        // Both: reported (the last one wins).
+        std::fs::write(&rc, "alias deploy='/opt/tools/run -uifrc -d'\nalias deploy='/opt/tools/run -uifr -d'\n").expect("rc");
+        let st = parse(&b, &run(&check_script(&b))).expect("parse");
+        assert_eq!((st.lines[0].present, st.lines[0].count), (Some(true), 2));
+        // None: added.
+        std::fs::write(&rc, "# rc\n").expect("rc");
+        assert!(run(&install_script(&b)).contains("added: "));
+        let st = parse(&b, &run(&check_script(&b))).expect("parse");
+        assert_eq!((st.lines[0].present, st.lines[0].count), (Some(true), 1));
+        let _ = std::fs::remove_dir_all(&t);
     }
 
     #[test]
