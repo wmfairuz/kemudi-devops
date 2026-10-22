@@ -27,22 +27,21 @@ function differs(a: string, b: string): [string, string] {
   return [tail(a), tail(b)];
 }
 
-/** The aliases a check found yours (different, or defined twice), as
- *  "here vs baseline" lines for the Replace question. */
-function ownAliases(statuses: (BaselineStatus | string)[]): string[] {
-  const out = new Set<string>();
+/** The aliases a check found yours (different, or defined twice): each
+ *  with its line here and the baseline's, for the Replace question. */
+function ownAliases(statuses: (BaselineStatus | string)[]): { name: string; text: string }[] {
+  const out = new Map<string, string>();
   for (const st of statuses) {
     if (typeof st === "string") continue;
     for (const l of st.lines) {
       const name = /^\s*alias\s+([\w-]+)=/.exec(l.line)?.[1];
       if (!name) continue;
-      if (l.other) {
-        const [here, base] = differs(l.other, l.line);
-        out.add(`alias ${name}: here ${here}, baseline ${base}`);
-      } else if (l.present && l.count > 1) out.add(`alias ${name}: defined ${l.count} times (the last one wins)`);
+      if (l.other) out.set(`${name}\n${l.other}`, `here:     ${l.other}\nbaseline: ${l.line}`);
+      else if (l.present && l.count > 1)
+        out.set(`${name}\n#${l.count}`, `alias ${name} is defined ${l.count} times (the last one wins); the baseline's:\n          ${l.line}`);
     }
   }
-  return [...out];
+  return [...out.entries()].map(([k, text]) => ({ name: k.split("\n")[0]!, text }));
 }
 
 function items(s: BaselineStatus): Item[] {
@@ -159,13 +158,15 @@ async function installServer(s: Server): Promise<void> {
     // Aliases of its own: replace them with the baseline's, or keep them?
     const before = await Promise.all(list.map((i) => baselineCheck(s.id, i).catch((e: unknown) => errorMessage(e))));
     const own = ownAliases(before);
+    const names = [...new Set(own.map((o) => o.name))];
     const replace =
       own.length > 0 &&
       (await askChoice(
-        `Replace ${s.name}'s alias${own.length > 1 ? "es" : ""} with the baseline's?`,
-        `${own.join("\n")}\n\nReplace: root's ~/.bashrc is backed up, then the baseline's line takes the place of yours. Keep mine: everything else is installed, the alias stays as it is.`,
+        `Replace ${s.name}'s ${names.map((n) => `alias ${n}`).join(", ")} with the baseline's?`,
+        "Replace: root's ~/.bashrc is backed up, every definition of the alias goes and the baseline's line is added. Keep mine: everything else is installed and the alias stays as it is.",
         "Replace",
         "Keep mine",
+        own.map((o) => o.text).join("\n\n"),
       ));
     results = await Promise.all(
       list.map(async (instance) => {

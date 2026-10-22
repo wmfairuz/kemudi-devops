@@ -19,11 +19,16 @@ function Ask() {
     ask.resolve(ok, typed);
   };
   return (
-    <Modal open onOpenChange={(o) => !o && done(false)} title={ask.title} width={440}>
+    <Modal open onOpenChange={(o) => !o && done(false)} title={ask.title} width={ask.detail ? 680 : 440}>
       <ModalHeader>
         <span className="text-[15px] font-semibold">{ask.title}</span>
         <span className="text-[12.5px] leading-5 whitespace-pre-line text-muted-foreground">{ask.message}</span>
       </ModalHeader>
+      {ask.detail && (
+        <pre className="selectable mx-5 mb-4 overflow-x-auto rounded-lg border border-divider bg-hover/50 px-3 py-2 font-mono text-[12px] leading-5 whitespace-pre text-foreground">
+          {ask.detail}
+        </pre>
+      )}
       {ask.input && (
         <div className="px-5 pb-4">
           <input

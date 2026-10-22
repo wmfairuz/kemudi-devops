@@ -9,6 +9,8 @@ interface Ask {
   cancel?: string;
   /** Confirm isn't dangerous (not red). */
   plain?: boolean;
+  /** Shown as is, in a monospaced block (e.g. two lines to compare). */
+  detail?: string;
   /** `typed`: what was typed (askText). */
   resolve: (ok: boolean, typed?: string) => void;
   /** A text to type (askText): its starting value and suggestions. */
@@ -24,8 +26,8 @@ export function askConfirm(title: string, message: string, confirm = "Delete"): 
 
 /** Two ways forward (e.g. Replace / Keep mine): true for `confirm`,
  *  false for `cancel` (also esc). */
-export function askChoice(title: string, message: string, confirm: string, cancel: string): Promise<boolean> {
-  return new Promise((resolve) => useConfirm.setState({ ask: { title, message, confirm, cancel, plain: true, resolve } }));
+export function askChoice(title: string, message: string, confirm: string, cancel: string, detail?: string): Promise<boolean> {
+  return new Promise((resolve) => useConfirm.setState({ ask: { title, message, confirm, cancel, plain: true, detail, resolve } }));
 }
 
 /** A name to type (rename, new group…): the text, or null if cancelled. */
