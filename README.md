@@ -600,9 +600,13 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   has newer commits on its remote (asked with `git ls-remote`, nothing
   fetched), and each line is there or not (unknown when root's `~/.bashrc`
   can't be read without a password). An `alias NAME=…` line is matched by
-  its name: a server with its own, different `alias NAME` keeps it (shown as
-  *your own … (kept)*; Install never adds a second one), and two
-  definitions are flagged (the last one wins). The servers listed (and
+  its name: a server's own, different `alias NAME` is shown with what
+  differs (*here …-uifr -d' · baseline …-uifrc -d'*), and two definitions
+  are flagged (the last one wins). Install asks first when it finds one:
+  **Replace** (root's `~/.bashrc` is backed up to
+  `~/.bashrc.kemudi-backup-<time>`, every definition of that alias goes and
+  the baseline's line is added) or **Keep mine** (the rest is installed, the
+  alias stays). The servers listed (and
   checked by *Check all servers*) are the team in front, like the sidebar. AWS servers are checked on each
   instance. *Install / update* runs as root in the background, no terminal
   (production asks first; AWS servers: on each instance through Run

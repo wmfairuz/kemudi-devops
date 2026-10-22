@@ -189,6 +189,13 @@ pub fn parse(b: &Baseline, out: &str) -> Result<BaselineStatus, String> {
 /// changes on a server stop it, nothing is overwritten), add missing lines
 /// to root's ~/.bashrc. Ends non-zero if anything didn't work.
 pub fn install_script(b: &Baseline) -> String {
+    install_script_with(b, false)
+}
+
+/// `install_script`; `replace`: where an alias is yours (different, or
+/// defined twice), swap it for the baseline's (root's ~/.bashrc backed up
+/// first) instead of keeping it.
+pub fn install_script_with(b: &Baseline, replace: bool) -> String {
     let dir = b.dir.trim_end_matches('/');
     let mut s = format!("{ROOT_FN}\nbad=0\nasroot mkdir -p {}\n", shell_quote(dir));
     for r in &b.repos {
@@ -209,17 +216,29 @@ else echo "cloning into {d_plain}"; asroot git clone {url} {d} || bad=1; fi
     }
     for l in &b.bashrc {
         let q = shell_quote(l);
-        // Never a second definition of an alias you already have.
-        let other = match alias_name(l) {
-            Some(name) => format!(
-                r#"elif asroot grep -qE {re} /root/.bashrc 2>/dev/null; then echo "kept your own alias {name} (differs from the baseline)"; "#,
-                re = shell_quote(&format!("^[[:space:]]*alias[[:space:]]+{name}="))
-            ),
-            None => String::new(),
+        let added = format!("printf '%s\\n' {q} | asroot tee -a /root/.bashrc >/dev/null && echo \"added: \"{q} || bad=1");
+        let Some(name) = alias_name(l) else {
+            s.push_str(&format!(
+                "if asroot grep -qxF -- {q} /root/.bashrc 2>/dev/null; then echo \"already there: \"{q}; else {added}; fi\n"
+            ));
+            continue;
         };
-        s.push_str(&format!(
-            "if asroot grep -qxF -- {q} /root/.bashrc 2>/dev/null; then echo \"already there: \"{q}; {other}else printf '%s\\n' {q} | asroot tee -a /root/.bashrc >/dev/null && echo \"added: \"{q} || bad=1; fi\n"
-        ));
+        let re = shell_quote(&format!("^[[:space:]]*alias[[:space:]]+{name}="));
+        if replace {
+            // Yours (all of them) out, the baseline's in; a backup first.
+            s.push_str(&format!(
+                r#"n=$(asroot grep -cE {re} /root/.bashrc 2>/dev/null); n=${{n:-0}}
+if asroot grep -qxF -- {q} /root/.bashrc 2>/dev/null && [ "$n" -le 1 ]; then echo "already there: "{q}
+elif [ "$n" -gt 0 ]; then bk=/root/.bashrc.kemudi-backup-$(date +%Y%m%d-%H%M%S); asroot cp /root/.bashrc "$bk" && asroot sh -c 'grep -vE "$1" /root/.bashrc > /root/.bashrc.kemudi-new; cat /root/.bashrc.kemudi-new > /root/.bashrc; rm -f /root/.bashrc.kemudi-new' _ {re} && printf '%s\n' {q} | asroot tee -a /root/.bashrc >/dev/null && echo "replaced alias {name} with the baseline's (backup: $bk)" || bad=1
+else {added}; fi
+"#
+            ));
+        } else {
+            // Never a second definition of an alias you already have.
+            s.push_str(&format!(
+                "if asroot grep -qxF -- {q} /root/.bashrc 2>/dev/null; then echo \"already there: \"{q}; elif asroot grep -qE {re} /root/.bashrc 2>/dev/null; then echo \"kept your own alias {name} (differs from the baseline)\"; else {added}; fi\n"
+            ));
+        }
     }
     s.push_str("[ $bad = 0 ] && printf '\\n\\033[32m✓ baseline in place\\033[0m\\n' || printf '\\n\\033[31m✗ not all of it worked (see above)\\033[0m\\n'\n[ $bad = 0 ]");
     s
@@ -266,6 +285,8 @@ pub async fn baseline_install(
     state: State<'_, AppState>,
     server_id: String,
     instance: Option<String>,
+    // Swap aliases that differ for the baseline's (asked first).
+    replace: Option<bool>,
 ) -> AppResult<InstallResult> {
     let b = state
         .config
@@ -273,7 +294,7 @@ pub async fn baseline_install(
         .and_then(|c| c.baseline.clone())
         .ok_or_else(|| AppError::Invalid("no server baseline set up yet (Settings ▸ Server baseline)".into()))?;
     // Always ends with its exit code, so a failure still hands back what it said.
-    let script = format!("{}\necho \"@@exit $?\"\n", install_script(&b));
+    let script = format!("{}\necho \"@@exit $?\"\n", install_script_with(&b, replace.unwrap_or(false)));
     let out = crate::monitor::run_on(&state, &server_id, instance.as_deref(), &script, 300).await?;
     let output = plain(&out);
     let ok = output.lines().any(|l| l.trim() == "@@exit 0");
@@ -385,6 +406,17 @@ mod tests {
         std::fs::write(&rc, "alias deploy='/opt/tools/run -uifrc -d'\nalias deploy='/opt/tools/run -uifr -d'\n").expect("rc");
         let st = parse(&b, &run(&check_script(&b))).expect("parse");
         assert_eq!((st.lines[0].present, st.lines[0].count), (Some(true), 2));
+        // Replace: yours (both definitions) out, the baseline's in, a backup kept.
+        std::fs::write(&rc, "# top\nalias deploy='/opt/tools/run -uifrc -d'\nalias ll='ls -l'\nalias deploy='/opt/tools/run -uifr -d'\n").expect("rc");
+        let out = run(&install_script_with(&b, true));
+        assert!(out.contains("replaced alias deploy"), "{out}");
+        let after = std::fs::read_to_string(&rc).expect("rc");
+        assert_eq!(after.matches("alias deploy").count(), 1, "{after}");
+        assert!(after.contains("alias deploy='/opt/tools/run -uifr -d'") && after.contains("alias ll='ls -l'") && after.starts_with("# top"), "{after}");
+        let backups = std::fs::read_dir(&t).expect("dir").filter(|e| e.as_ref().is_ok_and(|e| e.file_name().to_string_lossy().contains("kemudi-backup"))).count();
+        assert_eq!(backups, 1);
+        // Already just the baseline's: nothing to replace.
+        assert!(run(&install_script_with(&b, true)).contains("already there"));
         // None: added.
         std::fs::write(&rc, "# rc\n").expect("rc");
         assert!(run(&install_script(&b)).contains("added: "));

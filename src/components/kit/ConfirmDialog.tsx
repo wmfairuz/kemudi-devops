@@ -22,7 +22,7 @@ function Ask() {
     <Modal open onOpenChange={(o) => !o && done(false)} title={ask.title} width={440}>
       <ModalHeader>
         <span className="text-[15px] font-semibold">{ask.title}</span>
-        <span className="text-[12.5px] leading-5 text-muted-foreground">{ask.message}</span>
+        <span className="text-[12.5px] leading-5 whitespace-pre-line text-muted-foreground">{ask.message}</span>
       </ModalHeader>
       {ask.input && (
         <div className="px-5 pb-4">
@@ -45,9 +45,9 @@ function Ask() {
       <ModalFooter>
         <span className="flex-1" />
         <Btn variant="outline" className="pr-2.5" onClick={() => done(false)}>
-          Cancel <Hint>esc</Hint>
+          {ask.cancel ?? "Cancel"} <Hint>esc</Hint>
         </Btn>
-        <Btn autoFocus={!ask.input} variant={ask.input ? "primary" : "danger"} disabled={!!ask.input && !typed.trim()} onClick={() => done(true)}>
+        <Btn autoFocus={!ask.input} variant={ask.input || ask.plain ? "primary" : "danger"} disabled={!!ask.input && !typed.trim()} onClick={() => done(true)}>
           {ask.confirm}
         </Btn>
       </ModalFooter>

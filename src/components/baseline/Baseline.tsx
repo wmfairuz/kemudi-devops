@@ -12,11 +12,38 @@ import { asgInstances, baselineCheck, baselineInstall, baselineSave, errorMessag
 import { cn } from "@/lib/utils";
 import { useConfig } from "@/stores/config";
 import { useCurrentTeam, useTeamServers } from "@/stores/team";
-import { askConfirm } from "@/stores/confirm";
+import { askChoice, askConfirm } from "@/stores/confirm";
 import { toastError, useToasts } from "@/stores/toasts";
 
 /** What it says about one repo or line, and how worrying. */
-type Item = { text: string; tone: "ok" | "warn" | "bad" | "dim" };
+type Item = { text: string; tone: "ok" | "warn" | "bad" | "dim"; title?: string };
+
+/** Where two lines part: "…-uifr -d'" vs "…-uifrc -d'" (from a word start). */
+function differs(a: string, b: string): [string, string] {
+  let p = 0;
+  while (p < a.length && p < b.length && a[p] === b[p]) p++;
+  while (p > 0 && !/[\s/'"=]/.test(a[p - 1]!)) p--;
+  const tail = (x: string) => (p > 0 ? "…" : "") + x.slice(p);
+  return [tail(a), tail(b)];
+}
+
+/** The aliases a check found yours (different, or defined twice), as
+ *  "here vs baseline" lines for the Replace question. */
+function ownAliases(statuses: (BaselineStatus | string)[]): string[] {
+  const out = new Set<string>();
+  for (const st of statuses) {
+    if (typeof st === "string") continue;
+    for (const l of st.lines) {
+      const name = /^\s*alias\s+([\w-]+)=/.exec(l.line)?.[1];
+      if (!name) continue;
+      if (l.other) {
+        const [here, base] = differs(l.other, l.line);
+        out.add(`alias ${name}: here ${here}, baseline ${base}`);
+      } else if (l.present && l.count > 1) out.add(`alias ${name}: defined ${l.count} times (the last one wins)`);
+    }
+  }
+  return [...out];
+}
 
 function items(s: BaselineStatus): Item[] {
   const out: Item[] = s.repos.map((r) => {
@@ -46,7 +73,10 @@ function items(s: BaselineStatus): Item[] {
         : l.present === true
           ? { text: `~/.bashrc: ${short} ✓`, tone: "ok" }
           : l.other
-            ? { text: `~/.bashrc: your own ${cut(l.other)} (kept)`, tone: "dim" }
+            ? (() => {
+                const [here, base] = differs(l.other, l.line);
+                return { text: `~/.bashrc: alias ${name} here ${here} · baseline ${base} (kept)`, tone: "warn" as const, title: `here:     ${l.other}\nbaseline: ${l.line}` };
+              })()
             : l.present === false
               ? { text: `~/.bashrc: missing ${short}`, tone: "bad" }
               : { text: `~/.bashrc: couldn't read (needs root)`, tone: "dim" },
@@ -66,7 +96,7 @@ export function BaselineChips({ status }: { status: BaselineStatus }) {
   return (
     <span className="flex flex-wrap gap-1">
       {items(status).map((it) => (
-        <span key={it.text} className={cn("rounded-md border px-1.5 py-px font-mono text-[11px]", TONE[it.tone])}>
+        <span key={it.text} title={it.title} className={cn("rounded-md border px-1.5 py-px font-mono text-[11px]", TONE[it.tone])}>
           {it.text}
         </span>
       ))}
@@ -125,9 +155,21 @@ async function installServer(s: Server): Promise<void> {
   setRow(s.id, { state: "installing" });
   let results: Result[];
   try {
+    const list = await targets(s);
+    // Aliases of its own: replace them with the baseline's, or keep them?
+    const before = await Promise.all(list.map((i) => baselineCheck(s.id, i).catch((e: unknown) => errorMessage(e))));
+    const own = ownAliases(before);
+    const replace =
+      own.length > 0 &&
+      (await askChoice(
+        `Replace ${s.name}'s alias${own.length > 1 ? "es" : ""} with the baseline's?`,
+        `${own.join("\n")}\n\nReplace: root's ~/.bashrc is backed up, then the baseline's line takes the place of yours. Keep mine: everything else is installed, the alias stays as it is.`,
+        "Replace",
+        "Keep mine",
+      ));
     results = await Promise.all(
-      (await targets(s)).map(async (instance) => {
-        const install = await baselineInstall(s.id, instance).catch(
+      list.map(async (instance) => {
+        const install = await baselineInstall(s.id, instance, replace).catch(
           (e: unknown): BaselineInstall => ({ ok: false, output: errorMessage(e), needsPassword: false }),
         );
         const status = await baselineCheck(s.id, instance).catch((e: unknown) => errorMessage(e));

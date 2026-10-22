@@ -533,8 +533,9 @@ export interface BaselineInstall {
   needsPassword: boolean;
 }
 /** Install / update without a terminal (an AWS server's `instance`). */
-export const baselineInstall = (serverId: string, instance: string | null = null): Promise<BaselineInstall> =>
-  invoke("baseline_install", { serverId, instance });
+/** `replace`: swap aliases that differ for the baseline's (asked first). */
+export const baselineInstall = (serverId: string, instance: string | null = null, replace = false): Promise<BaselineInstall> =>
+  invoke("baseline_install", { serverId, instance, replace });
 /** Read-only; an AWS server's `instance` (else its first). */
 export const baselineCheck = (serverId: string, instance: string | null = null): Promise<BaselineStatus> =>
   invoke("baseline_check", { serverId, instance });
