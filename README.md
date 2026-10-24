@@ -605,10 +605,13 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   run id), `get_run`, `recent_runs`. `kemudi --mcp` talks to the running
   Kemudi app through a private Unix socket in its data folder (mode 600; no
   network). Runs start in the Workflows tab like any other: you watch them,
-  answer their prompts, can stop them. One that touches production brings
-  Kemudi to the front with its run dialog ("Claude asked to run this"):
-  type the name and Run, or Cancel, and Claude is told no. With Kemudi
-  closed, Claude is told to open it.
+  answer their prompts, can stop them. One that touches production needs
+  your confirmation, where Settings ▸ Claude (MCP) says: **in Kemudi** (the
+  default: Kemudi comes to the front with its run dialog, "Claude asked to
+  run this"; type the name and Run, or Cancel, and Claude is told no) or
+  **in Claude** (Claude is told which name to ask for, e.g. "Sabiq Prod" or
+  SP, asks you in the chat and passes what you typed as `confirm`; Kemudi
+  runs it only if it matches). With Kemudi closed, Claude is told to open it.
 - **Server baseline** (View ▸ Server Baseline ⇧⌘B, Settings ▸ Server
   baseline…, or ⌘K: a pinned **Baseline** tab; ⌘W closes it): what every server should have: git repos cloned into one folder (`/opt/www` by
   default, created when missing) and lines in root's `~/.bashrc` (e.g. an

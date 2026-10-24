@@ -41,7 +41,7 @@ pub fn socket_path() -> Option<PathBuf> {
     Some(std::env::temp_dir().join(format!("kemudi-{hash:016x}.sock")))
 }
 
-const INSTRUCTIONS: &str = "Kemudi Devops runs the user's dev/ops workflows (named lists of steps: commands on this Mac, commands on servers, actions). list_workflows shows them; run_workflow starts one in the Kemudi app, where the user can watch it, answer prompts (passwords, yes/no) and stop it, and returns each step's result. A workflow that touches production waits for the user to confirm it in Kemudi; if they don't, it isn't run. Prefer running a workflow by its id from list_workflows.";
+const INSTRUCTIONS: &str = "Kemudi Devops runs the user's dev/ops workflows (named lists of steps: commands on this Mac, commands on servers, actions). list_workflows shows them; run_workflow starts one in the Kemudi app, where the user can watch it, answer prompts (passwords, yes/no) and stop it, and returns each step's result. A workflow that touches production needs the user's confirmation: either in Kemudi (it waits for them there), or, when Kemudi is set to confirm in Claude, run_workflow answers with the name to type: ask the user to type it and call again with confirm set to exactly what they typed (never fill it in yourself). Prefer running a workflow by its id from list_workflows.";
 
 /// The tools, as `tools/list` returns them.
 pub fn tools() -> Value {
@@ -53,13 +53,14 @@ pub fn tools() -> Value {
         },
         {
             "name": "run_workflow",
-            "description": "Run a Kemudi workflow (by id, or by name) in the Kemudi app and wait for it to finish; returns each step's result and output. A workflow that touches production waits for the user to confirm in Kemudi first. If it's still running after wait_minutes, returns its run_id: follow it with get_run.",
+            "description": "Run a Kemudi workflow (by id, or by name) in the Kemudi app and wait for it to finish; returns each step's result and output. A workflow that touches production needs the user's confirmation first: in Kemudi, or (if Kemudi is set so) the name they type in this chat, passed as confirm. If it's still running after wait_minutes, returns its run_id: follow it with get_run.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "workflow": { "type": "string", "description": "The workflow's id (from list_workflows) or its name." },
                     "from_step": { "type": "integer", "minimum": 1, "description": "Start at this step (1-based), e.g. to re-run from a failed step. Default 1." },
-                    "wait_minutes": { "type": "number", "minimum": 0, "maximum": 30, "description": "How long to wait for it to finish before returning (default 10)." }
+                    "wait_minutes": { "type": "number", "minimum": 0, "maximum": 30, "description": "How long to wait for it to finish before returning (default 10)." },
+                    "confirm": { "type": "string", "description": "Production only, when Kemudi confirms in Claude: the name the user typed to confirm (run_workflow tells you which name to ask for). Only what the user typed." }
                 },
                 "required": ["workflow"],
                 "additionalProperties": false
@@ -253,8 +254,8 @@ async fn handle(app: &AppHandle, call: Call) -> Reply {
             }
             let wait = minutes(&call.args, 10.0);
             let prod = crate::workflows::touches_prod(&config, wf, from);
-            if prod {
-                // It waits for you: bring Kemudi to the front.
+            if prod && call.args.get("confirm").is_none() {
+                // It may wait for you: bring Kemudi to the front.
                 if let Some(w) = app.get_webview_window("main") {
                     let _ = w.unminimize();
                     let _ = w.show();
@@ -263,7 +264,13 @@ async fn handle(app: &AppHandle, call: Call) -> Reply {
             }
             // The run itself happens in the window (its terminal and steps
             // live there); up to 15 more minutes to confirm a prod one.
-            ask_window(app, "mcp://run-workflow", json!({ "workflowId": wf.id, "from": from, "waitMs": wait.as_millis() as u64, "prod": prod }), wait + Duration::from_secs(15 * 60)).await
+            ask_window(app, "mcp://run-workflow", json!({
+                    "workflowId": wf.id,
+                    "from": from,
+                    "waitMs": wait.as_millis() as u64,
+                    "prod": prod,
+                    "confirm": call.args.get("confirm").and_then(Value::as_str),
+                }), wait + Duration::from_secs(15 * 60)).await
         }
         "get_run" => {
             let run = call.args.get("run_id").and_then(Value::as_str).unwrap_or("").trim().to_string();

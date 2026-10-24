@@ -6,12 +6,21 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 import { notify } from "@/lib/notify";
-import { runWorkflow } from "@/lib/workflows";
+import { confirmWord } from "@/lib/actions";
+import { runWorkflow, serversTouched } from "@/lib/workflows";
+import { useMcpPrefs } from "@/stores/mcpPrefs";
 import { useConfig } from "@/stores/config";
 import { useTabs, type Tab } from "@/stores/tabs";
 import { useWorkflows } from "@/stores/workflows";
 
-const reply = (id: number, text: string, isError = false) => invoke("mcp_reply", { id, text, isError }).catch(() => {});
+// One answer per request: the first one counts (a dialog that starts a run
+// and then closes must not also say "not run").
+const answered = new Set<number>();
+const reply = (id: number, text: string, isError = false) => {
+  if (answered.has(id)) return;
+  answered.add(id);
+  void invoke("mcp_reply", { id, text, isError }).catch(() => {});
+};
 
 /** Colours, cursor moves and other escapes out of terminal text. */
 const plain = (s: string) =>
@@ -97,10 +106,27 @@ async function report(id: number, tabId: string, waitMs: number) {
   void reply(id, summary(tab), tab.state !== "running" && tab.state !== "ok");
 }
 
-async function runRequested(p: { id: number; workflowId: string; from: number; waitMs: number; prod: boolean }) {
-  const wf = useConfig.getState().snapshot?.config?.workflows.find((w) => w.id === p.workflowId);
+async function runRequested(p: { id: number; workflowId: string; from: number; waitMs: number; prod: boolean; confirm?: string | null }) {
+  const config = useConfig.getState().snapshot?.config;
+  const wf = config?.workflows.find((w) => w.id === p.workflowId);
   if (!wf) return void reply(p.id, `No workflow ${p.workflowId}.`, true);
   if (!p.prod) {
+    const tabId = runWorkflow(wf, p.from);
+    return void report(p.id, tabId, p.waitMs);
+  }
+  // Production confirmed in Claude (Settings ▸ Claude): the same name you'd
+  // type in Kemudi's run dialog, which Claude asks you for.
+  if (useMcpPrefs.getState().prodConfirm === "claude") {
+    const prodServer = serversTouched(config, wf, p.from).find((s) => s.env === "prod");
+    const word = prodServer ? confirmWord(prodServer.id, wf.pinServer === prodServer.id ? (wf.pinApp ?? null) : null) : null;
+    if (word && !(p.confirm && word.ok(p.confirm))) {
+      return void reply(
+        p.id,
+        `${wf.name} touches production (${prodServer?.name}). Ask the user to confirm by typing "${word.word}" (or ${word.short}), then call run_workflow again with confirm set to exactly what they typed. Don't fill it in yourself.`,
+        true,
+      );
+    }
+    void notify(`Claude is running ${wf.name}`, `On production (${prodServer?.name}), confirmed in Claude.`);
     const tabId = runWorkflow(wf, p.from);
     return void report(p.id, tabId, p.waitMs);
   }
@@ -125,6 +151,8 @@ let started = false;
 export function initMcp() {
   if (started) return;
   started = true;
-  void listen<{ id: number; workflowId: string; from: number; waitMs: number; prod: boolean }>("mcp://run-workflow", (e) => void runRequested(e.payload));
+  void listen<{ id: number; workflowId: string; from: number; waitMs: number; prod: boolean; confirm?: string | null }>("mcp://run-workflow", (e) =>
+    void runRequested(e.payload),
+  );
   void listen<{ id: number; runId: string; waitMs: number }>("mcp://get-run", (e) => void getRun(e.payload));
 }

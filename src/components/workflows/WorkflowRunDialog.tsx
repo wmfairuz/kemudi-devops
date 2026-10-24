@@ -63,6 +63,8 @@ function RunDialog({ wf, from: initialFrom, requestedBy }: { wf: Workflow; from:
     const request = useWorkflows.getState().running?.request;
     const tabId = runWorkflow(wf, from);
     request?.start(tabId);
+    // Closing now isn't "not run".
+    useWorkflows.setState((s) => (s.running ? { running: { ...s.running, request: undefined } } : s));
     close();
   };
 

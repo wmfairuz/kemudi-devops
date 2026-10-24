@@ -14,6 +14,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { useUpdates } from "@/stores/updates";
 import { useUi } from "@/stores/ui";
 import { useConfirmClose } from "@/stores/confirmClose";
+import { useMcpPrefs } from "@/stores/mcpPrefs";
 import { useTabs } from "@/stores/tabs";
 
 const FONTS = ["Menlo", "SF Mono", "Monaco", "JetBrains Mono", "Fira Code", "Cascadia Code", "Source Code Pro", "Hack"];
@@ -43,6 +44,7 @@ function SettingsForm() {
   const [sslAlerts, setSslAlerts] = useState(useSslAlerts.getState().enabled);
   const [updatesAtLaunch, setUpdatesAtLaunch] = useState(useUpdates.getState().atLaunch);
   const [confirmClose, setConfirmClose] = useState(useConfirmClose.getState().enabled);
+  const [prodConfirm, setProdConfirm] = useState(useMcpPrefs.getState().prodConfirm);
   const [version, setVersion] = useState("");
   useEffect(() => void getVersion().then(setVersion, () => {}), []);
   const [downloads, setDownloads] = useState<string | null>(downloadDir());
@@ -78,6 +80,7 @@ function SettingsForm() {
       useSslAlerts.getState().setEnabled(sslAlerts);
       useUpdates.getState().setAtLaunch(updatesAtLaunch);
       useConfirmClose.getState().setEnabled(confirmClose);
+      useMcpPrefs.getState().setProdConfirm(prodConfirm);
       setDownloadDir(downloads);
       useToasts.getState().push("Settings saved", "info");
       close();
@@ -201,6 +204,24 @@ function SettingsForm() {
               </span>
             </span>
           </label>
+          <div className="mt-1 text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">Claude (MCP)</div>
+          <div className="flex flex-col gap-1.5 text-[12px] text-muted-foreground">
+            <span>A production workflow Claude asks to run is confirmed:</span>
+            {(
+              [
+                ["kemudi", "In Kemudi", "Kemudi comes to the front with its run dialog: type the name, Run (or Cancel)."],
+                ["claude", "In Claude", "Claude asks you in the chat to type the name (the one Kemudi's dialog asks for) and passes it; Kemudi runs it if it matches."],
+              ] as const
+            ).map(([value, label, hint]) => (
+              <label key={value} className="flex cursor-pointer items-start gap-2">
+                <input type="radio" name="prod-confirm" className="mt-0.5" checked={prodConfirm === value} onChange={() => setProdConfirm(value)} />
+                <span>
+                  {label}
+                  <span className="block text-[11px] text-subtle-foreground">{hint}</span>
+                </span>
+              </label>
+            ))}
+          </div>
           <div className="mt-1 text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">Monitoring</div>
           <label className="flex cursor-pointer items-start gap-2 text-[12px] text-muted-foreground">
             <input type="checkbox" className="mt-0.5" checked={diskAlerts} onChange={(e) => setDiskAlerts(e.target.checked)} />
