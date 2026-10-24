@@ -88,7 +88,7 @@ function buildItems(servers: Server[], tabs: Tab[], snippets: Snippet[], close: 
     cmd("Reopen closed tab", () => reopenClosed(), "⇧⌘T"),
     cmd("Server baseline", () => useTabs.getState().openBaseline(), "⇧⌘B"),
     cmd("History", () => useTabs.getState().openHistory(), "⌘Y"),
-    cmd("Settings…", () => useUi.getState().setOverlay("settings"), "⌘,"),
+    cmd("Settings", () => useTabs.getState().openSettings(), "⌘,"),
     cmd("Passwords…", () => useUi.getState().setOverlay("passwords"), "⇧⌘K"),
     cmd("Snippets…", () => useTabs.getState().openSnippets(), "⇧⌘S"),
     cmd("Environment…", () => useUi.getState().setOverlay("environment")),

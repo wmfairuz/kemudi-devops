@@ -23,7 +23,7 @@ import { ActionMenu } from "@/components/actions/ActionMenu";
 import { EnvironmentDialog } from "@/components/dialogs/EnvironmentDialog";
 import { PasswordsDialog } from "@/components/dialogs/PasswordsDialog";
 import { FillPicker } from "@/components/terminal/FillPicker";
-import { SettingsDialog } from "@/components/dialogs/SettingsDialog";
+import { SettingsView } from "@/components/dialogs/SettingsDialog";
 import { HistoryView } from "@/components/history/HistoryView";
 import { CommandPalette } from "@/components/palette/CommandPalette";
 import { SshDialog } from "@/components/dialogs/SshDialog";
@@ -40,7 +40,7 @@ import { initSession } from "@/stores/session";
 import { useDiskAlerts } from "@/stores/diskAlerts";
 import { useSslAlerts } from "@/stores/sslAlerts";
 import { useStatus } from "@/stores/status";
-import { activeTab, BASELINE_ID, DETAILS_ID, groupOf, HISTORY_ID, HOME_ID, SNIPPETS_ID, useTabs, WORKFLOWS_ID } from "@/stores/tabs";
+import { activeTab, BASELINE_ID, SETTINGS_ID, DETAILS_ID, groupOf, HISTORY_ID, HOME_ID, SNIPPETS_ID, useTabs, WORKFLOWS_ID } from "@/stores/tabs";
 import { WorkflowCards, WorkflowRuns } from "@/components/workflows/WorkflowRuns";
 import { BaselineView } from "@/components/baseline/Baseline";
 import { initMcp } from "@/lib/mcp";
@@ -52,13 +52,14 @@ export default function App() {
   const showDetails = useTabs((s) => s.activeId === DETAILS_ID);
   const showSnippets = useTabs((s) => s.activeId === SNIPPETS_ID);
   const showBaseline = useTabs((s) => s.activeId === BASELINE_ID);
+  const showSettings = useTabs((s) => s.activeId === SETTINGS_ID);
   // The Workflows tab: workflow cards, its runs on the right (a run's
   // terminal over the cards when asked for).
   const noRun = useTabs((s) => s.activeId === WORKFLOWS_ID);
   const showRuns = useTabs((s) => s.activeId === WORKFLOWS_ID || !!groupOf(s, s.activeId)?.workflow);
   const showHome = useTabs((s) => s.activeId === HOME_ID || s.activeId === null);
   const filterRef = useRef<HTMLInputElement>(null);
-  const title = showHistory ? "Kemudi Devops — History" : showSnippets ? "Kemudi Devops — Snippets" : showBaseline ? "Kemudi Devops — Server baseline" : showRuns ? "Kemudi Devops — Workflows" : active ? `Kemudi Devops — ${active.title}` : "Kemudi Devops";
+  const title = showHistory ? "Kemudi Devops — History" : showSnippets ? "Kemudi Devops — Snippets" : showBaseline ? "Kemudi Devops — Server baseline" : showSettings ? "Kemudi Devops — Settings" : showRuns ? "Kemudi Devops — Workflows" : active ? `Kemudi Devops — ${active.title}` : "Kemudi Devops";
 
   useEffect(() => useConfig.getState().init(), []);
   useEffect(() => useStatus.getState().init(), []);
@@ -139,6 +140,7 @@ export default function App() {
               {showDetails && <DetailsView />}
               {showSnippets && <SnippetsView />}
               {showBaseline && <BaselineView />}
+              {showSettings && <SettingsView />}
               {noRun && <WorkflowCards />}
             </div>
             {showRuns && <WorkflowRuns />}
@@ -150,7 +152,6 @@ export default function App() {
       <EnvironmentDialog />
       <PasswordsDialog />
       <FillPicker />
-      <SettingsDialog />
       <ActionDialogs />
       <ActionMenu />
       <EntityMenu />

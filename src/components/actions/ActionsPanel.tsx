@@ -21,7 +21,7 @@ import {
 import { insertSnippet, useSnippets } from "@/stores/snippets";
 import { snippetVisible, useTeam } from "@/stores/team";
 import { useConfig } from "@/stores/config";
-import { activeTab, BASELINE_ID, groupOf, HISTORY_ID, HOME_ID, SNIPPETS_ID, useTabs, WORKFLOWS_ID } from "@/stores/tabs";
+import { activeTab, BASELINE_ID, groupOf, SETTINGS_ID, HISTORY_ID, HOME_ID, SNIPPETS_ID, useTabs, WORKFLOWS_ID } from "@/stores/tabs";
 import { useSidebar } from "@/stores/sidebar";
 import { toastError } from "@/stores/toasts";
 import { cn } from "@/lib/utils";
@@ -46,7 +46,7 @@ export function ActionsPanel() {
   // Pages with nothing to act on (Home, Workflows, Snippets, History): no
   // panel, whatever ⌘J is set to; it's back on tabs and server/app pages.
   const page = useTabs(
-    (s) => s.activeId === null || [HOME_ID, HISTORY_ID, SNIPPETS_ID, WORKFLOWS_ID, BASELINE_ID].includes(s.activeId) || !!groupOf(s, s.activeId)?.workflow,
+    (s) => s.activeId === null || [HOME_ID, HISTORY_ID, SNIPPETS_ID, WORKFLOWS_ID, BASELINE_ID, SETTINGS_ID].includes(s.activeId) || !!groupOf(s, s.activeId)?.workflow,
   );
   if (!open || page) return null;
   const server = selected ? servers.find((s) => s.id === selected.serverId) : undefined;

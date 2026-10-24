@@ -242,7 +242,7 @@ export function HomeView() {
         </div>
 
         <div className="flex flex-wrap gap-x-5 gap-y-2 text-[12px] text-subtle-foreground">
-          <LinkBtn onClick={() => useUi.getState().setOverlay("settings")}>
+          <LinkBtn onClick={() => useTabs.getState().openSettings()}>
             <Settings className="size-3.5" /> Settings ⌘,
           </LinkBtn>
           <LinkBtn onClick={() => useTabs.getState().openHistory()}>

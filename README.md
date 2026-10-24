@@ -969,7 +969,7 @@ would seem to stop working). Tabs come back through session restore.
 | ⌥⌘ ← → ↑ ↓ | Move between panes |
 | ⌥⌘I | Type in all panes of the tab (on/off): what you type goes to every terminal pane, like Warp's synchronized inputs (and iTerm's broadcast input). The panes get a pink outline and the tab a ⌨ badge; it's off again when Kemudi restarts |
 | ⇧⌘C / ⌥⇧⌘C | Copy last command / its output |
-| ⌘, | Settings (terminal font, size, line height, scrollback, ⌥ as Meta, shell integration, editor) |
+| ⌘, | Settings: a pinned tab (again: back where you were); Save in its header |
 | ⌘Y | History |
 | ⇧⌘R | Workflows tab (its runs; again: back). Also View ▸ Workflows, ⌘K, and *Runs* on Home's Workflows card |
 | / | Focus the sidebar filter |

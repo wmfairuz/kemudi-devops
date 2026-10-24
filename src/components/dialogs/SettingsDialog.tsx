@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 
 import { Btn } from "@/components/kit/Btn";
-import { Hint } from "@/components/kit/Kbd";
-import { Modal, ModalFooter, ModalHeader } from "@/components/kit/Modal";
 import { Field, TextInput } from "@/components/manage/fields";
 import { errorMessage, filesChooseFolder, settingsSave, type Editor } from "@/lib/ipc";
 import { useConfig } from "@/stores/config";
@@ -12,23 +10,16 @@ import { useSslAlerts } from "@/stores/sslAlerts";
 import { toastError, useToasts } from "@/stores/toasts";
 import { getVersion } from "@tauri-apps/api/app";
 import { useUpdates } from "@/stores/updates";
-import { useUi } from "@/stores/ui";
 import { useConfirmClose } from "@/stores/confirmClose";
 import { useMcpPrefs } from "@/stores/mcpPrefs";
 import { useTabs } from "@/stores/tabs";
 
 const FONTS = ["Menlo", "SF Mono", "Monaco", "JetBrains Mono", "Fira Code", "Cascadia Code", "Source Code Pro", "Hack"];
 
-/** Kemudi ▸ Settings… (⌘,): terminal look and behaviour, and the editor
- *  "Edit in servers.yaml" opens. Saved to servers.yaml. */
-export function SettingsDialog() {
-  const open = useUi((s) => s.overlay === "settings");
-  if (!open) return null;
-  return <SettingsForm />;
-}
-
-function SettingsForm() {
-  const close = () => useUi.getState().setOverlay("none");
+/** Kemudi ▸ Settings… (⌘,): a pinned Settings tab: terminal look and
+ *  behaviour, tabs, Claude, monitoring, files. Terminal settings are saved
+ *  to servers.yaml, the rest on this Mac. */
+export function SettingsView() {
   const config = useConfig.getState().snapshot?.config;
   const t = config?.terminal ?? {};
   const [font, setFont] = useState(t.fontFamily ?? "Menlo");
@@ -83,7 +74,6 @@ function SettingsForm() {
       useMcpPrefs.getState().setProdConfirm(prodConfirm);
       setDownloadDir(downloads);
       useToasts.getState().push("Settings saved", "info");
-      close();
     } catch (e) {
       toastError(errorMessage(e));
     } finally {
@@ -92,20 +82,23 @@ function SettingsForm() {
   };
 
   return (
-    <Modal open onOpenChange={(o) => !o && close()} title="Settings" width={540}>
+    <div className="light-ui absolute inset-0 flex flex-col bg-background text-foreground">
       <form
+        className="flex min-h-0 flex-1 flex-col"
         onSubmit={(e) => {
           e.preventDefault();
           void save();
         }}
       >
-        <ModalHeader>
-          <span className="text-[15px] font-semibold">Settings</span>
-          <span className="text-[12.5px] text-muted-foreground">
-            Open tabs pick up font changes right away.
-          </span>
-        </ModalHeader>
-        <div className="flex flex-col gap-3.5 px-5 pb-4">
+        <div className="flex h-12 flex-none items-center gap-2 border-b border-divider px-4">
+          <span className="text-[14px] font-semibold">Settings</span>
+          <span className="min-w-0 flex-1 truncate text-[12px] text-subtle-foreground">Open tabs pick up font changes right away.</span>
+          <Btn type="submit" size="sm" variant="primary" disabled={!canSave}>
+            {busy ? "Saving…" : "Save"}
+          </Btn>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto flex max-w-[640px] flex-col gap-3.5 px-6 py-5">
           <div className="text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">Terminal</div>
           <div className="grid grid-cols-[1fr_88px_88px] gap-3">
             <Field label="Font">
@@ -186,10 +179,7 @@ function SettingsForm() {
                 Repos and ~/.bashrc lines every server should have; check them all, install what's missing.
               </span>
             </span>
-            <Btn size="sm" variant="outline" onClick={() => {
-                close();
-                useTabs.getState().openBaseline();
-              }}>
+            <Btn size="sm" variant="outline" onClick={() => useTabs.getState().openBaseline()}>
               Server baseline…
             </Btn>
           </div>
@@ -283,16 +273,8 @@ function SettingsForm() {
             </span>
           </label>
         </div>
-        <ModalFooter>
-          <span className="flex-1" />
-          <Btn variant="outline" className="pr-2.5" onClick={close}>
-            Cancel <Hint>esc</Hint>
-          </Btn>
-          <Btn type="submit" variant="primary" className="pr-2.5" disabled={!canSave}>
-            Save <Hint className="text-primary-foreground/60">↵</Hint>
-          </Btn>
-        </ModalFooter>
+        </div>
       </form>
-    </Modal>
+    </div>
   );
 }

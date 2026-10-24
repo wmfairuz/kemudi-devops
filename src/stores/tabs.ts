@@ -105,6 +105,7 @@ export const DETAILS_ID = "details";
 /** activeId value while the pinned Snippets tab (managing them) is in front. */
 export const SNIPPETS_ID = "snippets";
 export const BASELINE_ID = "baseline";
+export const SETTINGS_ID = "settings";
 /** activeId value while the Workflows tab is in front with no run picked. */
 export const WORKFLOWS_ID = "workflows";
 
@@ -124,6 +125,9 @@ interface TabsState {
   baselineOpen: boolean;
   openBaseline(): void;
   closeBaseline(): void;
+  settingsOpen: boolean;
+  openSettings(): void;
+  closeSettings(): void;
   /** The tab strip's order after Home, as you dragged it: "details",
    *  "history", "snippets", "workflows" and group ids. Not listed: in their
    *  usual place, at the end. */
@@ -363,6 +367,7 @@ export const useTabs = create<TabsState>((set, get) => {
     detailsOpen: false,
     snippetsOpen: false,
     baselineOpen: false,
+    settingsOpen: false,
     workflowsOpen: false,
     stripOrder: [],
 
@@ -402,6 +407,18 @@ export const useTabs = create<TabsState>((set, get) => {
 
     openSnippets() {
       set({ snippetsOpen: true, activeId: SNIPPETS_ID });
+    },
+
+    openSettings() {
+      set({ settingsOpen: true, activeId: SETTINGS_ID });
+    },
+
+    closeSettings() {
+      const { activeId, groups } = get();
+      set({
+        settingsOpen: false,
+        activeId: activeId === SETTINGS_ID ? (groups[groups.length - 1]?.focus ?? HOME_ID) : activeId,
+      });
     },
 
     openBaseline() {
