@@ -571,7 +571,8 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   **Generate** makes a random one, **Copy password** puts it on the
   clipboard (cleared after 45 s if it's still there). Saved passwords are
   never shown again. At any password prompt in any tab (`[sudo] password
-  for …:`, `user@host's password:`, `Password:`, a key passphrase…) a chip
+  for …:`, `user@host's password:`, `Password:`, a key passphrase…) a yellow chip
+  at the terminal's top right (it glows as it appears) says who's asking and
   offers **Fill <best match>** and **Other…**; ⌘⇧P opens the picker anytime
   (without a prompt in sight it asks twice, as the password would show on
   screen). Nothing is typed on its own; Rust types it into the tab, so the

@@ -9,7 +9,7 @@ import { fillPassword, suggested, useVault } from "@/stores/vault";
 
 /** At a password prompt in any tab: Fill with the best-matching saved
  *  password, or pick another (⌘⇧P). Never fills on its own. */
-export function PasswordChip({ tab }: { tab: Tab }) {
+export function PasswordChip({ tab, below = false }: { tab: Tab; below?: boolean }) {
   const [prompt, setPrompt] = useState<PasswordPrompt>(tab.session.passwordPrompt);
   useEffect(() => tab.session.onPasswordPrompt(setPrompt), [tab.session]);
   const entries = useVault((s) => s.entries);
@@ -20,10 +20,18 @@ export function PasswordChip({ tab }: { tab: Tab }) {
 
   if (!prompt) return null;
   const best = suggested(entries, tab, prompt)[0];
-  const btn = "h-6 cursor-pointer rounded-md px-2.5";
+  const btn = "h-8 cursor-pointer rounded-md px-3";
+  const asking = prompt.kind === "sudo" ? "sudo wants your password" : prompt.kind === "login" ? `${prompt.user}@${prompt.host} wants a password` : "Password asked";
+  // Top right (under the "◂ Workflows" button when there is one), with a
+  // short glow when it appears: easy to miss down in the corner.
   return (
-    <div className="absolute right-4 bottom-3 z-10 flex items-center gap-2 rounded-lg border border-white/15 bg-[#343746] py-1 pr-1 pl-2.5 text-[12px] text-[#f8f8f2] shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
-      <KeyRound className="size-3.5 text-[#f1fa8c]" />
+    <div
+      className={`${below ? "top-12" : "top-3"} pw-chip absolute right-4 z-10 flex items-center gap-2.5 rounded-lg border border-[#f1fa8c]/60 bg-[#343746] py-1.5 pr-1.5 pl-3 text-[13px] text-[#f8f8f2] shadow-[0_8px_24px_rgba(0,0,0,0.45)]`}
+    >
+      <KeyRound className="size-4 shrink-0 text-[#f1fa8c]" />
+      <span className="max-w-[260px] truncate font-medium text-[#f1fa8c]" title={asking}>
+        {asking}
+      </span>
       {entries.length === 0 ? (
         <>
           <span className="text-[#b6b8c8]">No saved passwords</span>
@@ -60,7 +68,7 @@ export function PasswordChip({ tab }: { tab: Tab }) {
         <button
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => openDetails({ kind: "server", serverId: tab.serverId ?? null })}
-          className="h-6 cursor-pointer rounded-md px-2 text-[#b6b8c8] hover:bg-white/10 hover:text-[#f8f8f2]"
+          className="h-8 cursor-pointer rounded-md px-2.5 text-[#b6b8c8] hover:bg-white/10 hover:text-[#f8f8f2]"
           title="Install your SSH key on this server so it stops asking"
         >
           Use a key instead

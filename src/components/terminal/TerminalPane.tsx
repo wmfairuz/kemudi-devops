@@ -129,7 +129,7 @@ function LayoutView({
         ) : (
           <>
             <TerminalView session={tab.session} active={visible && focused && tab.workflow?.view !== "steps"} />
-            {tab.workflow?.view !== "steps" && <PasswordChip tab={tab} />}
+            {tab.workflow?.view !== "steps" && <PasswordChip tab={tab} below={tab.workflow?.view === "output"} />}
             {tab.workflow?.view === "steps" && <WorkflowStepsView tab={tab} />}
             {tab.workflow?.view === "output" && (
               <button

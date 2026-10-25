@@ -242,6 +242,33 @@
   }
 }
 
+/* The password chip: slides in, then glows three times. */
+.pw-chip {
+  animation:
+    pw-in 0.2s ease-out,
+    pw-glow 1.2s ease-out 0.2s 3;
+}
+
+@keyframes pw-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes pw-glow {
+  0% {
+    box-shadow:
+      0 0 0 0 rgba(241, 250, 140, 0.55),
+      0 8px 24px rgba(0, 0, 0, 0.45);
+  }
+  100% {
+    box-shadow:
+      0 0 0 12px rgba(241, 250, 140, 0),
+      0 8px 24px rgba(0, 0, 0, 0.45);
+  }
+}
+
 @keyframes status-pulse {
   0%,
   100% {
