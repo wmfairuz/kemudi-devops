@@ -610,32 +610,86 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   your confirmation, where Settings ▸ Claude (MCP) says: **in Kemudi** (the
   default: Kemudi comes to the front with its run dialog, "Claude asked to
   run this"; type the name and Run, or Cancel, and Claude is told no) or
-  **in Claude** (Claude is told which name to ask for, e.g. "Sabiq Prod" or
-  SP, asks you in the chat and passes what you typed as `confirm`; Kemudi
+  **in Claude** (Claude is told which name to ask for, e.g. "Acme Prod" or
+  AP, asks you in the chat and passes what you typed as `confirm`; Kemudi
   runs it only if it matches). With Kemudi closed, Claude is told to open it.
-- **Server baseline** (View ▸ Server Baseline ⇧⌘B, Settings ▸ Server
-  baseline…, or ⌘K: a pinned **Baseline** tab; ⌘W closes it): what every server should have: git repos cloned into one folder (`/opt/www` by
-  default, created when missing) and lines in root's `~/.bashrc` (e.g. an
-  alias). *Check all servers* (or a row's *Check*, or the Baseline section
-  of a server's Health tab) is read-only: each repo is there, missing, or
-  has newer commits on its remote (asked with `git ls-remote`, nothing
-  fetched), and each line is there or not (unknown when root's `~/.bashrc`
-  can't be read without a password). An `alias NAME=…` line is matched by
-  its name: a server's own, different `alias NAME` is shown with what
-  differs (*here …-uifr -d' · baseline …-uifrc -d'*), and two definitions
-  are flagged (the last one wins). Install asks first when it finds one:
-  **Replace** (root's `~/.bashrc` is backed up to
-  `~/.bashrc.kemudi-backup-<time>`, every definition of that alias goes and
-  the baseline's line is added) or **Keep mine** (the rest is installed, the
-  alias stays). The servers listed (and
-  checked by *Check all servers*) are the team in front, like the sidebar. AWS servers are checked on each
-  instance. *Install / update* runs as root in the background, no terminal
-  (production asks first; AWS servers: on each instance through Run
-  Command): clones what's missing, `git pull --ff-only` what's there (local
-  changes stop it, nothing is overwritten) and adds missing lines. The row
-  shows a spinner, then ✓ or ✗ with *Details* (what it printed), and checks
-  again. Where root needs a password (sudo can't ask without a terminal)
-  it says so and offers *Open in terminal*. Saved as one line:
+- **Server setup** (View ▸ Server Setup ⇧⌘B, Settings ▸ Server setup…, or
+  ⌘K: a pinned **Server setup** tab; ⌘W closes it): what a server should
+  have, as named **profiles** (`setup:` in servers.yaml, edited in the tab
+  with *Edit profiles*, which starts you from a typical new-server list).
+  Each server is checked against its profile: `setup: <id>` on the server,
+  else `setup.default`; `setup: none` leaves it out (the tab's Profile menu
+  sets it). A profile can say (anything left out isn't checked):
+
+  ```yaml
+  setup:
+    default: web
+    profiles:
+      - id: web
+        name: Laravel web server
+        timezone: Asia/Kuala_Lumpur
+        ntp: true                      # clock synchronised
+        updates: true                  # no pending upgrades (Fix: apt upgrade)
+        unattended_upgrades: true
+        packages: [curl, git, unzip, nginx, supervisor, redis-server, mysql-server]
+        php: { version: "8.4", extensions: [fpm, cli, mbstring, xml, curl, mysql] }   # ppa:ondrej/php; php → 8.4
+        composer: true
+        mysql_secure: true             # no anonymous users, remote root, test db
+        folders: [{ path: /opt/www, owner: www-data, mode: 775 }]
+        users: [{ name: deploy, sudo: true, password: true }]
+        firewall: { allow: ["Nginx Full"] }   # ufw; SSH is always allowed
+        fail2ban: { maxretry: 3, bantime: 1h, findtime: 10m }   # or true
+        auditd: true
+        lynis: true
+        ssh: { port: 2222, password_auth: false }
+        custom: [{ name: Swap on, check: "swapon --show | grep -q .", fix: "…" }]
+      - id: legacy
+        extends: web                   # what's set here wins; lists replace
+        php: { version: "8.1", extensions: [fpm, cli, mbstring] }
+  ```
+
+  **Check** (a row's, or *Check all servers*, the team in front) is
+  read-only, over ssh (AWS servers: each instance, through Run Command): ✓ /
+  ! / ✗ / ? per item with what was found (*password logins on (set in
+  /etc/ssh/sshd_config.d/50-cloud-init.conf)*, *port 22 · want 2222*,
+  *missing: nginx*, *PHP 8.4.12 · not in apt: grpc*, the last Lynis
+  hardening index). Settings only root can read (`sshd -T`, ufw rules,
+  fail2ban's jails, MySQL) need root or sudo without a password; otherwise
+  they show as ?. "Nginx Full" also counts as allowed when 80/tcp and
+  443/tcp are. **Fix** (one item) and **Fix all** build the steps as a
+  workflow and open the run dialog (each step, *Show script*, production's
+  typed name), then it runs in the Workflows tab: you watch it, answer
+  prompts (sudo, a new user's password) and run again from a failed step;
+  the server is checked again when it ends. apt never asks
+  (`DEBIAN_FRONTEND=noninteractive`, it waits for apt's lock). SSH changes
+  go in an order that can't lock you out: a key login checked first (on a
+  fresh connection, not the shared one); the firewall opened for both the
+  current and the new port; sshd on both ports (`00-kemudi.conf` in
+  `sshd_config.d`, read first so it wins; other `Port` lines commented
+  out with backups, put back if `sshd -t` refuses; Ubuntu 24.04's
+  ssh.socket reloaded, or sshd run as a plain service if the socket doesn't
+  pick the port up); a login on the new port; a pause for you to set
+  `Port` in `~/.ssh/config` (Kemudi doesn't edit it), checked; only then
+  the old port closed and passwords off; and last, checks that a key still
+  gets in and a password doesn't. *Run a Lynis audit* runs `lynis audit
+  system --quick` in a terminal. Auto Scaling groups are checked only (set
+  up their image instead). Passwords and app databases/certificates aren't
+  part of it.
+- **Helpers** (Server setup ▸ Helpers; the Health tab's Baseline section):
+  git repos cloned into one folder (`/opt/www` by default, created when
+  missing) and lines in root's `~/.bashrc` (e.g. an alias), checked with
+  every profile (unless it says `helpers: false`). The check says whether
+  each repo is there, missing, or has newer commits on its remote (asked
+  with `git ls-remote`, nothing fetched), and each line is there or not. An
+  `alias NAME=…` line is matched by its name: a server's own, different
+  `alias NAME` is shown with what differs and kept, and two definitions are
+  flagged (the last one wins). The Health tab's *Install / update* runs as
+  root in the background (production asks first) and, when an alias
+  differs, asks **Replace** (root's `~/.bashrc` backed up to
+  `~/.bashrc.kemudi-backup-<time>` first) or **Keep mine**; Server setup's
+  Fix runs the same install (keeping yours) as a workflow. Clones what's
+  missing, `git pull --ff-only` what's there (local changes stop it), adds
+  missing lines. Saved as one line:
 
   ```yaml
   baseline: { dir: /opt/www, repos: [{ name: server-tools, url: "https://github.com/acme/server-tools.git" }], bashrc: ["alias deploy='/opt/www/server-tools/deploy'"] }
@@ -963,7 +1017,7 @@ would seem to stop working). Tabs come back through session restore.
 | ⌘⇧P | Fill a saved password (picker) |
 | ⇧⌘K | Passwords |
 | ⇧⌘S | Snippets page: add, edit, organise (again: back where you were) |
-| ⇧⌘B | Server baseline: what every server should have, check and install (again: back where you were) |
+| ⇧⌘B | Server setup: profiles, check every server, fix what's off (again: back where you were) |
 | ⌘D / ⇧⌘D | Split the pane right / down (same server and folder; an action pane gives a shell there) |
 | ⇧⌘L / ⌥⇧⌘L | Split right / down with a shell on this Mac (also the terminal's and the tab's right-click menus) |
 | ⇧⌘H | Home (also View ▸ Home) |

@@ -174,13 +174,13 @@ export function SettingsView() {
           <div className="mt-1 text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">Servers</div>
           <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
             <span className="min-w-0 flex-1">
-              Server baseline
+              Server setup
               <span className="block text-[11px] text-subtle-foreground">
-                Repos and ~/.bashrc lines every server should have; check them all, install what's missing.
+                Profiles of what a server should have (packages, PHP, SSH, firewall…) and the helper repos; check every server, fix what's off.
               </span>
             </span>
             <Btn size="sm" variant="outline" onClick={() => useTabs.getState().openBaseline()}>
-              Server baseline…
+              Server setup…
             </Btn>
           </div>
           <div className="mt-1 text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">Tabs</div>

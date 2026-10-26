@@ -292,7 +292,7 @@ pub async fn baseline_install(
         .config
         .config()
         .and_then(|c| c.baseline.clone())
-        .ok_or_else(|| AppError::Invalid("no server baseline set up yet (Settings ▸ Server baseline)".into()))?;
+        .ok_or_else(|| AppError::Invalid("no server baseline set up yet (Server setup ▸ Helpers)".into()))?;
     // Always ends with its exit code, so a failure still hands back what it said.
     let script = format!("{}\necho \"@@exit $?\"\n", install_script_with(&b, replace.unwrap_or(false)));
     let out = crate::monitor::run_on(&state, &server_id, instance.as_deref(), &script, 300).await?;
@@ -316,7 +316,7 @@ pub async fn baseline_check(
         .config
         .config()
         .and_then(|c| c.baseline.clone())
-        .ok_or_else(|| AppError::Invalid("no server baseline set up yet (Settings ▸ Server baseline)".into()))?;
+        .ok_or_else(|| AppError::Invalid("no server baseline set up yet (Server setup ▸ Helpers)".into()))?;
     let out = crate::monitor::run_on(&state, &server_id, instance.as_deref(), &check_script(&b), 45).await?;
     parse(&b, &out).map_err(AppError::Invalid)
 }

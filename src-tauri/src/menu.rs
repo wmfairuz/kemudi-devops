@@ -136,7 +136,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .item(&item(
             app,
             "baseline",
-            "Server Baseline",
+            "Server Setup",
             Some("CmdOrCtrl+Shift+B"),
         )?)
         .item(&item(

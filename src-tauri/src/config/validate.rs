@@ -58,6 +58,7 @@ pub fn parse(source: &str) -> Outcome {
             editor: None,
             workflows: vec![],
             baseline: None,
+            setup: None,
         }
     } else {
         match serde_norway::from_str(source) {
@@ -330,7 +331,11 @@ impl Validator<'_> {
         let mut seen = HashSet::new();
         let mut counts: BTreeMap<String, usize> = BTreeMap::new();
         let mut servers = Vec::with_capacity(raw.servers.len());
+        let mut assigned: Vec<(String, String, Option<usize>)> = Vec::new();
         for (si, rs) in raw.servers.into_iter().enumerate() {
+            if let Some(p) = rs.setup.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
+                assigned.push((rs.id.clone(), p.to_string(), self.find("setup", p, 0)));
+            }
             let path = format!("servers[{si}] ({})", rs.id);
             let nth = {
                 let n = counts.entry(rs.id.clone()).or_default();
@@ -482,6 +487,7 @@ impl Validator<'_> {
             }
             problems.is_empty().then_some(b)
         });
+        let setup = self.resolve_setup(raw.setup.unwrap_or_default(), assigned);
         Config {
             teams,
             servers,
@@ -489,7 +495,74 @@ impl Validator<'_> {
             editor: raw.editor,
             workflows,
             baseline,
+            setup,
         }
+    }
+
+    /// Setup profiles with `extends` applied. A profile with a mistake isn't
+    /// used (servers on it aren't checked) until it's fixed.
+    fn resolve_setup(&mut self, raw: RawSetup, assigned: Vec<(String, String, Option<usize>)>) -> Setup {
+        let at = self.find("setup", "", 0);
+        let mut ids = HashSet::new();
+        for p in &raw.profiles {
+            if !valid_id(&p.id) {
+                self.error(Diag::new(format!("setup: invalid profile id {:?}: use letters, digits, - _ .", p.id)).at(at).path("setup"));
+            }
+            if p.id == "none" {
+                self.error(Diag::new("setup: `none` can't be a profile id (it means: not set up)").at(at).path("setup"));
+            }
+            if !ids.insert(p.id.clone()) {
+                self.error(Diag::new(format!("setup: profile `{}` is defined twice", p.id)).at(at).path("setup"));
+            }
+        }
+        let by_id: BTreeMap<&str, &Profile> = raw.profiles.iter().map(|p| (p.id.as_str(), p)).collect();
+        let mut profiles = Vec::new();
+        for p in &raw.profiles {
+            // Follow `extends` (a loop or a missing one is a mistake).
+            let mut chain = vec![p];
+            let mut bad = None;
+            while let Some(parent) = chain.last().and_then(|c| c.extends.as_deref()) {
+                match by_id.get(parent) {
+                    Some(pp) if chain.iter().any(|c| c.id == pp.id) => {
+                        bad = Some(format!("setup: profile `{}` extends itself (through `{parent}`)", p.id));
+                        break;
+                    }
+                    Some(pp) => chain.push(pp),
+                    None => {
+                        bad = Some(format!("setup: profile `{}` extends `{parent}`, which isn't a profile", p.id));
+                        break;
+                    }
+                }
+            }
+            if let Some(m) = bad {
+                self.error(Diag::new(m).at(at).path("setup"));
+                continue;
+            }
+            let mut merged = chain.pop().cloned().unwrap_or_default();
+            while let Some(child) = chain.pop() {
+                merged = crate::setup::merge(child, merged);
+            }
+            let problems = crate::setup::problems(&merged);
+            for m in &problems {
+                self.error(Diag::new(format!("setup: profile `{}`: {m}", p.id)).at(at).path("setup"));
+            }
+            if problems.is_empty() {
+                profiles.push(merged);
+            }
+        }
+        if let Some(d) = &raw.default {
+            if !by_id.contains_key(d.as_str()) {
+                self.error(Diag::new(format!("setup: default `{d}` isn't a profile")).at(at).path("setup"));
+            }
+        }
+        let mut map = BTreeMap::new();
+        for (server, p, line) in assigned {
+            if p != "none" && !by_id.contains_key(p.as_str()) {
+                self.error(Diag::new(format!("server {server}: setup `{p}` isn't a profile (or `none`)")).at(line).path(format!("servers ({server})")));
+            }
+            map.insert(server, p);
+        }
+        Setup { default: raw.default, profiles, assigned: map }
     }
 
     /// Workflows: a bad step shape is an error; a step that names a server,

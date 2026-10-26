@@ -2,6 +2,7 @@ mod actions;
 mod app_inspect;
 mod audit;
 mod baseline;
+mod setup;
 mod certs;
 mod config;
 mod discover;
@@ -163,6 +164,11 @@ pub fn run() {
             config::settings_form::baseline_save,
             baseline::baseline_check,
             baseline::baseline_install,
+            setup::setup_check,
+            setup::setup_plan,
+            setup::setup_source,
+            setup::setup_save,
+            setup::server_set_setup,
             mcp::mcp_reply,
             ssh_hosts::ssh_host_info,
             ssh_hosts::ssh_host_save,

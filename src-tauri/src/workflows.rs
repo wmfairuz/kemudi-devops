@@ -538,10 +538,18 @@ fn find<'c>(config: &'c Config, id: &str) -> AppResult<&'c Workflow> {
 }
 
 fn loaded(state: &AppState) -> AppResult<Config> {
-    state
+    let mut config = state
         .config
         .config()
-        .ok_or_else(|| AppError::Config("Kemudi's server list isn't loaded".into()))
+        .ok_or_else(|| AppError::Config("Kemudi's server list isn't loaded".into()))?;
+    // Server setup's workflows (made on request, not in servers.yaml).
+    config.workflows.extend(crate::setup::adhoc());
+    Ok(config)
+}
+
+#[cfg(test)]
+pub(crate) fn script_for_test(config: &Config, wf: &Workflow) -> Result<String, String> {
+    script(config, wf, 1, &|h: &str, r: &str| format!("ssh {h} {}", shell_quote(r)), "/tmp/kemudi-wf-test")
 }
 
 /// `ssh …` for a host, the way action tabs connect (its ssh config's

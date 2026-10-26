@@ -42,7 +42,7 @@ import { useSslAlerts } from "@/stores/sslAlerts";
 import { useStatus } from "@/stores/status";
 import { activeTab, BASELINE_ID, SETTINGS_ID, DETAILS_ID, groupOf, HISTORY_ID, HOME_ID, SNIPPETS_ID, useTabs, WORKFLOWS_ID } from "@/stores/tabs";
 import { WorkflowCards, WorkflowRuns } from "@/components/workflows/WorkflowRuns";
-import { BaselineView } from "@/components/baseline/Baseline";
+import { SetupView } from "@/components/setup/SetupView";
 import { initMcp } from "@/lib/mcp";
 
 export default function App() {
@@ -59,7 +59,7 @@ export default function App() {
   const showRuns = useTabs((s) => s.activeId === WORKFLOWS_ID || !!groupOf(s, s.activeId)?.workflow);
   const showHome = useTabs((s) => s.activeId === HOME_ID || s.activeId === null);
   const filterRef = useRef<HTMLInputElement>(null);
-  const title = showHistory ? "Kemudi Devops — History" : showSnippets ? "Kemudi Devops — Snippets" : showBaseline ? "Kemudi Devops — Server baseline" : showSettings ? "Kemudi Devops — Settings" : showRuns ? "Kemudi Devops — Workflows" : active ? `Kemudi Devops — ${active.title}` : "Kemudi Devops";
+  const title = showHistory ? "Kemudi Devops — History" : showSnippets ? "Kemudi Devops — Snippets" : showBaseline ? "Kemudi Devops — Server setup" : showSettings ? "Kemudi Devops — Settings" : showRuns ? "Kemudi Devops — Workflows" : active ? `Kemudi Devops — ${active.title}` : "Kemudi Devops";
 
   useEffect(() => useConfig.getState().init(), []);
   useEffect(() => useStatus.getState().init(), []);
@@ -139,7 +139,7 @@ export default function App() {
               {showHistory && <HistoryView />}
               {showDetails && <DetailsView />}
               {showSnippets && <SnippetsView />}
-              {showBaseline && <BaselineView />}
+              {showBaseline && <SetupView />}
               {showSettings && <SettingsView />}
               {noRun && <WorkflowCards />}
             </div>

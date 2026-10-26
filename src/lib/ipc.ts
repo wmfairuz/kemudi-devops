@@ -494,9 +494,62 @@ export interface Config {
   servers: Server[];
   terminal: TerminalSettings;
   editor: Editor | null;
-  /** What every server should have (Settings ▸ Server baseline). */
+  /** What every server should have (Server setup ▸ Helpers). */
   baseline: Baseline | null;
+  /** Server setup profiles (`setup:`), with `extends` applied. */
+  setup: Setup;
 }
+
+export interface SetupProfile {
+  id: string;
+  name: string | null;
+  extends: string | null;
+  [key: string]: unknown;
+}
+
+export interface Setup {
+  /** The profile of servers that don't name one. */
+  default: string | null;
+  profiles: SetupProfile[];
+  /** Servers that name a profile (or `none`). */
+  assigned: Record<string, string>;
+}
+
+export interface SetupItem {
+  id: string;
+  section: string;
+  title: string;
+  /** What the profile wants. */
+  expected: string | null;
+  state: "ok" | "warn" | "bad" | "unknown";
+  /** What the check found. */
+  detail: string;
+  /** Kemudi can fix it (as a workflow). */
+  fixable: boolean;
+}
+
+export interface SetupStatus {
+  profile: string;
+  os: string | null;
+  /** The check could read root-only settings. */
+  root: boolean;
+  items: SetupItem[];
+  helpers: BaselineStatus | null;
+  /** The SSH port Kemudi connects on now. */
+  portNow: number;
+}
+
+/** Check a server against its profile (read-only). */
+export const setupCheck = (serverId: string, instance: string | null = null): Promise<SetupStatus> =>
+  invoke("setup_check", { serverId, instance });
+/** A workflow that fixes `items` on a server (`lynis-audit`: run Lynis). */
+export const setupPlan = (serverId: string, items: string[]): Promise<Workflow> => invoke("setup_plan", { serverId, items });
+/** The `setup:` block as written in servers.yaml ("" when there's none). */
+export const setupSource = (): Promise<string> => invoke("setup_source");
+export const setupSave = (text: string): Promise<ConfigSnapshot> => invoke("setup_save", { text });
+/** A server's profile: null → the default, "none" → not checked. */
+export const serverSetSetup = (serverId: string, profile: string | null): Promise<ConfigSnapshot> =>
+  invoke("server_set_setup", { serverId, profile });
 
 export interface BaselineRepo {
   /** Its folder under `dir`. */

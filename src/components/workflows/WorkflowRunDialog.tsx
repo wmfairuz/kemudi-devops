@@ -14,7 +14,9 @@ import { useWorkflows } from "@/stores/workflows";
 
 export function WorkflowRunDialog() {
   const running = useWorkflows((s) => s.running);
-  const wf = useConfig((s) => s.snapshot?.config?.workflows.find((w) => w.id === running?.id));
+  const config = useConfig((s) => s.snapshot?.config);
+  const extra = useWorkflows((s) => s.extra);
+  const wf = config?.workflows.find((w) => w.id === running?.id) ?? extra.find((w) => w.id === running?.id);
   if (!running || !wf) return null;
   return <RunDialog key={`${wf.id}/${running.from}`} wf={wf} from={running.from} requestedBy={running.request?.by} />;
 }
@@ -75,9 +77,11 @@ function RunDialog({ wf, from: initialFrom, requestedBy }: { wf: Workflow; from:
           <span className="text-[15px] font-semibold">{wf.name}</span>
           {prodServer && <EnvTag env="prod" />}
           <span className="flex-1" />
-          <Btn size="sm" variant="ghost" onClick={() => useWorkflows.getState().edit(wf)}>
-            <Pencil className="size-3.5" /> Edit
-          </Btn>
+          {wf.line !== null && (
+            <Btn size="sm" variant="ghost" onClick={() => useWorkflows.getState().edit(wf)}>
+              <Pencil className="size-3.5" /> Edit
+            </Btn>
+          )}
         </div>
         {requestedBy && (
           <span className="rounded-md border border-primary/30 bg-primary/8 px-2.5 py-1.5 text-[12.5px] text-foreground">

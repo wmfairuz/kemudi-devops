@@ -185,7 +185,7 @@ pub async fn action_set_confirm(
 }
 
 /// Write servers.yaml atomically and reload (the watcher would too, later).
-pub(super) fn save(
+pub(crate) fn save(
     app: &AppHandle,
     state: &AppState,
     path: &Path,

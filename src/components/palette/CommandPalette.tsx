@@ -86,7 +86,7 @@ function buildItems(servers: Server[], tabs: Tab[], snippets: Snippet[], close: 
     cmd("New local shell", () => openLocalShell(), "⌘T"),
     cmd("SSH to host…", () => useUi.getState().setOverlay("ssh"), "⌥⌘T"),
     cmd("Reopen closed tab", () => reopenClosed(), "⇧⌘T"),
-    cmd("Server baseline", () => useTabs.getState().openBaseline(), "⇧⌘B"),
+    cmd("Server setup (profiles, check, fix, helpers)", () => useTabs.getState().openBaseline(), "⇧⌘B"),
     cmd("History", () => useTabs.getState().openHistory(), "⌘Y"),
     cmd("Settings", () => useTabs.getState().openSettings(), "⌘,"),
     cmd("Passwords…", () => useUi.getState().setOverlay("passwords"), "⇧⌘K"),

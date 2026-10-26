@@ -209,7 +209,8 @@ export function WorkflowRuns() {
   const activeId = useTabs((s) => s.activeId);
   const expanded = useWorkflows((s) => s.expanded);
   const config = useConfig((s) => s.snapshot?.config);
-  const workflows = config?.workflows ?? NO_WORKFLOWS;
+  const extra = useWorkflows((s) => s.extra);
+  const workflows = extra.length ? [...(config?.workflows ?? NO_WORKFLOWS), ...extra] : (config?.workflows ?? NO_WORKFLOWS);
   const runs = groups
     .filter((g) => g.workflow)
     .map((g) => ({ g, main: tabs.find((t) => t.groupId === g.id && t.workflow && !t.workflow.part) }))

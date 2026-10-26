@@ -471,7 +471,7 @@ function SettingsTab({ active }: { active: boolean }) {
   );
 }
 
-/** The pinned Server baseline tab. */
+/** The pinned Server setup tab. */
 function BaselineTab({ active }: { active: boolean }) {
   const { openBaseline, closeBaseline } = useTabs.getState();
   return (
@@ -487,9 +487,9 @@ function BaselineTab({ active }: { active: boolean }) {
       )}
     >
       <ClipboardCheck className="size-4 text-muted-foreground" strokeWidth={1.75} />
-      <span>Baseline</span>
+      <span>Server setup</span>
       <button
-        aria-label="Close Baseline"
+        aria-label="Close Server setup"
         onMouseDown={(e) => e.stopPropagation()}
         onClick={closeBaseline}
         className="size-5 flex-none rounded-md text-center text-[16px] leading-[19px] text-faint-foreground hover:bg-hover-strong hover:text-foreground"

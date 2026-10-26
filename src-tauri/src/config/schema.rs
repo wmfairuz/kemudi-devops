@@ -28,8 +28,143 @@ pub struct RawConfig {
     #[serde(default)]
     pub workflows: Vec<RawWorkflow>,
     /// What every server should have: repos cloned into one folder, and
-    /// lines in root's ~/.bashrc (Settings ▸ Server baseline).
+    /// lines in root's ~/.bashrc (Server setup ▸ Helpers).
     pub baseline: Option<Baseline>,
+    /// Server setup: named profiles of what a server should have (packages,
+    /// PHP, SSH, firewall…), checked read-only and fixed on request.
+    pub setup: Option<RawSetup>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RawSetup {
+    /// The profile of servers that don't name one (`setup:` on a server).
+    pub default: Option<String>,
+    #[serde(default)]
+    pub profiles: Vec<Profile>,
+}
+
+/// A server setup profile. Everything is optional: what's left out isn't
+/// checked. `extends` starts from another profile (what's set here wins;
+/// lists replace the other's).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all(serialize = "camelCase"))]
+pub struct Profile {
+    pub id: String,
+    pub name: Option<String>,
+    pub extends: Option<String>,
+    /// e.g. Asia/Kuala_Lumpur.
+    pub timezone: Option<String>,
+    /// The clock kept in sync (systemd-timesyncd).
+    pub ntp: Option<bool>,
+    /// No pending package upgrades (Fix: apt upgrade).
+    pub updates: Option<bool>,
+    /// Security updates installed automatically.
+    pub unattended_upgrades: Option<bool>,
+    /// apt packages that must be installed.
+    pub packages: Option<Vec<String>>,
+    pub php: Option<PhpSetup>,
+    /// Composer in /usr/local/bin.
+    pub composer: Option<bool>,
+    /// What mysql_secure_installation does: no anonymous users, no remote
+    /// root, no test database.
+    pub mysql_secure: Option<bool>,
+    pub ssh: Option<SshSetup>,
+    pub firewall: Option<FirewallSetup>,
+    /// `true` (3 tries in 10m → banned 1h), `false`, or the numbers.
+    pub fail2ban: Option<Toggle<Fail2banSetup>>,
+    pub auditd: Option<bool>,
+    pub lynis: Option<bool>,
+    pub folders: Option<Vec<FolderSetup>>,
+    pub users: Option<Vec<UserSetup>>,
+    /// The helpers (`baseline:`: repos + root's ~/.bashrc lines). Default:
+    /// on when there is a baseline.
+    pub helpers: Option<bool>,
+    /// Your own checks: a command that succeeds when all is well, and one
+    /// that fixes it.
+    pub custom: Option<Vec<CustomCheck>>,
+}
+
+/// `true` / `false`, or the settings (on).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Toggle<T> {
+    Flag(bool),
+    Set(T),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all(serialize = "camelCase"))]
+pub struct PhpSetup {
+    /// `"8.4"` (quote it: 8.10 would read as 8.1).
+    pub version: Stringish,
+    /// Package suffixes: fpm → php8.4-fpm.
+    #[serde(default)]
+    pub extensions: Vec<String>,
+    /// From ppa:ondrej/php (default: yes).
+    pub ppa: Option<bool>,
+    /// The `php` command is this version (default: yes).
+    pub default: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all(serialize = "camelCase"))]
+pub struct SshSetup {
+    pub port: Option<u16>,
+    /// `false`: keys only.
+    pub password_auth: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FirewallSetup {
+    /// ufw rules besides SSH (always allowed): "Nginx Full", 6379/tcp…
+    #[serde(default)]
+    pub allow: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Fail2banSetup {
+    pub maxretry: Option<u32>,
+    #[serde(default, deserialize_with = "opt_stringish")]
+    pub bantime: Option<String>,
+    #[serde(default, deserialize_with = "opt_stringish")]
+    pub findtime: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FolderSetup {
+    pub path: String,
+    /// `user` or `user:group`.
+    pub owner: Option<String>,
+    /// e.g. 775.
+    #[serde(default, deserialize_with = "opt_stringish")]
+    pub mode: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UserSetup {
+    pub name: String,
+    /// In the sudo group.
+    pub sudo: Option<bool>,
+    /// Set a password when it has none (you type it, in the terminal).
+    pub password: Option<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CustomCheck {
+    pub id: Option<String>,
+    pub name: String,
+    /// Succeeds when all is well (its first line of output is shown).
+    pub check: String,
+    /// Run as root to fix it.
+    pub fix: Option<String>,
+    /// The check needs root too.
+    pub root: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -192,6 +327,8 @@ pub struct RawServer {
     /// Overrides/additions to the global server actions.
     #[serde(default)]
     pub actions: Vec<ActionDef>,
+    /// Its server setup profile (`none`: not checked); else the default.
+    pub setup: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -442,6 +579,25 @@ pub struct Config {
     pub editor: Option<Editor>,
     pub workflows: Vec<Workflow>,
     pub baseline: Option<Baseline>,
+    pub setup: Setup,
+}
+
+/// Server setup, resolved: profiles with `extends` applied.
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Setup {
+    pub default: Option<String>,
+    pub profiles: Vec<Profile>,
+    /// Servers that name a profile (or `none`).
+    pub assigned: BTreeMap<String, String>,
+}
+
+impl Config {
+    /// The setup profile a server is checked against, if any.
+    pub fn profile_for(&self, server_id: &str) -> Option<&Profile> {
+        let id = self.setup.assigned.get(server_id).or(self.setup.default.as_ref())?;
+        self.setup.profiles.iter().find(|p| &p.id == id)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
