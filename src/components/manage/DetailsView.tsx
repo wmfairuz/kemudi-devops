@@ -1,4 +1,4 @@
-import { Activity, ClipboardCheck, FolderOpen, Gauge, HeartPulse, ListChecks, PackagePlus, ScanSearch, ScrollText } from "lucide-react";
+import { Activity, ClipboardCheck, FolderOpen, SquareTerminal, Gauge, HeartPulse, ListChecks, PackagePlus, ScanSearch, ScrollText } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Btn } from "@/components/kit/Btn";
@@ -478,46 +478,9 @@ function ServerDetails({ server }: { server: Server | null }) {
             )}
             <span className="flex-1" />
             {server ? (
-              <>
-                <Btn type="submit" variant="outline" disabled={!dirty || !valid || busy}>
-                  Save
-                </Btn>
-                <Btn variant="outline" onClick={() => openFiles(server)}>
-                  <FolderOpen className="size-4" /> Files
-                </Btn>
-                <Btn variant="outline" onClick={() => openLogs(server)}>
-                  <ScrollText className="size-4" /> Logs
-                </Btn>
-                <Btn variant="outline" onClick={() => openMonitor(server)}>
-                  <Activity className="size-4" /> Monitor
-                </Btn>
-                {!server.asg && (
-                  <>
-                    <Btn variant="outline" onClick={() => openHealth(server)}>
-                      <HeartPulse className="size-4" /> Health
-                    </Btn>
-                    <Btn variant="outline" onClick={() => openTune(server)}>
-                      <Gauge className="size-4" /> Fine-tune
-                    </Btn>
-                    <Btn variant="outline" onClick={() => openSetup(server)}>
-                      <ClipboardCheck className="size-4" /> Setup
-                    </Btn>
-                  </>
-                )}
-                {server.asg && (
-                  <>
-                    <Btn variant="outline" onClick={() => useFleetUi.getState().openForward(server)} title="Forward an RDS database to 127.0.0.1 through an instance">
-                      Forward DB…
-                    </Btn>
-                    <Btn variant="outline" onClick={() => useFleetUi.getState().openPick(server)}>
-                      One instance…
-                    </Btn>
-                  </>
-                )}
-                <Btn variant="primary" className="px-4" onClick={() => openServerShell(server)}>
-                  {server.asg ? "Shells on all instances" : "Open shell"}
-                </Btn>
-              </>
+              <Btn type="submit" variant="primary" className="px-4" disabled={!dirty || !valid || busy}>
+                Save
+              </Btn>
             ) : (
               <Btn type="submit" variant="primary" className="px-4" disabled={!valid || busy}>
                 Add server
@@ -525,7 +488,14 @@ function ServerDetails({ server }: { server: Server | null }) {
             )}
           </>
         }
-        side={server && <AppsList server={server} />}
+        side={
+          server && (
+            <>
+              <ServerTools server={server} />
+              <AppsList server={server} />
+            </>
+          )
+        }
       >
         <Row label="Name">
           <TextInput
@@ -910,6 +880,55 @@ function SudoPassword({ serverId }: { serverId: string }) {
       <Btn size="sm" variant="outline" onClick={() => useUi.getState().setOverlay("passwords")}>
         Passwords…
       </Btn>
+    </div>
+  );
+}
+
+/** The server's tools (top of the right column): a shell, and its tabs. */
+function ServerTools({ server }: { server: Server }) {
+  const tool = "justify-start";
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">Open</div>
+      <div className="flex flex-col gap-2 rounded-xl border border-divider bg-panel p-3">
+        <Btn variant="primary" className="w-full" onClick={() => openServerShell(server)}>
+          <SquareTerminal className="size-4" /> {server.asg ? "Shells on all instances" : "Open shell"}
+        </Btn>
+        <div className="grid grid-cols-3 gap-2">
+          <Btn variant="outline" className={tool} onClick={() => openFiles(server)}>
+            <FolderOpen className="size-4" /> Files
+          </Btn>
+          <Btn variant="outline" className={tool} onClick={() => openLogs(server)}>
+            <ScrollText className="size-4" /> Logs
+          </Btn>
+          <Btn variant="outline" className={tool} onClick={() => openMonitor(server)}>
+            <Activity className="size-4" /> Monitor
+          </Btn>
+          {!server.asg && (
+            <>
+              <Btn variant="outline" className={tool} onClick={() => openHealth(server)}>
+                <HeartPulse className="size-4" /> Health
+              </Btn>
+              <Btn variant="outline" className={tool} onClick={() => openTune(server)}>
+                <Gauge className="size-4" /> Fine-tune
+              </Btn>
+              <Btn variant="outline" className={tool} onClick={() => openSetup(server)}>
+                <ClipboardCheck className="size-4" /> Setup
+              </Btn>
+            </>
+          )}
+          {server.asg && (
+            <>
+              <Btn variant="outline" className={tool} onClick={() => useFleetUi.getState().openForward(server)} title="Forward an RDS database to 127.0.0.1 through an instance">
+                Forward DB…
+              </Btn>
+              <Btn variant="outline" className={tool} onClick={() => useFleetUi.getState().openPick(server)}>
+                One instance…
+              </Btn>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
