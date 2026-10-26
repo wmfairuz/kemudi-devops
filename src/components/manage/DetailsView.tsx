@@ -1,4 +1,4 @@
-import { Activity, FolderOpen, Gauge, HeartPulse, ListChecks, PackagePlus, ScanSearch, ScrollText } from "lucide-react";
+import { Activity, ClipboardCheck, FolderOpen, Gauge, HeartPulse, ListChecks, PackagePlus, ScanSearch, ScrollText } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Btn } from "@/components/kit/Btn";
@@ -46,7 +46,7 @@ import { useTeam } from "@/stores/team";
 
 const NO_TEAMS: import("@/lib/ipc").Team[] = [];
 import { useStatus } from "@/stores/status";
-import { openFiles, openHealth, openLogs, openMonitor, openQueues, openTune, useTabs } from "@/stores/tabs";
+import { openFiles, openHealth, openLogs, openMonitor, openQueues, openSetup, openTune, useTabs } from "@/stores/tabs";
 import { toastError, useToasts } from "@/stores/toasts";
 import { useUi } from "@/stores/ui";
 import { useVault } from "@/stores/vault";
@@ -498,6 +498,9 @@ function ServerDetails({ server }: { server: Server | null }) {
                     </Btn>
                     <Btn variant="outline" onClick={() => openTune(server)}>
                       <Gauge className="size-4" /> Fine-tune
+                    </Btn>
+                    <Btn variant="outline" onClick={() => openSetup(server)}>
+                      <ClipboardCheck className="size-4" /> Setup
                     </Btn>
                   </>
                 )}

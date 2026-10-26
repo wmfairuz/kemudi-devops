@@ -3,7 +3,7 @@
 import { sessionLoad, sessionSave } from "@/lib/ipc";
 import { ptySpawner } from "@/lib/terminalSession";
 
-import { closedTabs, openFiles, openHealth, openLogs, openMonitor, openQueues, openTune, useTabs, type OpenOptions, type Tab } from "./tabs";
+import { closedTabs, openFiles, openHealth, openLogs, openMonitor, openQueues, openSetup, openTune, useTabs, type OpenOptions, type Tab } from "./tabs";
 import { useToasts } from "./toasts";
 import { leaves, load as loadLayout, save as saveLayout, type SavedLayout } from "@/lib/layout";
 import { isTabColor } from "@/lib/tabColors";
@@ -66,6 +66,9 @@ function restoreTab(t: SavedTab, into?: OpenOptions["into"]): string {
   }
   if (t.kind === "health" && t.serverId && t.host) {
     return openHealth({ id: t.serverId, name: t.title.replace(/ · health$/, ""), host: t.host, env: t.prod ? "prod" : "dev" });
+  }
+  if (t.kind === "setup" && t.serverId) {
+    return openSetup({ id: t.serverId, name: t.title.replace(/ · setup$/, ""), host: t.host ?? "", env: t.prod ? "prod" : "dev" });
   }
   if (t.kind === "tune" && t.serverId && t.host) {
     return openTune({ id: t.serverId, name: t.title.replace(/ · tune$/, ""), host: t.host, env: t.prod ? "prod" : "dev" });

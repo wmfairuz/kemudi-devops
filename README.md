@@ -648,7 +648,13 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
         php: { version: "8.1", extensions: [fpm, cli, mbstring] }
   ```
 
-  **Check** (a row's, or *Check all servers*, the team in front) is
+  The tab lists the team in front's servers, one line each (profile,
+  ✓ / ✗ / ! counts); clicking one opens its own **Setup** tab (also: the
+  server's right-click menu or Details ▸ Setup), a full page with each
+  section (System, Packages, PHP, Database, Folders, Users, Security,
+  Helpers, Firewall, SSH) as a card: every item with what was found and
+  what the profile wants, a tick box (the ✗ ones ticked), **Fix** per item
+  and **Fix N ticked**. **Check** (a server's, or *Check all servers*) is
   read-only, over ssh (AWS servers: each instance, through Run Command): ✓ /
   ! / ✗ / ? per item with what was found (*password logins on (set in
   /etc/ssh/sshd_config.d/50-cloud-init.conf)*, *port 22 · want 2222*,
@@ -656,7 +662,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   hardening index). Settings only root can read (`sshd -T`, ufw rules,
   fail2ban's jails, MySQL) need root or sudo without a password; otherwise
   they show as ?. "Nginx Full" also counts as allowed when 80/tcp and
-  443/tcp are. **Fix** (one item) and **Fix all** build the steps as a
+  443/tcp are. **Fix** (one item) and **Fix N ticked** build the steps as a
   workflow and open the run dialog (each step, *Show script*, production's
   typed name), then it runs in the Workflows tab: you watch it, answer
   prompts (sudo, a new user's password) and run again from a failed step;

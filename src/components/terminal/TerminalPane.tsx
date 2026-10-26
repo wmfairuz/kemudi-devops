@@ -16,6 +16,7 @@ import { TuneView } from "@/components/tune/TuneView";
 import { MonitorView } from "@/components/monitor/MonitorView";
 
 import { PasswordChip } from "./PasswordChip";
+import { ServerSetupView } from "@/components/setup/SetupView";
 import { WorkflowStepsView, setWorkflowView } from "@/components/workflows/WorkflowStepsView";
 import { TerminalView } from "./TerminalView";
 
@@ -124,6 +125,8 @@ function LayoutView({
           <QueuesView key={tab.instance ?? ""} tab={tab} visible={visible} />
         ) : tab.kind === "health" && tab.serverId ? (
           <HealthView tab={tab} visible={visible} />
+        ) : tab.kind === "setup" && tab.serverId ? (
+          <ServerSetupView tab={tab} visible={visible} />
         ) : tab.kind === "tune" && tab.serverId ? (
           <TuneView tab={tab} visible={visible} />
         ) : (

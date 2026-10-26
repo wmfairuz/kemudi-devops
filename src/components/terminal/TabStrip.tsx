@@ -24,6 +24,7 @@ function TabIcon({ tab }: { tab: Tab }) {
   if (tab.kind === "logs") return <ScrollText className="size-4 flex-none text-[#ffb86c]" strokeWidth={2} />;
   if (tab.kind === "queues") return <ListChecks className="size-4 flex-none text-[#50fa7b]" strokeWidth={2} />;
   if (tab.kind === "health") return <HeartPulse className="size-4 flex-none text-[#ff79c6]" strokeWidth={2} />;
+  if (tab.kind === "setup") return <ClipboardCheck className="size-4 flex-none text-[#50fa7b]" strokeWidth={2} />;
   if (tab.kind === "tune") return <Gauge className="size-4 flex-none text-[#bd93f9]" strokeWidth={2} />;
   switch (tab.state) {
     case "running":

@@ -2,7 +2,7 @@ import { ChevronDown, ChevronRight, RotateCw, Wrench } from "lucide-react";
 import { useEffect, useState } from "react";
 import { create } from "zustand";
 
-import { HelpersEditor } from "@/components/baseline/Baseline";
+import { BaselineChips, HelpersEditor } from "@/components/baseline/Baseline";
 import { Btn } from "@/components/kit/Btn";
 import { CodeEditor } from "@/components/kit/CodeEditor";
 import { EnvTag } from "@/components/kit/EnvTag";
@@ -11,7 +11,7 @@ import { isAsg } from "@/lib/fleet";
 import { asgInstances, errorMessage, serverSetSetup, setupCheck, setupPlan, setupSave, setupSource, type Server, type SetupItem, type SetupStatus } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { useConfig } from "@/stores/config";
-import { useTabs, WORKFLOWS_ID } from "@/stores/tabs";
+import { openSetup, useTabs, WORKFLOWS_ID, type Tab } from "@/stores/tabs";
 import { useCurrentTeam, useTeamServers } from "@/stores/team";
 import { toastError, useToasts } from "@/stores/toasts";
 import { useWorkflows } from "@/stores/workflows";
@@ -67,9 +67,8 @@ type Row = { state: "busy" } | { state: "done"; results: Result[] } | { state: "
 
 /** Per server: checking, being fixed, or what came back. Kept while you
  *  switch tabs. */
-const useSetupRows = create<{ rows: Record<string, Row>; open: Record<string, boolean> }>(() => ({ rows: {}, open: {} }));
+const useSetupRows = create<{ rows: Record<string, Row> }>(() => ({ rows: {} }));
 const setRow = (id: string, row: Row) => useSetupRows.setState((x) => ({ rows: { ...x.rows, [id]: row } }));
-const setOpen = (id: string, open: boolean) => useSetupRows.setState((x) => ({ open: { ...x.open, [id]: open } }));
 
 async function checkServer(s: Server) {
   setRow(s.id, { state: "busy" });
@@ -81,8 +80,6 @@ async function checkServer(s: Server) {
     results = [{ instance: null, status: errorMessage(e) }];
   }
   setRow(s.id, { state: "done", results });
-  // Something to look at: open it.
-  if (results.some((r) => typeof r.status === "string" || r.status.items.some((i) => i.state !== "ok"))) setOpen(s.id, true);
 }
 
 /** Resolve when tab `id` stops running (or is closed). */
@@ -142,151 +139,285 @@ function counts(st: SetupStatus) {
   return { ok: n("ok"), warn: n("warn"), bad: n("bad"), unknown: n("unknown") };
 }
 
-/** One server's (or instance's) items, by section. */
-function Items({ server, r }: { server: Server; r: Result }) {
-  const fixing = useSetupRows((x) => x.rows[server.id]?.state === "fixing");
-  if (typeof r.status === "string") return <div className="text-[12px] text-env-prod-fg">{r.status}</div>;
-  const st = r.status;
-  const sections = [...new Set(st.items.map((i) => i.section))];
-  const canFix = !isAsg(server) && !fixing;
+/** All of a server's results, added up. */
+function summary(results: Result[]) {
+  const all = results.flatMap((r) => (typeof r.status === "string" ? [] : [counts(r.status)]));
+  return all.reduce((a, c) => ({ ok: a.ok + c.ok, warn: a.warn + c.warn, bad: a.bad + c.bad, unknown: a.unknown + c.unknown }), { ok: 0, warn: 0, bad: 0, unknown: 0 });
+}
+
+function Counts({ results }: { results: Result[] }) {
+  const sum = summary(results);
+  const failed = results.find((r) => typeof r.status === "string");
+  if (failed && typeof failed.status === "string") return <span className="truncate text-env-prod-fg">{failed.status}</span>;
   return (
-    <div className="flex flex-col gap-2">
-      {r.instance && <span className="font-mono text-[11px] text-subtle-foreground">{r.instance}</span>}
-      <div className="grid grid-cols-[110px_18px_minmax(160px,220px)_minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-1 text-[12px]">
-        {sections.map((sec) =>
-          st.items
-            .filter((i) => i.section === sec)
-            .map((it, k) => (
-              <div key={it.id} className="contents">
-                <span className="text-[11px] font-medium tracking-wide text-subtle-foreground uppercase">{k === 0 ? sec : ""}</span>
-                <span className={cn("text-center font-semibold", TONE[it.state])}>{MARK[it.state]}</span>
-                <span className="truncate" title={it.id}>
-                  {it.title}
-                </span>
-                <span className="min-w-0">
-                  <span className={cn("font-mono text-[11.5px]", it.state === "ok" ? "text-muted-foreground" : TONE[it.state])}>{it.detail}</span>
-                  {it.expected && it.state !== "ok" && <span className="ml-2 text-[11px] text-subtle-foreground">want: {it.expected}</span>}
-                </span>
-                <span>
-                  {it.fixable && canFix && (
-                    <button className="cursor-pointer text-[12px] text-primary hover:underline" onClick={() => void fix(server, [it.id])}>
-                      Fix
-                    </button>
-                  )}
-                </span>
-              </div>
-            )),
-        )}
+    <span className="flex items-center gap-3">
+      <span className="text-[#17702a]">✓ {sum.ok}</span>
+      {sum.bad > 0 && <span className="text-env-prod-fg">✗ {sum.bad}</span>}
+      {sum.warn > 0 && <span className="text-[#8a5a12]">! {sum.warn}</span>}
+      {sum.unknown > 0 && <span className="text-subtle-foreground">? {sum.unknown}</span>}
+      {sum.bad + sum.warn === 0 && <span className="text-[#17702a]">all as the profile says</span>}
+    </span>
+  );
+}
+
+function RowState({ server, row }: { server: Server; row: Row | undefined }) {
+  if (!row) return <span className="text-subtle-foreground">not checked yet</span>;
+  if (row.state === "busy")
+    return (
+      <span className="flex items-center gap-1.5 text-subtle-foreground">
+        <Spinner size={10} /> checking {server.name}…
+      </span>
+    );
+  if (row.state === "fixing")
+    return (
+      <button
+        className="flex cursor-pointer items-center gap-1.5 text-subtle-foreground hover:text-foreground"
+        onClick={(e) => {
+          e.stopPropagation();
+          showRun(row.tabId);
+        }}
+      >
+        <Spinner size={10} /> fixing (see its run) · checked again when it ends
+      </button>
+    );
+  return <Counts results={row.results} />;
+}
+
+/** Server setup ▸ Servers: one line per server; it opens the server's
+ *  Setup tab. */
+function ServerRow({ server, profiles, defaultId }: { server: Server; profiles: { id: string; name: string | null }[]; defaultId: string | null }) {
+  const row = useSetupRows((x) => x.rows[server.id]);
+  const assigned = useConfig((s) => s.snapshot?.config?.setup.assigned[server.id] ?? "");
+  const effective = assigned || defaultId;
+  const none = !effective || effective === "none";
+  const open = () => void openSetup(server);
+
+  return (
+    <div role="button" tabIndex={0} onClick={open} onKeyDown={(e) => e.key === "Enter" && open()} className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-hover/60">
+      <span className="flex w-[230px] flex-none items-center gap-1.5">
+        <span className="truncate text-[12.5px] font-medium">{server.name}</span>
+        <EnvTag env={server.env} />
+      </span>
+      <span onClick={(e) => e.stopPropagation()}>
+        <ProfileSelect server={server} assigned={assigned} profiles={profiles} defaultId={defaultId} />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-[12px]">{none ? <span className="text-subtle-foreground">not checked (no profile)</span> : <RowState server={server} row={row} />}</span>
+      <span className="flex flex-none items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        <Btn size="sm" variant="ghost" disabled={none || row?.state === "busy" || row?.state === "fixing"} onClick={() => void checkServer(server)}>
+          Check
+        </Btn>
+        <Btn size="sm" variant="outline" onClick={open} title="Its own tab: every item, what was found, Fix">
+          Open <ChevronRight className="size-3" />
+        </Btn>
+      </span>
+    </div>
+  );
+}
+
+function ProfileSelect({ server, assigned, profiles, defaultId }: { server: Server; assigned: string; profiles: { id: string; name: string | null }[]; defaultId: string | null }) {
+  const setProfile = async (v: string) => {
+    try {
+      await serverSetSetup(server.id, v || null);
+      useSetupRows.setState((x) => {
+        const rows = { ...x.rows };
+        delete rows[server.id];
+        return { rows };
+      });
+    } catch (e) {
+      toastError(errorMessage(e));
+    }
+  };
+  return (
+    <select
+      value={assigned}
+      onChange={(e) => void setProfile(e.target.value)}
+      className="h-7 w-[180px] flex-none rounded-md border border-control-border bg-background px-1.5 text-[12px] outline-none focus:border-primary/60"
+      title="Its setup profile (saved as setup: on the server)"
+    >
+      <option value="">{defaultId ? `Default (${defaultId})` : "No default"}</option>
+      {profiles.map((p) => (
+        <option key={p.id} value={p.id}>
+          {p.name ? `${p.name} (${p.id})` : p.id}
+        </option>
+      ))}
+      <option value="none">Not set up</option>
+    </select>
+  );
+}
+
+/** One section's items (System, PHP, SSH…), as a card. */
+function SectionCard({ name, items, picked, toggle, onFix, canFix }: { name: string; items: SetupItem[]; picked: Set<string>; toggle: (id: string) => void; onFix: (id: string) => void; canFix: boolean }) {
+  const bad = items.filter((i) => i.state === "bad" || i.state === "warn").length;
+  return (
+    <div className="flex flex-col rounded-lg border border-divider">
+      <div className="flex items-center gap-2 border-b border-divider px-3 py-2">
+        <span className="text-[12px] font-semibold tracking-wide text-muted-foreground uppercase">{name}</span>
+        <span className={cn("text-[12px]", bad ? "text-env-prod-fg" : "text-[#17702a]")}>{bad ? `${bad} to fix` : "✓"}</span>
       </div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-subtle-foreground">
-        {st.os && <span>{st.os}</span>}
-        <span>Kemudi connects on port {st.portNow}</span>
-        {!st.root && <span className="text-[#8a5a12]">Some checks need root: sign in as root, or let sudo work without a password, to see them.</span>}
-        {!isAsg(server) && (
-          <button className="cursor-pointer text-primary hover:underline" onClick={() => void fix(server, ["lynis-audit"])} title="lynis audit system --quick, in a terminal tab">
-            Run a Lynis audit
-          </button>
-        )}
+      <div className="flex flex-col divide-y divide-divider/70">
+        {items.map((it) => (
+          <div key={it.id} className="flex items-start gap-2.5 px-3 py-2.5">
+            <input
+              type="checkbox"
+              className="mt-[3px] flex-none"
+              disabled={!it.fixable || !canFix}
+              checked={picked.has(it.id)}
+              onChange={() => toggle(it.id)}
+              aria-label={`Fix ${it.title}`}
+              title={it.fixable ? "Include in Fix selected" : it.state === "ok" ? "Nothing to fix" : "Kemudi can't fix this one"}
+            />
+            <span className={cn("w-4 flex-none text-center text-[14px] leading-5 font-semibold", TONE[it.state])}>{MARK[it.state]}</span>
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="text-[13px] font-medium">{it.title}</span>
+              <span className={cn("font-mono text-[12px] break-words", it.state === "ok" ? "text-muted-foreground" : TONE[it.state])}>{it.detail}</span>
+              {it.expected && it.state !== "ok" && <span className="text-[11.5px] break-words text-subtle-foreground">want: {it.expected}</span>}
+            </div>
+            {it.fixable && canFix && (
+              <Btn size="sm" variant="ghost" onClick={() => onFix(it.id)}>
+                Fix
+              </Btn>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
-function ServerRow({ server, profiles, defaultId }: { server: Server; profiles: { id: string; name: string | null }[]; defaultId: string | null }) {
-  const row = useSetupRows((x) => x.rows[server.id]);
-  const open = useSetupRows((x) => x.open[server.id] ?? false);
-  const assigned = useConfig((s) => s.snapshot?.config?.setup.assigned[server.id] ?? "");
-  const effective = assigned || defaultId;
-  const none = !effective || effective === "none";
-  const results = row?.state === "done" ? row.results : [];
-  const fixIds = [...new Set(results.flatMap((r) => (typeof r.status === "string" ? [] : r.status.items.filter((i) => i.fixable).map((i) => i.id))))];
-  const all = results.flatMap((r) => (typeof r.status === "string" ? [] : [counts(r.status)]));
-  const sum = all.reduce((a, c) => ({ ok: a.ok + c.ok, warn: a.warn + c.warn, bad: a.bad + c.bad, unknown: a.unknown + c.unknown }), { ok: 0, warn: 0, bad: 0, unknown: 0 });
-  const failed = results.find((r) => typeof r.status === "string");
-
-  const setProfile = async (v: string) => {
-    try {
-      await serverSetSetup(server.id, v || null);
-    } catch (e) {
-      toastError(errorMessage(e));
-    }
-  };
-
+/** One server's (or instance's) results: sections as cards. */
+function Results({ server, r, picked, toggle, canFix }: { server: Server; r: Result; picked: Set<string>; toggle: (id: string) => void; canFix: boolean }) {
+  if (typeof r.status === "string") return <div className="rounded-lg bg-env-prod/8 px-3 py-2 text-[12.5px] text-env-prod-fg">{r.status}</div>;
+  const st = r.status;
+  const sections = [...new Set(st.items.map((i) => i.section))];
+  const hasSsh = st.items.some((i) => i.id.startsWith("ssh-") && i.fixable);
   return (
-    <div className="flex flex-col px-3 py-2">
-      <div className="flex items-center gap-3">
-        <button
-          aria-label={open ? "Collapse" : "Expand"}
-          disabled={results.length === 0}
-          onClick={() => setOpen(server.id, !open)}
-          className="flex size-5 flex-none cursor-pointer items-center justify-center rounded text-subtle-foreground hover:bg-hover disabled:cursor-default disabled:opacity-30"
-        >
-          {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
-        </button>
-        <span className="flex w-[210px] flex-none items-center gap-1.5">
-          <span className="truncate text-[12.5px] font-medium">{server.name}</span>
-          <EnvTag env={server.env} />
-        </span>
-        <select
-          value={assigned}
-          onChange={(e) => void setProfile(e.target.value)}
-          className="h-7 w-[170px] flex-none rounded-md border border-control-border bg-background px-1.5 text-[12px] outline-none focus:border-primary/60"
-          title="Its setup profile (saved as setup: on the server)"
-        >
-          <option value="">{defaultId ? `Default (${defaultId})` : "No default"}</option>
-          {profiles.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name ? `${p.name} (${p.id})` : p.id}
-            </option>
-          ))}
-          <option value="none">Not set up</option>
-        </select>
-        <span className="min-w-0 flex-1 truncate text-[12px]">
-          {none && <span className="text-subtle-foreground">not checked (no profile)</span>}
-          {!none && !row && <span className="text-subtle-foreground">not checked yet</span>}
-          {row?.state === "busy" && (
-            <span className="flex items-center gap-1.5 text-subtle-foreground">
-              <Spinner size={10} /> checking…
-            </span>
-          )}
-          {row?.state === "fixing" && (
-            <button className="flex cursor-pointer items-center gap-1.5 text-subtle-foreground hover:text-foreground" onClick={() => showRun(row.tabId)}>
-              <Spinner size={10} /> fixing (see its run) — checked again when it ends
-            </button>
-          )}
-          {row?.state === "done" && failed && typeof failed.status === "string" && <span className="text-env-prod-fg">{failed.status}</span>}
-          {row?.state === "done" && !failed && (
-            <span className="flex items-center gap-3">
-              <span className="text-[#17702a]">✓ {sum.ok}</span>
-              {sum.bad > 0 && <span className="text-env-prod-fg">✗ {sum.bad}</span>}
-              {sum.warn > 0 && <span className="text-[#8a5a12]">! {sum.warn}</span>}
-              {sum.unknown > 0 && <span className="text-subtle-foreground">? {sum.unknown}</span>}
-              {sum.bad + sum.warn === 0 && <span className="text-[#17702a]">all as the profile says</span>}
-            </span>
-          )}
-        </span>
-        <span className="flex flex-none gap-1">
-          <Btn size="sm" variant="ghost" disabled={none || row?.state === "busy" || row?.state === "fixing"} onClick={() => void checkServer(server)}>
-            Check
-          </Btn>
-          <Btn
-            size="sm"
-            variant="outline"
-            disabled={fixIds.length === 0 || isAsg(server) || row?.state !== "done"}
-            onClick={() => void fix(server, fixIds)}
-            title={isAsg(server) ? "An Auto Scaling group: set up its image (AMI) instead" : "Fix everything that's off, as one workflow (you see the steps first)"}
-          >
-            <Wrench className="size-3" /> Fix all{fixIds.length ? ` (${fixIds.length})` : ""}
-          </Btn>
-        </span>
+    <div className="flex flex-col gap-3">
+      {r.instance && <span className="font-mono text-[12px] text-subtle-foreground">{r.instance}</span>}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-subtle-foreground">
+        {st.os && <span>{st.os}</span>}
+        <span>profile {st.profile}</span>
+        <span>Kemudi connects on port {st.portNow}</span>
+        {!st.root && <span className="text-[#8a5a12]">Some checks need root: sign in as root, or let sudo work without a password, to see them (they show as ?).</span>}
       </div>
-      {open && results.length > 0 && (
-        <div className="mt-2 ml-8 flex flex-col gap-3 border-l border-divider pl-4">
-          {results.map((r) => (
-            <Items key={r.instance ?? "-"} server={server} r={r} />
-          ))}
+      {hasSsh && canFix && (
+        <div className="rounded-lg border border-primary/25 bg-primary/6 px-3 py-2 text-[12px] text-muted-foreground">
+          SSH fixes go in an order that can't lock you out: a key login checked first; the new port opened and tried before the old one closes; a pause for you to set
+          its Port in ~/.ssh/config; passwords off last, then checked from this Mac.
         </div>
       )}
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(440px,1fr))] items-start gap-3">
+        {sections.map((sec) => (
+          <SectionCard
+            key={sec}
+            name={sec}
+            items={st.items.filter((i) => i.section === sec)}
+            picked={picked}
+            toggle={toggle}
+            canFix={canFix}
+            onFix={(id) => void fix(server, [id])}
+          />
+        ))}
+      </div>
+      {st.helpers && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[12px] font-semibold tracking-wide text-muted-foreground uppercase">Helpers in detail</span>
+          <BaselineChips status={st.helpers} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A server's Setup tab: every item of its profile, what was found, and
+ *  Fix (one, the ones ticked, or all). */
+export function ServerSetupView({ tab, visible }: { tab: Tab; visible: boolean }) {
+  const serverId = tab.serverId ?? "";
+  const server = useConfig((s) => s.snapshot?.config?.servers.find((x) => x.id === serverId));
+  const setup = useConfig((s) => s.snapshot?.config?.setup);
+  const row = useSetupRows((x) => x.rows[serverId]);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const assigned = setup?.assigned[serverId] ?? "";
+  const effective = assigned || setup?.default;
+  const none = !effective || effective === "none";
+  const results = row?.state === "done" ? row.results : [];
+  const fixable = [...new Set(results.flatMap((r) => (typeof r.status === "string" ? [] : r.status.items.filter((i) => i.fixable))).map((i) => i.id))];
+
+  useEffect(() => {
+    if (visible && server && !none && !row) void checkServer(server);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, server?.id, none]);
+  // After each check: what's wrong (not just a warning) is ticked.
+  useEffect(() => {
+    if (row?.state !== "done") return;
+    setPicked(new Set(row.results.flatMap((r) => (typeof r.status === "string" ? [] : r.status.items.filter((i) => i.fixable && i.state === "bad").map((i) => i.id)))));
+  }, [row]);
+
+  if (!server) return <div className="light-ui absolute inset-0 bg-background p-4 text-[13px] text-subtle-foreground">{serverId} isn't in Kemudi any more.</div>;
+  const canFix = !isAsg(server) && row?.state === "done";
+  const toggle = (id: string) =>
+    setPicked((p) => {
+      const n = new Set(p);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  const chosen = fixable.filter((id) => picked.has(id));
+
+  return (
+    <div className="light-ui absolute inset-0 flex flex-col bg-background text-foreground">
+      <div className="flex h-11 flex-none items-center gap-2 border-b border-divider px-3">
+        <span className="text-[13px] font-semibold">Setup</span>
+        <span className="text-[12.5px] text-subtle-foreground">{server.name}</span>
+        <EnvTag env={server.env} />
+        <ProfileSelect server={server} assigned={assigned} profiles={setup?.profiles ?? []} defaultId={setup?.default ?? null} />
+        <span className="min-w-0 flex-1 truncate pl-2 text-[12px]">{!none && <RowState server={server} row={row} />}</span>
+        {!isAsg(server) && (
+          <Btn size="sm" variant="ghost" disabled={none} onClick={() => void fix(server, ["lynis-audit"])} title="lynis audit system --quick, in a terminal">
+            Lynis audit
+          </Btn>
+        )}
+        <Btn size="sm" variant="outline" disabled={none || row?.state === "busy" || row?.state === "fixing"} onClick={() => void checkServer(server)}>
+          <RotateCw className={cn("size-3.5", row?.state === "busy" && "animate-spin")} /> Check again
+        </Btn>
+        <Btn
+          size="sm"
+          variant="primary"
+          disabled={!canFix || chosen.length === 0}
+          onClick={() => void fix(server, chosen)}
+          title={isAsg(server) ? "An Auto Scaling group: set up its image (AMI) instead" : "The ticked items as one workflow (you see its steps first)"}
+        >
+          <Wrench className="size-3.5" /> Fix {chosen.length ? `${chosen.length} ticked` : "ticked"}
+        </Btn>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        {none && (
+          <div className="text-[13px] text-subtle-foreground">
+            {server.name} has no setup profile. Pick one above (or set a default in Server setup ▸ Edit profiles).
+          </div>
+        )}
+        {!none && row?.state === "busy" && results.length === 0 && (
+          <div className="text-[13px] text-subtle-foreground">Checking {server.name} against {effective} (read-only)…</div>
+        )}
+        {fixable.length > 0 && canFix && (
+          <div className="mb-3 flex items-center gap-3 text-[12px] text-subtle-foreground">
+            <span>
+              {fixable.length} can be fixed; the ✗ ones are ticked. Fix shows the steps (and the script) before anything runs
+              {server.env === "prod" ? ", and asks for the server's name" : ""}.
+            </span>
+            <button className="cursor-pointer text-primary hover:underline" onClick={() => setPicked(new Set(fixable))}>
+              Tick all
+            </button>
+            <button className="cursor-pointer text-primary hover:underline" onClick={() => setPicked(new Set())}>
+              None
+            </button>
+          </div>
+        )}
+        <div className="flex flex-col gap-6">
+          {results.map((r) => (
+            <Results key={r.instance ?? "-"} server={server} r={r} picked={picked} toggle={toggle} canFix={canFix} />
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -428,7 +559,7 @@ export function SetupView() {
               <span className="text-[13px] font-semibold">Servers</span>
               <span className="text-[12px] text-subtle-foreground">
                 {team ? `${team.name} · ` : ""}
-                {servers.length} · AWS servers: each instance (checked only). A new server: add it, pick its profile, Check, Fix all.
+                {servers.length} · click one for its Setup tab · AWS servers: each instance, checked only · a new server: add it, pick its profile, open it, Fix
               </span>
             </div>
             <div className="flex flex-col divide-y divide-divider rounded-lg border border-divider">

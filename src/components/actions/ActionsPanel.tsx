@@ -46,7 +46,7 @@ export function ActionsPanel() {
   // Pages with nothing to act on (Home, Workflows, Snippets, History): no
   // panel, whatever ⌘J is set to; it's back on tabs and server/app pages.
   const page = useTabs(
-    (s) => s.activeId === null || [HOME_ID, HISTORY_ID, SNIPPETS_ID, WORKFLOWS_ID, BASELINE_ID, SETTINGS_ID].includes(s.activeId) || !!groupOf(s, s.activeId)?.workflow,
+    (s) => s.activeId === null || [HOME_ID, HISTORY_ID, SNIPPETS_ID, WORKFLOWS_ID, BASELINE_ID, SETTINGS_ID].includes(s.activeId) || !!groupOf(s, s.activeId)?.workflow || s.tabs.find((t) => t.id === s.activeId)?.kind === "setup",
   );
   if (!open || page) return null;
   const server = selected ? servers.find((s) => s.id === selected.serverId) : undefined;
