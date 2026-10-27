@@ -244,11 +244,15 @@ pub async fn files_download(
         r#"{prelude}f={f}
 if [ -d "$f" ]; then
   t=$(mktemp /tmp/kemudi-dl-XXXXXX) || {{ echo "@@err no room in /tmp to pack $f"; exit 0; }}
-  p=$(dirname -- "$f"); n=$(basename -- "$f")
-  tar czf "$t" {excl}-C "$p" -- "$n" 2>/dev/null; rc=$?
+  # A link to a folder: what it points to, under the link's name (links
+  # inside stay links).
+  r=$f; [ -L "$f" ] && r=$(readlink -f -- "$f")
+  p=$(dirname -- "$r"); n=$(basename -- "$r"); ln=$(basename -- "$f")
+  set --; [ "$n" != "$ln" ] && set -- "--transform=s|^[^/]*|$(printf '%s' "$ln" | sed 's/[\&|]/\\&/g')|S"
+  tar czf "$t" "$@" {excl}-C "$p" -- "$n" 2>/dev/null; rc=$?
   if [ "$rc" -gt 1 ]; then
     [ -n "$SU" ] || {{ rm -f "$t"; echo "@@err can't read all of $f: {NO_SUDO}"; exit 0; }}
-    $SU tar czf "$t" {excl}-C "$p" -- "$n" 2>/dev/null; rc=$?
+    $SU tar czf "$t" "$@" {excl}-C "$p" -- "$n" 2>/dev/null; rc=$?
     $SU chown "$(id -un)" "$t"
   fi
   [ "$rc" -le 1 ] || {{ rm -f "$t"; echo "@@err couldn't pack $f (tar exit $rc)"; exit 0; }}

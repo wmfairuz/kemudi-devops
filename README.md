@@ -226,7 +226,9 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   (text files, line and line number) under the folder shown, skipping
   vendor, node_modules and .git unless unticked; double-click a result to
   open it. Right-click a folder ▸ **Download as .tar.gz** (packed on the
-  server, with sudo if needed) or **without vendor, node_modules, .git**
+  server, with sudo if needed; a link to a folder, like /opt/www →
+  /mnt/…, brings what it points to, under the link's name, and links
+  inside stay links) or **without vendor, node_modules, .git**
   (the top-level ones; `resources/views/vendor` stays). **New folder** (⇧⌘N) and **New file**
   (toolbar): made in the folder shown, never over an existing name, with
   sudo when needed (then owned like the folder); a new file opens in the
