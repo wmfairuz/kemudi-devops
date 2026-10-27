@@ -197,6 +197,7 @@ pub fn run() {
             files::files_upload,
             files::files_reveal,
             files::files_choose_folder,
+            files::files_choose_files,
             files::files_principals,
             files::files_chown,
             files::files_chmod,

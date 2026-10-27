@@ -211,7 +211,9 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   own modes, e.g. 775 / 664; as you when you own it, else sudo). The Owner
   column shows `owner:group`. When it can't (no sudo for this user, the
   saved password refused, a read-only file system…) it says why and
-  nothing else changes. **Drop files from Finder** onto it to
+  nothing else changes. **Upload** (the toolbar; right-click a folder ▸
+  *Upload here…*) picks files on this Mac (several at once, starting where
+  you last picked), or **drop files from Finder** onto it, to
   upload into the folder shown: it asks first, never replaces a file
   without asking, and uses sudo (owned like the folder) where needed.
   Uploads are recorded in History. **Copy / Cut** (⌘C / ⌘X or right-click)

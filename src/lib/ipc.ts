@@ -1049,6 +1049,8 @@ export const filesFind = (
 ): Promise<{ found: FoundFile[]; more: boolean; timedOut: boolean; sudo: boolean }> => invoke("files_find", { serverId, dir, query, contents, skipDeps });
 /** The macOS folder picker; null when cancelled. */
 export const filesChooseFolder = (start: string | null): Promise<string | null> => invoke("files_choose_folder", { start });
+/** The macOS file picker (several at once); [] when cancelled. */
+export const filesChooseFiles = (start: string | null, prompt: string): Promise<string[]> => invoke("files_choose_files", { start, prompt });
 /** Uploads a local file into `dir`; returns the remote path. */
 export const filesUpload = (serverId: string, local: string, dir: string, replace: boolean, appId: string | null): Promise<string> =>
   invoke("files_upload", { serverId, local, dir, replace, appId });

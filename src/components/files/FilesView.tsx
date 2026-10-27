@@ -12,7 +12,7 @@ import { ChownDialog } from "./ChownDialog";
 import { DeleteDialog, NewItemDialog, RenameDialog } from "./FileOpsDialogs";
 import { copyText } from "@/lib/clipboard";
 import { downloadDir, shortPath } from "@/lib/downloads";
-import { errorMessage, filesChooseFolder, filesDownload, filesFind, filesList, filesPaste, filesReveal, filesUpload, type FileEntry, type FileListing, type FoundFile } from "@/lib/ipc";
+import { errorMessage, filesChooseFiles, filesChooseFolder, filesDownload, filesFind, filesList, filesPaste, filesReveal, filesUpload, type FileEntry, type FileListing, type FoundFile } from "@/lib/ipc";
 import { useFileClip } from "@/stores/fileClip";
 import { cn } from "@/lib/utils";
 import { findServer, useConfig } from "@/stores/config";
@@ -242,9 +242,9 @@ export function FilesView({ tab, visible }: { tab: Tab; visible: boolean }) {
     return () => window.removeEventListener("kemudi:files-find", onFind);
   }, [tab.id]);
 
-  const upload = async (paths: string[]) => {
+  const upload = async (paths: string[], into?: string) => {
     if (!listing || paths.length === 0) return;
-    const target = listing.dir;
+    const target = into ?? listing.dir;
     const env = envFor(target);
     const names = paths.map((p) => p.split("/").pop() ?? p);
     const ok = await askConfirm(
@@ -276,6 +276,30 @@ export function FilesView({ tab, visible }: { tab: Tab; visible: boolean }) {
     }
     if (done) useToasts.getState().push(`Uploaded ${done} file${done === 1 ? "" : "s"} to ${target}`, "info");
     void load(target, false);
+  };
+
+  /** Upload… : pick files on this Mac (starting where you last picked). */
+  const pickUpload = async (into?: string) => {
+    if (!listing) return;
+    const target = into ?? listing.dir;
+    let from: string | null = null;
+    try {
+      from = localStorage.getItem("kemudi.uploadFrom");
+    } catch {
+      /* no storage: ~/Downloads */
+    }
+    try {
+      const paths = await filesChooseFiles(from, `Upload to ${target} on ${serverId}`);
+      if (paths.length === 0) return;
+      try {
+        localStorage.setItem("kemudi.uploadFrom", paths[0]!.replace(/\/[^/]*$/, ""));
+      } catch {
+        /* not remembered */
+      }
+      await upload(paths, target);
+    } catch (e) {
+      toastError(errorMessage(e));
+    }
   };
 
   // Files dropped from Finder onto this tab while it's in front.
@@ -312,6 +336,7 @@ export function FilesView({ tab, visible }: { tab: Tab; visible: boolean }) {
         ? [
             { label: "Open", run: () => void load(path) },
             { label: "Terminal here", run: () => terminalHere(path) },
+            { label: "Upload here…", hint: "files from this Mac", run: () => void pickUpload(path) },
             { label: "Download as .tar.gz", hint: shortPath(downloadDir()), run: () => void download(e) },
             { label: "Download without vendor, node_modules, .git", run: () => void download(e, false, true) },
           ]
@@ -429,6 +454,9 @@ export function FilesView({ tab, visible }: { tab: Tab; visible: boolean }) {
         </Btn>
         <Btn size="sm" variant="ghost" title="New file" onClick={() => setCreating(false)} disabled={!listing}>
           <FilePlus className="size-4" />
+        </Btn>
+        <Btn size="sm" variant="ghost" title="Upload files from this Mac into this folder (or drop them here)" onClick={() => void pickUpload()} disabled={!listing}>
+          <Upload className="size-4" /> Upload
         </Btn>
         {pasteable && (
           <span className="flex items-center">

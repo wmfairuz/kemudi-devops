@@ -1221,6 +1221,30 @@ pub async fn files_choose_folder(start: Option<String>) -> AppResult<Option<Stri
     Ok((!path.is_empty()).then_some(path))
 }
 
+/// The macOS file picker, several files at once (via osascript, like the
+/// folder picker), starting in `start` (else ~/Downloads). Empty when
+/// cancelled.
+#[tauri::command]
+pub async fn files_choose_files(start: Option<String>, prompt: String) -> AppResult<Vec<String>> {
+    let start = start
+        .map(|s| expand_home(&s))
+        .filter(|p| p.is_dir())
+        .or_else(|| default_downloads().ok())
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+    let q = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"");
+    let at = if start.is_empty() { String::new() } else { format!(" default location (POSIX file \"{}\")", q(&start)) };
+    let script = format!(
+        "set fs to (choose file with prompt \"{}\"{at} with multiple selections allowed)\nset out to \"\"\nrepeat with f in fs\nset out to out & POSIX path of f & linefeed\nend repeat\nreturn out",
+        q(&prompt)
+    );
+    let out = tokio::process::Command::new("/usr/bin/osascript").args(["-e", &script]).output().await?;
+    if !out.status.success() {
+        return Ok(vec![]); // cancelled (error -128) or no dialog
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).lines().map(str::trim_end).filter(|l| !l.is_empty()).map(String::from).collect())
+}
+
 /// Show a downloaded file in Finder (only inside your home folder).
 #[tauri::command]
 pub async fn files_reveal(path: String) -> AppResult<()> {
