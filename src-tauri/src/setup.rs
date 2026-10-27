@@ -435,7 +435,8 @@ echo "MySQL: anonymous users, remote root and the test database removed""#.into(
             Some(if expected.is_empty() { "exists".into() } else { expected }),
             fill(
                 r#"p=__P__
-if [ ! -d "$p" ]; then say __ID__ bad "missing"; else o=$(stat -c '%U:%G' "$p"); m=$(stat -c '%a' "$p"); ok=1; __OC__; __MC__; if [ $ok = 1 ]; then say __ID__ ok "$o $m"; else say __ID__ bad "$o $m"; fi; fi"#,
+l=; [ -L "$p" ] && l=" (link to $(readlink -f "$p"))"
+if [ ! -d "$p" ]; then say __ID__ bad "missing"; else o=$(stat -L -c '%U:%G' "$p"); m=$(stat -L -c '%a' "$p"); ok=1; __OC__; __MC__; if [ $ok = 1 ]; then say __ID__ ok "$o $m$l"; else say __ID__ bad "$o $m$l"; fi; fi"#,
                 &[("P", &q), ("ID", &id), ("OC", if owner_check.is_empty() { ":" } else { &owner_check }), ("MC", if mode_check.is_empty() { ":" } else { &mode_check })],
             ),
             Some(fix),

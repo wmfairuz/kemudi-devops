@@ -65,7 +65,7 @@ x=$($R sh -c 'cd "$1" && pwd' _ "$d")
 echo "@@dir $x"
 [ -n "$R" ] && echo "@@sudo"
 echo "@@list"
-$R find "$x" -mindepth 1 -maxdepth 1 -printf '%y\t%Y\t%s\t%T@\t%M\t%u\t%g\t%l\t%f\0' 2>/dev/null
+$R find -H "$x" -mindepth 1 -maxdepth 1 -printf '%y\t%Y\t%s\t%T@\t%M\t%u\t%g\t%l\t%f\0' 2>/dev/null
 "#,
         prelude = sudo_prelude(password),
         d = shell_quote(dir),
@@ -577,8 +577,8 @@ fn chmod_script(
 ) -> String {
     let run = match files_mode {
         None => r#"out=$($S chmod MODE -- "$f" 2>&1) || { echo "@@err $(printf '%s' "$out" | head -3 | tr '\n' ' ')"; exit 0; }"#.replace("MODE", mode),
-        Some(fm) => r#"out=$( { $S find "$f" -type d -exec chmod MODE {} + ; } 2>&1 ); a=$?
-out2=$( { $S find "$f" -type f -exec chmod FMODE {} + ; } 2>&1 ); b=$?
+        Some(fm) => r#"out=$( { $S find -H "$f" -type d -exec chmod MODE {} + ; } 2>&1 ); a=$?
+out2=$( { $S find -H "$f" -type f -exec chmod FMODE {} + ; } 2>&1 ); b=$?
 if [ $a -ne 0 ] || [ $b -ne 0 ]; then echo "@@err some of it couldn't be changed: $(printf '%s\n%s' "$out" "$out2" | grep -v '^$' | head -3 | tr '\n' ' ')"; exit 0; fi"#
             .replace("FMODE", fm)
             .replace("MODE", mode),
@@ -1065,7 +1065,7 @@ fn find_script(
         )
     } else {
         format!(
-            r#"$R timeout 25 find "$d" -mindepth 1 {prune} -iname "*$q*" -printf '%y\t%p\n' 2>/dev/null | head -n {max}"#,
+            r#"$R timeout 25 find -H "$d" -mindepth 1 {prune} -iname "*$q*" -printf '%y\t%p\n' 2>/dev/null | head -n {max}"#,
             max = FIND_MAX + 1
         )
     };
