@@ -1,5 +1,5 @@
 import { Activity, ClipboardCheck, FolderOpen, SquareTerminal, Gauge, HeartPulse, ListChecks, PackagePlus, ScanSearch, ScrollText } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Btn } from "@/components/kit/Btn";
 import { EnvTag } from "@/components/kit/EnvTag";
@@ -264,6 +264,8 @@ function ServerDetails({ server }: { server: Server | null }) {
   const [user, setUser] = useState("");
   const [sshPort, setSshPort] = useState("");
   const [key, setKey] = useState("");
+  // A new host starts with your usual key; once you pick, that stays.
+  const keyPicked = useRef(false);
   const [jump, setJump] = useState("");
   const [test, setTest] = useState<{ ok: boolean; message: string } | "testing" | null>(null);
   const [infoTick, setInfoTick] = useState(0);
@@ -345,6 +347,10 @@ function ServerDetails({ server }: { server: Server | null }) {
     // Options the form has no field for stay as they are.
     extra: info?.managed?.extra ?? info?.external?.extra ?? [],
   };
+  useEffect(() => {
+    if (mode === "new" && !keyPicked.current && key === "" && keys[0]) setKey(keys[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, keys]);
   // The user's own host, editable when its block can move into Kemudi's file.
   const movable = mode === "external" && !!info?.external && !info.adoptBlocker;
   const m = info?.managed ?? (movable ? info?.external : null);
@@ -616,7 +622,7 @@ function ServerDetails({ server }: { server: Server | null }) {
             </div>
           </>
         )}
-        {via === "ssh" && <Row label="SSH host" hint="Pick one from your SSH config, or type a new name to create it">
+        {via === "ssh" && <Row label="SSH host" hint="Pick one from your SSH config, or type a new name to create it (address, user, key)">
           <TextInput list="kemudi-ssh-hosts" value={host} placeholder="nova-gw" onChange={(e) => setHost(e.target.value)} />
           <datalist id="kemudi-ssh-hosts">
             {hosts.map((h) => (
@@ -624,6 +630,28 @@ function ServerDetails({ server }: { server: Server | null }) {
             ))}
           </datalist>
         </Row>}
+        {via === "ssh" && mode === "empty" && !server && (
+          <div className="ml-[144px] flex flex-col items-start gap-1.5 rounded-lg border border-dashed border-divider px-4 py-3 text-[12px] text-muted-foreground">
+            <span>Only an IP (or domain) and a user? Make it a new SSH host: Kemudi adds it to ~/.ssh/config.d/kemudi.conf, with the key you pick.</span>
+            <Btn
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                const base =
+                  name
+                    .trim()
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]+/g, "-")
+                    .replace(/^-+|-+$/g, "") || "server";
+                let alias = base;
+                for (let n = 2; hosts.includes(alias); n++) alias = `${base}-${n}`;
+                setHost(alias);
+              }}
+            >
+              New host from an address
+            </Btn>
+          </div>
+        )}
         {mode !== "empty" && (
           <div className="ml-[144px] flex flex-col gap-2.5 rounded-lg border border-divider bg-background px-4 py-3">
             {mode === "external" && info && (
@@ -686,12 +714,23 @@ function ServerDetails({ server }: { server: Server | null }) {
                   />
                 </SubRow>
                 <SubRow label="Key">
-                  <TextInput list="kemudi-ssh-keys" value={key} placeholder="(ssh-agent / your default keys)" onChange={(e) => setKey(e.target.value)} />
-                  <datalist id="kemudi-ssh-keys">
-                    {keys.map((k) => (
-                      <option key={k} value={k} />
+                  <select
+                    value={key}
+                    onChange={(e) => {
+                      keyPicked.current = true;
+                      setKey(e.target.value);
+                    }}
+                    className="h-8 w-full rounded-lg border border-control-border bg-background px-2 font-mono text-[12px] text-foreground outline-none focus:border-primary/60"
+                  >
+                    {keys.map((k, i) => (
+                      <option key={k} value={k}>
+                        {k}
+                        {i === 0 ? "  (your usual key)" : ""}
+                      </option>
                     ))}
-                  </datalist>
+                    {key && !keys.includes(key) && <option value={key}>{key}</option>}
+                    <option value="">None set: ssh-agent and ssh's default keys</option>
+                  </select>
                 </SubRow>
                 <SubRow label="Jump host">
                   <TextInput value={jump} placeholder="(optional) bastion" onChange={(e) => setJump(e.target.value)} />

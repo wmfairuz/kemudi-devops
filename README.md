@@ -728,7 +728,11 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   server's); saved as `color:`.
 - **SSH hosts without editing ~/.ssh/config by hand**: in a server's page,
   pick an existing SSH host (Kemudi shows what it resolves to) or type a new
-  name and fill in Address, User, Port, Key and Jump host. New hosts go to
+  name (a new server's page has **New host from an address**, which names
+  it after the server) and fill in Address, User, Port, Key and Jump host.
+  **Key** lists your keys in ~/.ssh with your usual one first and picked
+  for a new host: the key your ssh config names most, else id_ed25519,
+  id_ecdsa, id_rsa (or none: ssh-agent and ssh's defaults). New hosts go to
   `~/.ssh/config.d/kemudi.conf` (mode 600), which `~/.ssh/config` includes
   with one line added at the top (the original is backed up once to
   `~/.ssh/config.kemudi-backup`), so `ssh <name>` works in any terminal.

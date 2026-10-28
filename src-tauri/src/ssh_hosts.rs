@@ -533,7 +533,43 @@ pub async fn ssh_managed_hosts() -> AppResult<Vec<HostEntry>> {
 
 #[tauri::command]
 pub async fn ssh_keys() -> AppResult<Vec<String>> {
-    Ok(keys(&ssh_dir()?))
+    let dir = ssh_dir()?;
+    // Your ssh config (and Kemudi's own file) say which key you use most.
+    let mut config = std::fs::read_to_string(dir.join("config")).unwrap_or_default();
+    if let Ok(rd) = std::fs::read_dir(dir.join("config.d")) {
+        for e in rd.filter_map(Result::ok) {
+            config.push_str(&std::fs::read_to_string(e.path()).unwrap_or_default());
+        }
+    }
+    let home = dirs::home_dir().map(|h| h.display().to_string()).unwrap_or_default();
+    Ok(default_first(keys(&dir), &config, &home))
+}
+
+/// Your keys with the one to use by default first: the key your ssh config
+/// names most (`IdentityFile`), else id_ed25519, id_ecdsa, id_rsa, else as
+/// they were.
+pub fn default_first(mut keys: Vec<String>, config: &str, home: &str) -> Vec<String> {
+    let mut uses: std::collections::HashMap<String, usize> = Default::default();
+    for line in config.lines() {
+        let l = line.trim();
+        let Some((k, v)) = l.split_once(|c: char| c.is_whitespace() || c == '=') else { continue };
+        if !k.eq_ignore_ascii_case("identityfile") {
+            continue;
+        }
+        let v = v.trim().trim_start_matches('=').trim().trim_matches('"');
+        let v = if !home.is_empty() && v.starts_with(home) { format!("~{}", &v[home.len()..]) } else { v.replace("$HOME", "~") };
+        *uses.entry(v).or_default() += 1;
+    }
+    let rank = |k: &String| {
+        let used = uses.get(k).copied().unwrap_or(0);
+        let standard = ["~/.ssh/id_ed25519", "~/.ssh/id_ecdsa", "~/.ssh/id_rsa"].iter().position(|s| s == k).unwrap_or(3);
+        (std::cmp::Reverse(used), standard)
+    };
+    if let Some(best) = keys.iter().enumerate().min_by_key(|(i, k)| (rank(k), *i)).map(|(i, _)| i) {
+        let k = keys.remove(best);
+        keys.insert(0, k);
+    }
+    keys
 }
 
 #[derive(Debug, Serialize)]
@@ -633,6 +669,18 @@ pub fn explain(stderr: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_key() {
+        let keys = |v: &[&str]| v.iter().map(|k| format!("~/.ssh/{k}")).collect::<Vec<_>>();
+        // The one your config uses most.
+        let cfg = "Host a\n  IdentityFile ~/.ssh/work\nHost b\n  IdentityFile \"/Users/me/.ssh/work\"\nHost c\n  IdentityFile ~/.ssh/id_rsa\n";
+        assert_eq!(default_first(keys(&["aaa", "id_rsa", "work"]), cfg, "/Users/me")[0], "~/.ssh/work");
+        // Else the standard names, ed25519 first.
+        assert_eq!(default_first(keys(&["aaa", "id_rsa", "id_ed25519"]), "", "/Users/me")[0], "~/.ssh/id_ed25519");
+        assert_eq!(default_first(keys(&["aaa", "bbb"]), "", "")[0], "~/.ssh/aaa");
+        assert!(default_first(vec![], "", "").is_empty());
+    }
 
     fn entry() -> HostEntry {
         HostEntry {
