@@ -617,6 +617,45 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   **in Claude** (Claude is told which name to ask for, e.g. "Acme Prod" or
   AP, asks you in the chat and passes what you typed as `confirm`; Kemudi
   runs it only if it matches). With Kemudi closed, Claude is told to open it.
+- **Dashboard** (a server's right-click menu ▸ Dashboard, or Details ▸
+  Dashboard): a tab with a switch per app for **Laravel** (live or
+  maintenance mode) and **basic auth** (on or off).
+  - *Maintenance*: `artisan down` / `up` (in the app's path, or its
+    `current/`), run as the owner of its `storage/`. Down can come with a
+    **bypass link** (`--secret`, Laravel 8+): `<url>/<secret>` lets you in,
+    in that browser; it's copied for you and shown on the row.
+  - *Basic auth*: nginx only, put where the vhost keeps it:
+    - a vhost that switches by host (`auth_basic $auth_required;` with
+      `map $host $auth_required { app.example.com "Restricted Area"; default off; }`
+      and a `$auth_user_file` map likewise): the app's host line is added to
+      or taken out of those maps (in the file nginx uses: a variable mapped
+      in two files only takes the last one loaded, and the dashboard says
+      so). The host is the app's URL, else its server_name (with the
+      folder put into a wildcard's `(?<name>…)`).
+    - a vhost without basic auth: Kemudi's lines in each server block
+      whose root is the app's (`<path>/public`, `<path>/current/public`),
+      between `# kemudi:auth begin` / `end`. A vhost shared by many apps
+      (`root /opt/www/$app/public`) still gets it **per app**: one block
+      that turns it on with `if ($app = "crm")`.
+    - a literal `auth_basic` written by hand: left alone (change it in
+      Inspect).
+
+    `nginx -t` runs first (it must already pass) and after the change; if
+    it fails, every file goes back (backups in `~/.kemudi-backups`), else
+    nginx is reloaded. The dashboard also says when basic auth is only in a
+    location (`location /`), since other locations (`/index.php`) skip it.
+  - *Logins* (htpasswd files): **Default login** (set from the tab's
+    header; it's a Passwords entry marked *Default login for basic auth*),
+    **its own** (username + password, Generate, kept in Passwords if you
+    like), the one it had before, or **the same file as** one already on
+    the server (e.g. a shared `/etc/nginx/.htpasswd`). New ones go in
+    `/etc/nginx/kemudi-auth/<app id>`, readable by nginx's workers only.
+    Passwords are hashed (apr1) on this Mac by `/usr/bin/openssl`; the
+    server only gets the hash. *Change login…*
+    changes it while on. Changing the default doesn't touch apps already on.
+  - Root is needed for nginx: as root, passwordless sudo, or the server's
+    sudo password in Passwords. Production apps ask before going down, up or
+    open. Every change is in History.
 - **Server setup** (View ▸ Server Setup ⇧⌘B, Settings ▸ Server setup…, or
   ⌘K: a pinned **Server setup** tab; ⌘W closes it): what a server should
   have, as named **profiles** (`setup:` in servers.yaml, edited in the tab

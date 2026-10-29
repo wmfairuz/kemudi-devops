@@ -59,7 +59,7 @@ export interface Tab {
   /** When the action (or shell) finished, for "4m ago". */
   finishedAt?: number;
   /** monitor: a server monitor (its session never starts). */
-  kind: "local" | "ssh" | "action" | "monitor" | "files" | "logs" | "queues" | "health" | "tune" | "setup";
+  kind: "local" | "ssh" | "action" | "monitor" | "files" | "logs" | "queues" | "health" | "tune" | "setup" | "dash";
   prod: boolean;
   state: TabState;
   exitCode?: number;
@@ -799,9 +799,28 @@ export function openSetup(server: { id: string; name: string; host: string; env:
   });
 }
 
+/** A server's dashboard: each app's maintenance mode and basic auth. */
+export function openDashboard(server: { id: string; name: string; host: string; env: string }): string {
+  const { tabs, activate } = useTabs.getState();
+  const same = tabs.find((t) => t.kind === "dash" && t.serverId === server.id);
+  if (same) {
+    activate(same.id);
+    return same.id;
+  }
+  return useTabs.getState().open({
+    kind: "dash",
+    title: `${server.name} · dashboard`,
+    serverId: server.id,
+    host: server.host,
+    prod: server.env === "prod",
+    // Never attached as a terminal, so this never runs.
+    spawn: () => Promise.reject(new Error("dashboard tabs have no terminal")),
+  });
+}
+
 /** Tabs that show a view of their own, not a terminal. */
 export const isViewTab = (kind: Tab["kind"]) =>
-  kind === "monitor" || kind === "files" || kind === "logs" || kind === "queues" || kind === "health" || kind === "tune" || kind === "setup";
+  kind === "monitor" || kind === "files" || kind === "logs" || kind === "queues" || kind === "health" || kind === "tune" || kind === "setup" || kind === "dash";
 
 /** New `ssh <host>` tab, optionally starting in a remote directory. */
 export function openSsh(

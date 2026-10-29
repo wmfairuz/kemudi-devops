@@ -1,4 +1,4 @@
-import { Activity, ChevronDown, ClipboardCheck, Settings, Columns2, Keyboard, Workflow as WorkflowIcon, FolderOpen, Gauge, HeartPulse, House, ListChecks, ScrollText, SquareTerminal } from "lucide-react";
+import { Activity, ChevronDown, ClipboardCheck, Settings, Columns2, Keyboard, Workflow as WorkflowIcon, FolderOpen, Gauge, HeartPulse, House, LayoutDashboard, ListChecks, ScrollText, SquareTerminal } from "lucide-react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -25,6 +25,7 @@ function TabIcon({ tab }: { tab: Tab }) {
   if (tab.kind === "queues") return <ListChecks className="size-4 flex-none text-[#50fa7b]" strokeWidth={2} />;
   if (tab.kind === "health") return <HeartPulse className="size-4 flex-none text-[#ff79c6]" strokeWidth={2} />;
   if (tab.kind === "setup") return <ClipboardCheck className="size-4 flex-none text-[#50fa7b]" strokeWidth={2} />;
+  if (tab.kind === "dash") return <LayoutDashboard className="size-4 flex-none text-[#ffb86c]" strokeWidth={2} />;
   if (tab.kind === "tune") return <Gauge className="size-4 flex-none text-[#bd93f9]" strokeWidth={2} />;
   switch (tab.state) {
     case "running":

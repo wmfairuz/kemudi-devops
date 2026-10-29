@@ -1,4 +1,4 @@
-import { Activity, ClipboardCheck, FolderOpen, SquareTerminal, Gauge, HeartPulse, ListChecks, PackagePlus, ScanSearch, ScrollText } from "lucide-react";
+import { Activity, ClipboardCheck, FolderOpen, SquareTerminal, Gauge, HeartPulse, LayoutDashboard, ListChecks, PackagePlus, ScanSearch, ScrollText } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Btn } from "@/components/kit/Btn";
@@ -46,7 +46,7 @@ import { useTeam } from "@/stores/team";
 
 const NO_TEAMS: import("@/lib/ipc").Team[] = [];
 import { useStatus } from "@/stores/status";
-import { openFiles, openHealth, openLogs, openMonitor, openQueues, openSetup, openTune, useTabs } from "@/stores/tabs";
+import { openFiles, openHealth, openLogs, openDashboard, openMonitor, openQueues, openSetup, openTune, useTabs } from "@/stores/tabs";
 import { toastError, useToasts } from "@/stores/toasts";
 import { useUi } from "@/stores/ui";
 import { useVault } from "@/stores/vault";
@@ -934,6 +934,9 @@ function ServerTools({ server }: { server: Server }) {
           <SquareTerminal className="size-4" /> {server.asg ? "Shells on all instances" : "Open shell"}
         </Btn>
         <div className="grid grid-cols-3 gap-2">
+          <Btn variant="outline" className={tool} onClick={() => openDashboard(server)} title="Each app: maintenance mode and basic auth">
+            <LayoutDashboard className="size-4" /> Dashboard
+          </Btn>
           <Btn variant="outline" className={tool} onClick={() => openFiles(server)}>
             <FolderOpen className="size-4" /> Files
           </Btn>

@@ -282,7 +282,7 @@ pub struct Restored {
     pub check: Option<String>,
 }
 
-fn sha_hex(bytes: &[u8]) -> String {
+pub(crate) fn sha_hex(bytes: &[u8]) -> String {
     Sha256::digest(bytes)
         .iter()
         .map(|b| format!("{b:02x}"))

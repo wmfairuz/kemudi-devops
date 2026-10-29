@@ -5,6 +5,7 @@ mod baseline;
 mod setup;
 mod certs;
 mod config;
+mod dashboard;
 mod discover;
 mod env;
 mod error;
@@ -164,6 +165,9 @@ pub fn run() {
             config::settings_form::baseline_save,
             baseline::baseline_check,
             baseline::baseline_install,
+            dashboard::dashboard_status,
+            dashboard::dashboard_maintenance,
+            dashboard::dashboard_auth,
             setup::setup_check,
             setup::setup_plan,
             setup::setup_source,

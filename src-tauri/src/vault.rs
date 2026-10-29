@@ -36,6 +36,9 @@ struct Entry {
     /// Server ids this is the sudo password for.
     #[serde(default)]
     sudo_for: Vec<String>,
+    /// The default login for basic auth (the server dashboard).
+    #[serde(default)]
+    basic_auth: bool,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -68,6 +71,7 @@ fn decode(value: serde_json::Value) -> Vault {
                 notes: String::new(),
                 password: p,
                 sudo_for: vec![server.clone()],
+                basic_auth: false,
             });
         }
         if let Some(p) = e.login {
@@ -78,6 +82,7 @@ fn decode(value: serde_json::Value) -> Vault {
                 notes: String::new(),
                 password: p,
                 sudo_for: vec![],
+                basic_auth: false,
             });
         }
     }
@@ -116,6 +121,25 @@ pub fn sudo_for(server_id: &str) -> Result<Option<String>, String> {
         .into_iter()
         .find(|e| e.sudo_for.iter().any(|s| s == server_id))
         .map(|e| e.password))
+}
+
+/// The default basic auth login: (username, password).
+pub fn basic_auth_default() -> Result<Option<(String, String)>, String> {
+    Ok(read_all()?
+        .entries
+        .into_iter()
+        .find(|e| e.basic_auth)
+        .map(|e| (e.username, e.password)))
+}
+
+/// Save an entry (blocking); its id.
+pub fn save_entry(input: EntryInput) -> Result<String, String> {
+    let mut id = String::new();
+    update(|v| {
+        id = apply(v, input)?;
+        Ok(())
+    })?;
+    Ok(id)
 }
 
 fn password_of(id: &str) -> Result<(String, String), String> {
@@ -162,6 +186,7 @@ pub struct EntryInfo {
     pub username: String,
     pub notes: String,
     pub sudo_for: Vec<String>,
+    pub basic_auth: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -176,6 +201,8 @@ pub struct EntryInput {
     pub notes: String,
     #[serde(default)]
     pub sudo_for: Vec<String>,
+    #[serde(default)]
+    pub basic_auth: bool,
     /// None keeps the saved one (required for a new entry).
     pub password: Option<String>,
 }
@@ -212,6 +239,10 @@ fn apply(vault: &mut Vault, input: EntryInput) -> Result<String, String> {
     // One sudo password per server: taking a server moves it here.
     for e in vault.entries.iter_mut().filter(|e| e.id != id) {
         e.sudo_for.retain(|s| !input.sudo_for.contains(s));
+        // One default basic auth login, too.
+        if input.basic_auth {
+            e.basic_auth = false;
+        }
     }
     let username = input.username.trim().to_string();
     let notes = input.notes.trim_end().to_string();
@@ -221,6 +252,7 @@ fn apply(vault: &mut Vault, input: EntryInput) -> Result<String, String> {
             e.username = username;
             e.notes = notes;
             e.sudo_for = input.sudo_for;
+            e.basic_auth = input.basic_auth;
             if let Some(p) = input.password {
                 e.password = p;
             }
@@ -232,6 +264,7 @@ fn apply(vault: &mut Vault, input: EntryInput) -> Result<String, String> {
             notes,
             password: input.password.unwrap_or_default(),
             sudo_for: input.sudo_for,
+            basic_auth: input.basic_auth,
         }),
     }
     vault.entries.sort_by_key(|e| e.name.to_lowercase());
@@ -250,6 +283,7 @@ pub async fn vault_list() -> AppResult<Vec<EntryInfo>> {
                 username: e.username,
                 notes: e.notes,
                 sudo_for: e.sudo_for,
+                basic_auth: e.basic_auth,
             })
             .collect())
     })
@@ -258,15 +292,7 @@ pub async fn vault_list() -> AppResult<Vec<EntryInfo>> {
 
 #[tauri::command]
 pub async fn vault_save(entry: EntryInput) -> AppResult<String> {
-    blocking(move || {
-        let mut id = String::new();
-        update(|v| {
-            id = apply(v, entry)?;
-            Ok(())
-        })?;
-        Ok(id)
-    })
-    .await
+    blocking(move || save_entry(entry)).await
 }
 
 #[tauri::command]
@@ -360,8 +386,19 @@ mod tests {
             username: "deploy".into(),
             notes: String::new(),
             sudo_for: sudo.iter().map(|s| s.to_string()).collect(),
+            basic_auth: false,
             password: pw.map(str::to_string),
         }
+    }
+
+    #[test]
+    fn one_basic_auth_default() {
+        let mut v = Vault::default();
+        let a = apply(&mut v, EntryInput { basic_auth: true, ..input(None, "A", Some("1"), &[]) }).unwrap();
+        let b = apply(&mut v, EntryInput { basic_auth: true, ..input(None, "B", Some("2"), &[]) }).unwrap();
+        let on: Vec<_> = v.entries.iter().filter(|e| e.basic_auth).map(|e| e.id.clone()).collect();
+        assert_eq!(on, [b]);
+        assert_ne!(a, on[0]);
     }
 
     #[test]

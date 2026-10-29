@@ -88,9 +88,9 @@ export function PasswordsDialog() {
                 <KeyRound className="size-3.5 flex-none text-subtle-foreground" />
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate text-[12.5px] text-foreground">{e.name}</span>
-                  {(e.username || e.sudoFor.length > 0) && (
+                  {(e.username || e.sudoFor.length > 0 || e.basicAuth) && (
                     <span className="truncate text-[11px] text-subtle-foreground">
-                      {[e.username, e.sudoFor.length ? `sudo on ${e.sudoFor.join(", ")}` : ""].filter(Boolean).join(" · ")}
+                      {[e.username, e.sudoFor.length ? `sudo on ${e.sudoFor.join(", ")}` : "", e.basicAuth ? "basic auth default" : ""].filter(Boolean).join(" · ")}
                     </span>
                   )}
                 </span>
@@ -124,6 +124,7 @@ function EntryForm({ entry, onSaved, onDeleted }: { entry: VaultEntry | null; on
   const [username, setUsername] = useState(entry?.username ?? "");
   const [notes, setNotes] = useState(entry?.notes ?? "");
   const [sudoFor, setSudoFor] = useState<string[]>(entry?.sudoFor ?? []);
+  const [basicAuth, setBasicAuth] = useState(entry?.basicAuth ?? false);
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -134,13 +135,14 @@ function EntryForm({ entry, onSaved, onDeleted }: { entry: VaultEntry | null; on
     name !== entry.name ||
     username !== entry.username ||
     notes !== entry.notes ||
-    sudoFor.join() !== entry.sudoFor.join();
+    sudoFor.join() !== entry.sudoFor.join() ||
+    basicAuth !== entry.basicAuth;
   const canSave = name.trim() !== "" && (!isNew || password !== "") && dirty && !busy;
 
   const save = async () => {
     if (!canSave) return;
     setBusy(true);
-    const id = await useVault.getState().save({ id: entry?.id ?? null, name, username, notes, sudoFor, password: password || null });
+    const id = await useVault.getState().save({ id: entry?.id ?? null, name, username, notes, sudoFor, basicAuth, password: password || null });
     setBusy(false);
     if (id) {
       setPassword("");
@@ -216,6 +218,11 @@ function EntryForm({ entry, onSaved, onDeleted }: { entry: VaultEntry | null; on
           </div>
         )}
       </Field>
+      <label className="flex w-fit cursor-pointer items-center gap-2 text-[12px] text-foreground">
+        <input type="checkbox" checked={basicAuth} onChange={(e) => setBasicAuth(e.target.checked)} className="accent-primary" />
+        Default login for basic auth
+        <span className="text-[11px] text-subtle-foreground">(server dashboard; needs a username)</span>
+      </label>
       <Field label="Notes">
         {(id) => (
           <textarea

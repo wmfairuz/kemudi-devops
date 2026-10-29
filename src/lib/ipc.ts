@@ -953,6 +953,8 @@ export interface VaultEntry {
   notes: string;
   /** Servers it's the sudo password for (used when saving root-owned files). */
   sudoFor: string[];
+  /** The default login for basic auth (server dashboard). */
+  basicAuth: boolean;
 }
 
 export interface VaultEntryInput {
@@ -962,6 +964,7 @@ export interface VaultEntryInput {
   username: string;
   notes: string;
   sudoFor: string[];
+  basicAuth: boolean;
   /** null keeps the saved password (required for a new one). */
   password: string | null;
 }
@@ -1528,3 +1531,67 @@ export function updateInstall(onProgress: (p: UpdateProgress) => void): Promise<
   ch.onmessage = onProgress;
   return invoke("update_install", { onProgress: ch });
 }
+
+// ------------------------------------------------------------ server dashboard
+
+/** An app's switches: maintenance mode and nginx basic auth. */
+export interface AppSwitches {
+  appId: string;
+  /** There's an artisan (in the path or its current/). */
+  laravel: boolean;
+  /** In maintenance mode (artisan down). */
+  down: boolean;
+  /** <url>/<secret> lets you past maintenance mode. */
+  secret: string | null;
+  auth: {
+    /** "manual": an auth_basic Kemudi can't switch; "partial": some of its server blocks;
+     *  "nourl": the vhost switches by host and the app has no URL. */
+    state: "on" | "off" | "partial" | "manual" | "novhost" | "nourl";
+    /** "map": the vhost's own map $host lines; "kemudi": Kemudi's lines in its server block. */
+    mode: "map" | "kemudi" | "";
+    /** The login file in use (on), or Kemudi's file for it (off, if any). */
+    file: string | null;
+    /** The vhost names the login file itself (nothing to pick). */
+    fixedFile: boolean;
+    files: string[];
+    /** A vhost shared with other apps (wildcard root). */
+    shared: boolean;
+    /** The app's host (the map key). */
+    host: string | null;
+    /** "map $auth_required in staging.example.com" */
+    via: string | null;
+    notes: string[];
+  };
+}
+
+/** An htpasswd file on the server. */
+export interface LoginFile {
+  path: string;
+  /** Its first few users. */
+  users: string[];
+}
+
+export interface Dashboard {
+  /** How Kemudi gets root: root, ok, none, badpw, needpw. */
+  sudo: string;
+  nginx: boolean;
+  apps: AppSwitches[];
+  /** The default basic auth login's username (Passwords), if there's one. */
+  defaultUser: string | null;
+  /** htpasswd files on the server (Kemudi's and ones its vhosts name). */
+  logins: LoginFile[];
+  /** Vhosts only root can read. */
+  denied: string[];
+  /** About the vhosts themselves (a map defined twice, auth only in a location). */
+  notes: string[];
+}
+
+export type BasicLogin = { kind: "keep" } | { kind: "default" } | { kind: "own"; username: string; password: string; save: boolean } | { kind: "file"; path: string };
+
+export const dashboardStatus = (serverId: string): Promise<Dashboard> => invoke("dashboard_status", { serverId });
+/** artisan down (optionally with a bypass secret) / artisan up. */
+export const dashboardMaintenance = (serverId: string, appId: string, down: boolean, withSecret: boolean): Promise<{ output: string; secret: string | null }> =>
+  invoke("dashboard_maintenance", { serverId, appId, down, withSecret });
+/** nginx basic auth on (with a login) or off; nginx -t checked, put back if it fails. */
+export const dashboardAuth = (serverId: string, appId: string, on: boolean, login: BasicLogin | null): Promise<{ check: string; files: string[]; user: string | null }> =>
+  invoke("dashboard_auth", { serverId, appId, on, login });

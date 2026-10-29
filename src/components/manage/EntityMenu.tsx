@@ -5,7 +5,7 @@ import { duplicateServer, openDetails, useManage } from "@/stores/manage";
 import { useNewApp } from "@/stores/newApp";
 import { useConfig } from "@/stores/config";
 import { DiscoverDialog } from "./DiscoverDialog";
-import { openFiles, openHealth, openLogs, openMonitor, openQueues, openSetup, openTune, useTabs } from "@/stores/tabs";
+import { openFiles, openHealth, openLogs, openMonitor, openQueues, openSetup, openDashboard, openTune, useTabs } from "@/stores/tabs";
 import { toastError, useToasts } from "@/stores/toasts";
 import { openAsgShells, whereOf } from "@/lib/fleet";
 import { useFleetUi } from "@/stores/fleetUi";
@@ -114,6 +114,7 @@ export function EntityMenu() {
       ]
     : [
         [
+          { label: "Dashboard", hint: "maintenance mode, basic auth", run: () => void openDashboard(server) },
           { label: "Files", hint: "browse, edit, upload", run: () => void openFiles(server) },
           { label: "Logs", hint: "apps, nginx, PHP, workers", run: () => void openLogs(server) },
           { label: "Monitor", hint: "CPU, memory, disks", run: () => void openMonitor(server) },
