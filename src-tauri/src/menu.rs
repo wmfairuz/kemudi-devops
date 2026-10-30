@@ -139,6 +139,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
             "Server Setup",
             Some("CmdOrCtrl+Shift+B"),
         )?)
+        .item(&item(app, "hosts", "SSH Hosts", Some("CmdOrCtrl+Shift+E"))?)
         .item(&item(
             app,
             "passwords",

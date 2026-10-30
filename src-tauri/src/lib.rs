@@ -178,6 +178,7 @@ pub fn run() {
             ssh_hosts::ssh_host_save,
             ssh_hosts::ssh_keys,
             ssh_hosts::ssh_managed_hosts,
+            ssh_hosts::ssh_host_list,
             ssh_hosts::ssh_host_delete,
             ssh_hosts::ssh_host_adopt,
             ssh_hosts::ssh_config_open,

@@ -91,6 +91,7 @@ function buildItems(servers: Server[], tabs: Tab[], snippets: Snippet[], close: 
     cmd("Settings", () => useTabs.getState().openSettings(), "⌘,"),
     cmd("Passwords…", () => useUi.getState().setOverlay("passwords"), "⇧⌘K"),
     cmd("Snippets…", () => useTabs.getState().openSnippets(), "⇧⌘S"),
+    cmd("SSH hosts (list, edit, test)", () => useTabs.getState().openHosts(), "⇧⌘E"),
     cmd("Environment…", () => useUi.getState().setOverlay("environment")),
     cmd("New workflow…", () => useWorkflows.getState().edit(null)),
     cmd("Workflows (runs)", () => useTabs.getState().openWorkflows(), "⇧⌘R"),

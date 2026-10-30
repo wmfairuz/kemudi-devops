@@ -765,6 +765,19 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   Purple, Pink, Gray), rename, split or close. A server's or app's page has a
   *Tab colour* that new tabs for it start with (an app's wins over its
   server's); saved as `color:`.
+- **SSH hosts tab** (View ▸ SSH Hosts ⇧⌘E, ⌘K, or Home ▸ SSH hosts ▸ All
+  SSH hosts; a pinned tab, ⌘W closes it): every host ssh knows, in the order
+  it reads them: Kemudi's (~/.ssh/config.d/kemudi.conf), your
+  ~/.ssh/config, and files it includes (wildcard `Host *` blocks aren't
+  listed). One row each with Address, User, Port, Key, Jump host, `+N` for
+  other options (hover: LocalForward, ForwardAgent…), which file it's in,
+  and the servers that use it (click one for its page). Filter by any of
+  those. Per row: **Test** (a non-interactive login; the reason shows on the
+  row when it fails), **ssh** (a shell tab), **Duplicate** (a new host with
+  its settings), **Delete** (Kemudi's hosts; it says which servers use it).
+  **Test all** tests the shown hosts four at a time. Click a row to see or
+  edit it (your own hosts move into Kemudi's file when edited, as below);
+  hosts from other included files stay where they are.
 - **SSH hosts without editing ~/.ssh/config by hand**: in a server's page,
   pick an existing SSH host (Kemudi shows what it resolves to) or type a new
   name (a new server's page has **New host from an address**, which names
@@ -1071,6 +1084,7 @@ would seem to stop working). Tabs come back through session restore.
 | ⇧⌘K | Passwords |
 | ⇧⌘S | Snippets page: add, edit, organise (again: back where you were) |
 | ⇧⌘B | Server setup: profiles, check every server, fix what's off (again: back where you were) |
+| ⇧⌘E | SSH hosts: every host in your ssh config, with test, edit, duplicate (again: back where you were) |
 | ⌘D / ⇧⌘D | Split the pane right / down (same server and folder; an action pane gives a shell there) |
 | ⇧⌘L / ⌥⇧⌘L | Split right / down with a shell on this Mac (also the terminal's and the tab's right-click menus) |
 | ⇧⌘H | Home (also View ▸ Home) |

@@ -33,7 +33,7 @@ import { useConfig } from "@/stores/config";
 import { useWorkflows } from "@/stores/workflows";
 import type { Workflow } from "@/lib/ipc";
 
-import { SshHostDialog, useSshHostDialog } from "./SshHostDialog";
+import { useSshHostDialog } from "./SshHostDialog";
 
 
 function ago(ms: number): string {
@@ -177,9 +177,14 @@ export function HomeView() {
             title="SSH hosts"
             action={{ label: "New", run: () => useSshHostDialog.getState().open(null) }}
             footer={
-              <button className="hover:text-foreground" onClick={() => void sshConfigOpen().catch((e) => toastError(errorMessage(e)))}>
-                Open ~/.ssh/config
-              </button>
+              <span className="flex gap-4">
+                <button className="hover:text-foreground" onClick={() => useTabs.getState().openHosts()}>
+                  All SSH hosts ⇧⌘E
+                </button>
+                <button className="hover:text-foreground" onClick={() => void sshConfigOpen().catch((e) => toastError(errorMessage(e)))}>
+                  Open ~/.ssh/config
+                </button>
+              </span>
             }
           >
             {hosts === null ? (
@@ -255,7 +260,6 @@ export function HomeView() {
           <LinkBtn onClick={() => void sshConfigOpen().catch((e) => toastError(errorMessage(e)))}>~/.ssh/config</LinkBtn>
         </div>
       </div>
-      <SshHostDialog />
     </div>
   );
 }

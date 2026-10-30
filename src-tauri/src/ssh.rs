@@ -154,6 +154,46 @@ pub fn config_hosts() -> Vec<String> {
     hosts.into_iter().collect()
 }
 
+/// Each non-wildcard alias and the file its first `Host` line is in
+/// (~/.ssh/config or a file it includes), in the order ssh reads them.
+pub fn config_host_sources() -> Vec<(String, std::path::PathBuf)> {
+    let Some(home) = dirs::home_dir() else {
+        return Vec::new();
+    };
+    let ssh_dir = home.join(".ssh");
+    let mut out = Vec::new();
+    collect_sources(&ssh_dir.join("config"), &ssh_dir, &home, 0, &mut out);
+    out
+}
+
+fn collect_sources(path: &Path, ssh_dir: &Path, home: &Path, depth: usize, out: &mut Vec<(String, std::path::PathBuf)>) {
+    if depth > MAX_INCLUDE_DEPTH {
+        return;
+    }
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return;
+    };
+    for directive in parse_directives(&text) {
+        match directive {
+            Directive::Host(patterns) => {
+                for p in patterns {
+                    let ok = !p.contains(['*', '?', '!']) && validate_host(&p).is_ok();
+                    if ok && !out.iter().any(|(a, _)| *a == p) {
+                        out.push((p, path.to_path_buf()));
+                    }
+                }
+            }
+            Directive::Include(targets) => {
+                for t in targets {
+                    for file in expand_include(&t, ssh_dir, home) {
+                        collect_sources(&file, ssh_dir, home, depth + 1, out);
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn collect(path: &Path, ssh_dir: &Path, home: &Path, depth: usize, out: &mut BTreeSet<String>) {
     if depth > MAX_INCLUDE_DEPTH {
         return;

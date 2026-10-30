@@ -105,6 +105,7 @@ export const DETAILS_ID = "details";
 /** activeId value while the pinned Snippets tab (managing them) is in front. */
 export const SNIPPETS_ID = "snippets";
 export const BASELINE_ID = "baseline";
+export const HOSTS_ID = "hosts";
 export const SETTINGS_ID = "settings";
 /** activeId value while the Workflows tab is in front with no run picked. */
 export const WORKFLOWS_ID = "workflows";
@@ -125,6 +126,10 @@ interface TabsState {
   baselineOpen: boolean;
   openBaseline(): void;
   closeBaseline(): void;
+  /** The pinned SSH hosts tab. */
+  hostsOpen: boolean;
+  openHosts(): void;
+  closeHosts(): void;
   settingsOpen: boolean;
   openSettings(): void;
   closeSettings(): void;
@@ -367,6 +372,7 @@ export const useTabs = create<TabsState>((set, get) => {
     detailsOpen: false,
     snippetsOpen: false,
     baselineOpen: false,
+    hostsOpen: false,
     settingsOpen: false,
     workflowsOpen: false,
     stripOrder: [],
@@ -430,6 +436,18 @@ export const useTabs = create<TabsState>((set, get) => {
       set({
         baselineOpen: false,
         activeId: activeId === BASELINE_ID ? (groups[groups.length - 1]?.focus ?? HOME_ID) : activeId,
+      });
+    },
+
+    openHosts() {
+      set({ hostsOpen: true, activeId: HOSTS_ID });
+    },
+
+    closeHosts() {
+      const { activeId, groups } = get();
+      set({
+        hostsOpen: false,
+        activeId: activeId === HOSTS_ID ? (groups[groups.length - 1]?.focus ?? HOME_ID) : activeId,
       });
     },
 

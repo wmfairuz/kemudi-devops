@@ -22,17 +22,18 @@ import { useConfig } from "@/stores/config";
 import { askConfirm } from "@/stores/confirm";
 import { toastError, useToasts } from "@/stores/toasts";
 
-/** Open with an alias (view/edit it) or null (new). */
+/** Open with an alias (view/edit it) or null (new, optionally filled in
+ *  from another host: Duplicate). */
 export const useSshHostDialog = create<{
-  target: { alias: string | null } | null;
-  open(alias: string | null): void;
+  target: { alias: string | null; prefill?: HostEntry } | null;
+  open(alias: string | null, prefill?: HostEntry): void;
   close(): void;
   /** Bumped after a save so lists reload. */
   saved: number;
 }>((set) => ({
   target: null,
   saved: 0,
-  open: (alias) => set({ target: { alias } }),
+  open: (alias, prefill) => set({ target: { alias, prefill } }),
   close: () => set({ target: null }),
 }));
 
@@ -41,19 +42,19 @@ const portOf = (p: string) => (/^\d{1,5}$/.test(p) && Number(p) > 0 && Number(p)
 export function SshHostDialog() {
   const target = useSshHostDialog((s) => s.target);
   if (!target) return null;
-  return <HostForm key={target.alias ?? "new"} alias={target.alias} />;
+  return <HostForm key={target.alias ?? `new:${target.prefill?.alias ?? ""}`} alias={target.alias} prefill={target.prefill} />;
 }
 
-function HostForm({ alias: original }: { alias: string | null }) {
+function HostForm({ alias: original, prefill }: { alias: string | null; prefill?: HostEntry }) {
   const close = useSshHostDialog((s) => s.close);
   const [info, setInfo] = useState<HostInfo | null>(null);
-  const [alias, setAlias] = useState(original ?? "");
-  const [address, setAddress] = useState("");
-  const [user, setUser] = useState("");
-  const [port, setPort] = useState("");
-  const [key, setKey] = useState("");
-  const [jump, setJump] = useState("");
-  const [extra, setExtra] = useState("");
+  const [alias, setAlias] = useState(original ?? prefill?.alias ?? "");
+  const [address, setAddress] = useState(prefill?.hostname ?? "");
+  const [user, setUser] = useState(prefill?.user ?? "");
+  const [port, setPort] = useState(prefill?.port ? String(prefill.port) : "");
+  const [key, setKey] = useState(prefill?.identityFile ?? "");
+  const [jump, setJump] = useState(prefill?.jump ?? "");
+  const [extra, setExtra] = useState(prefill?.extra.join("\n") ?? "");
   const [keys, setKeys] = useState<string[]>([]);
   const [test, setTest] = useState<{ ok: boolean; message: string } | "testing" | null>(null);
   const [busy, setBusy] = useState(false);

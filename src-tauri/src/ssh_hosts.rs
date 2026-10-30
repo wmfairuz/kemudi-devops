@@ -378,6 +378,112 @@ pub fn take_block(config: &str, alias: &str) -> Result<(String, HostEntry), Stri
     Ok((out, entry))
 }
 
+/// A host's settings as its `Host` block says them (for showing; a block
+/// naming several hosts counts for each).
+pub fn block_fields(text: &str, alias: &str) -> Option<HostEntry> {
+    let lines: Vec<&str> = text.lines().collect();
+    let start = lines
+        .iter()
+        .position(|l| keyword(l) == "host" && args(l).iter().any(|a| a == alias))?;
+    let end = (start + 1..lines.len())
+        .find(|&i| matches!(keyword(lines[i]).as_str(), "host" | "match"))
+        .unwrap_or(lines.len());
+    let mut entry = HostEntry {
+        alias: alias.to_string(),
+        ..Default::default()
+    };
+    for l in &lines[start + 1..end] {
+        let t = l.trim();
+        if t.is_empty() || t.starts_with('#') {
+            continue;
+        }
+        let value = args(l).join(" ");
+        match keyword(l).as_str() {
+            "hostname" => entry.hostname = value,
+            "user" => entry.user = Some(value),
+            "port" => entry.port = value.parse().ok(),
+            "identityfile" if entry.identity_file.is_none() => entry.identity_file = Some(value),
+            "proxyjump" => entry.jump = Some(value),
+            _ => entry.extra.push(t.to_string()),
+        }
+    }
+    if entry.hostname.is_empty() {
+        entry.hostname = alias.to_string();
+    }
+    Some(entry)
+}
+
+/// One row of the SSH hosts page.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostRow {
+    pub alias: String,
+    /// Its settings as written (Kemudi's, or the user's block).
+    pub entry: HostEntry,
+    /// "kemudi", "config" (~/.ssh/config itself) or "include".
+    pub source: String,
+    /// The file it's in, with ~ for home.
+    pub file: String,
+    /// For the user's own hosts: why "Manage in Kemudi" can't move it
+    /// (None: it can). Always set for hosts from included files.
+    pub adopt_blocker: Option<String>,
+}
+
+/// Every SSH host: Kemudi's, the user's ~/.ssh/config and the files it
+/// includes, in the order ssh reads them.
+pub fn list(ssh_dir: &Path, sources: &[(String, PathBuf)], home: &Path) -> Vec<HostRow> {
+    let managed = managed(ssh_dir);
+    let mine = managed_path(ssh_dir);
+    let config = ssh_dir.join("config");
+    let tilde = |p: &Path| match p.strip_prefix(home) {
+        Ok(r) => format!("~/{}", r.display()),
+        Err(_) => p.display().to_string(),
+    };
+    let mut texts: std::collections::HashMap<PathBuf, String> = Default::default();
+    let mut rows: Vec<HostRow> = Vec::new();
+    for (alias, file) in sources {
+        if let Some(e) = managed.iter().find(|e| e.alias == *alias) {
+            rows.push(HostRow {
+                alias: alias.clone(),
+                entry: e.clone(),
+                source: "kemudi".into(),
+                file: tilde(&mine),
+                adopt_blocker: None,
+            });
+            continue;
+        }
+        let text = texts
+            .entry(file.clone())
+            .or_insert_with(|| std::fs::read_to_string(file).unwrap_or_default());
+        let Some(entry) = block_fields(text, alias) else { continue };
+        let own = *file == config;
+        rows.push(HostRow {
+            alias: alias.clone(),
+            entry,
+            source: if own { "config" } else { "include" }.into(),
+            file: tilde(file),
+            adopt_blocker: if own {
+                take_block(text, alias).err()
+            } else {
+                Some(format!("it's in {}, which ~/.ssh/config includes: edit it there", tilde(file)))
+            },
+        });
+    }
+    // Kemudi's hosts that ssh doesn't see (the Include line was removed).
+    for e in managed {
+        if !rows.iter().any(|r| r.alias == e.alias) {
+            rows.push(HostRow {
+                alias: e.alias.clone(),
+                entry: e,
+                source: "kemudi".into(),
+                file: tilde(&mine),
+                adopt_blocker: None,
+            });
+        }
+    }
+    rows
+}
+
 /// Move a host from ~/.ssh/config into Kemudi's file (after a timestamped
 /// backup), so it can be edited in the app.
 pub fn adopt(ssh_dir: &Path, alias: &str, stamp: &str) -> AppResult<HostEntry> {
@@ -523,6 +629,13 @@ fn stamp() -> String {
                 .map_or(0, |d| d.as_secs())
                 .to_string()
         })
+}
+
+/// Every SSH host with its settings and where it's written.
+#[tauri::command]
+pub async fn ssh_host_list() -> AppResult<Vec<HostRow>> {
+    let home = dirs::home_dir().ok_or_else(|| invalid("no home directory".into()))?;
+    Ok(list(&ssh_dir()?, &crate::ssh::config_host_sources(), &home))
 }
 
 /// The SSH hosts Kemudi manages (editable from the app).
@@ -692,6 +805,47 @@ mod tests {
             jump: Some("bastion".into()),
             extra: vec![],
         }
+    }
+
+    #[test]
+    fn lists_every_host_and_where_it_is() {
+        let home = std::env::temp_dir().join(format!("kemudi-hostlist-{}", std::process::id()));
+        let ssh = home.join(".ssh");
+        std::fs::create_dir_all(ssh.join("config.d")).unwrap();
+        std::fs::write(managed_path(&ssh), render_managed(&[entry()])).unwrap();
+        std::fs::write(
+            ssh.join("config"),
+            "Include ~/.ssh/config.d/kemudi.conf\n\nHost web\n  HostName 203.0.113.5\n  User deploy\n  Port 2200\n  IdentityFile ~/.ssh/work\n  ForwardAgent yes\nHost a b\n  User ops\nHost *\n  ServerAliveInterval 30\n",
+        )
+        .unwrap();
+        std::fs::write(ssh.join("work.conf"), "Host db-tunnel\n  HostName db.example.com\n  LocalForward 3307 127.0.0.1:3306\n").unwrap();
+        let sources = vec![
+            ("stg-web3".to_string(), managed_path(&ssh)),
+            ("web".to_string(), ssh.join("config")),
+            ("a".to_string(), ssh.join("config")),
+            ("b".to_string(), ssh.join("config")),
+            ("db-tunnel".to_string(), ssh.join("work.conf")),
+        ];
+        let rows = list(&ssh, &sources, &home);
+        let row = |a: &str| rows.iter().find(|r| r.alias == a).unwrap();
+        assert_eq!(rows.len(), 5);
+        assert_eq!((row("stg-web3").source.as_str(), row("stg-web3").file.as_str()), ("kemudi", "~/.ssh/config.d/kemudi.conf"));
+        assert_eq!(row("stg-web3").entry, entry());
+        let web = row("web");
+        assert_eq!((web.source.as_str(), web.adopt_blocker.as_deref()), ("config", None));
+        assert_eq!(
+            (web.entry.hostname.as_str(), web.entry.user.as_deref(), web.entry.port, web.entry.identity_file.as_deref()),
+            ("203.0.113.5", Some("deploy"), Some(2200), Some("~/.ssh/work"))
+        );
+        assert_eq!(web.entry.extra, ["ForwardAgent yes"]);
+        // A Host line with two names: shown for each, can't be moved.
+        assert_eq!(row("b").entry.user.as_deref(), Some("ops"));
+        assert!(row("a").adopt_blocker.as_deref().is_some_and(|b| b.contains("several hosts")));
+        let t = row("db-tunnel");
+        assert_eq!((t.source.as_str(), t.file.as_str()), ("include", "~/.ssh/work.conf"));
+        assert_eq!(t.entry.extra, ["LocalForward 3307 127.0.0.1:3306"]);
+        assert!(t.adopt_blocker.is_some());
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     #[test]

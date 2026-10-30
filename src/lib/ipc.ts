@@ -112,6 +112,22 @@ export const sshHostSave = (original: string | null, entry: HostEntry): Promise<
   invoke("ssh_host_save", { original, entry });
 export const sshKeys = (): Promise<string[]> => invoke("ssh_keys");
 export const sshManagedHosts = (): Promise<HostEntry[]> => invoke("ssh_managed_hosts");
+
+/** A row of the SSH hosts page. */
+export interface HostRow {
+  alias: string;
+  /** Its settings as written. */
+  entry: HostEntry;
+  /** "kemudi" (Kemudi's file), "config" (~/.ssh/config) or "include" (a file it includes). */
+  source: "kemudi" | "config" | "include";
+  /** The file it's in (~ for home). */
+  file: string;
+  /** Why "Manage in Kemudi" can't move one of your hosts (null: it can). */
+  adoptBlocker: string | null;
+}
+
+/** Every SSH host, in the order ssh reads them. */
+export const sshHostList = (): Promise<HostRow[]> => invoke("ssh_host_list");
 export const sshHostDelete = (alias: string): Promise<void> => invoke("ssh_host_delete", { alias });
 export const sshHostAdopt = (alias: string): Promise<HostEntry> => invoke("ssh_host_adopt", { alias });
 export const sshConfigOpen = (): Promise<void> => invoke("ssh_config_open");
