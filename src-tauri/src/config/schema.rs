@@ -111,6 +111,9 @@ pub struct PhpSetup {
 #[serde(deny_unknown_fields, rename_all(serialize = "camelCase"))]
 pub struct SshSetup {
     pub port: Option<u16>,
+    /// Any port but 22 is fine; `port` is only where Fix moves a server
+    /// that's still on 22.
+    pub any_port: Option<bool>,
     /// `false`: keys only.
     pub password_auth: Option<bool>,
 }

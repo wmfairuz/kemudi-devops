@@ -120,6 +120,11 @@ pub fn problems(p: &Profile) -> Vec<String> {
         if port == 0 {
             out.push("ssh port can't be 0".into());
         }
+        if port == 22 && p.ssh.as_ref().and_then(|s| s.any_port) == Some(true) {
+            out.push("ssh any_port: port is where Fix moves a server off 22, so not 22".into());
+        }
+    } else if p.ssh.as_ref().and_then(|s| s.any_port) == Some(true) {
+        out.push("ssh any_port needs port: (where Fix moves a server that's still on 22)".into());
     }
     for r in p.firewall.iter().flat_map(|f| &f.allow) {
         if !word_ok(r.trim(), " /:_.-") {
@@ -212,6 +217,16 @@ echo "@@os $(. /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-unknown}")"
 
 /// sshd's effective settings (`sshd -T`, needs root), once.
 const SSHD_T: &str = r#"[ -n "$SSHT" ] || { SSHT=x; [ $ROOT = yes ] && SSHT=$(R 'sshd -T 2>/dev/null' 2>/dev/null); }"#;
+
+/// The SSH port a server should be on: `ssh.port`, or with `any_port` the
+/// one it's on now unless that's 22 (else what Kemudi connects on).
+fn ssh_port(p: &Profile, now: u16) -> u16 {
+    match &p.ssh {
+        Some(s) if s.any_port == Some(true) && now != 22 => now,
+        Some(s) => s.port.unwrap_or(now),
+        None => now,
+    }
+}
 
 /// Listening TCP ports (anyone can ask).
 const LISTENING: &str = r#"LIS=$(ss -ltnH 2>/dev/null | awk '{n=split($4,a,":"); print a[n]}' | sort -un | tr '\n' ' ')"#;
@@ -497,7 +512,7 @@ fi"#,
         let bantime = f.bantime.clone().unwrap_or_else(|| "1h".into());
         let findtime = f.findtime.clone().unwrap_or_else(|| "10m".into());
         let (bt, ft) = (secs(&bantime).unwrap_or(3600), secs(&findtime).unwrap_or(600));
-        let port = p.ssh.as_ref().and_then(|s| s.port).unwrap_or(ctx.port_now);
+        let port = ssh_port(p, ctx.port_now);
         let port = if port == 22 { "ssh".to_string() } else { port.to_string() };
         add(
             "fail2ban",
@@ -578,7 +593,7 @@ if [ $r = 0 ]; then say __ID__ ok "${l:-ok}"; elif [ $r = 99 ] && [ $ROOT = no ]
         );
     }
     if let Some(fw) = &p.firewall {
-        let port = p.ssh.as_ref().and_then(|s| s.port).unwrap_or(ctx.port_now);
+        let port = ssh_port(p, ctx.port_now);
         let rules: Vec<String> = fw.allow.iter().map(|r| r.trim().to_string()).collect();
         let ssh_pat = if port == 22 { "^(22(/tcp)?|OpenSSH)[[:space:]]".to_string() } else { format!("^{port}(/tcp)?[[:space:]]") };
         let mut fix = String::from("command -v ufw >/dev/null || apt-get install -y ufw\nufw default deny incoming\nufw default allow outgoing\n");
@@ -615,12 +630,13 @@ fi"#,
         );
     }
     if let Some(ssh) = &p.ssh {
-        if let Some(port) = ssh.port {
+        if ssh.port.is_some() {
+            let port = ssh_port(p, ctx.port_now);
             add(
                 "ssh-port",
                 "SSH",
                 "SSH port",
-                Some(port.to_string()),
+                Some(if ssh.any_port == Some(true) { format!("not 22 ({port})") } else { port.to_string() }),
                 fill(
                     &format!(
                         r#"{SSHD_T}; {LISTENING}
@@ -888,7 +904,7 @@ pub fn plan(server: &Server, p: &Profile, ctx: &Ctx, ids: &[String]) -> Result<W
     let now = ctx.port_now;
     let want_port = chosen.iter().any(|i| i.id == "ssh-port");
     let want_keys = chosen.iter().any(|i| i.id == "ssh-passwords");
-    let target = p.ssh.as_ref().and_then(|s| s.port).unwrap_or(now);
+    let target = ssh_port(p, now);
     let moving = want_port && target != now;
     let mut steps = Vec::new();
     if want_port || want_keys {
@@ -1220,6 +1236,27 @@ custom: [{ name: Swap on, check: "swapon --show | grep -q .", fix: "fallocate -l
         p.folders = Some(vec![FolderSetup { path: "opt/www".into(), owner: Some("www data".into()), mode: Some("999".into()) }]);
         p.users = Some(vec![UserSetup { name: "root".into(), sudo: None, password: None }]);
         assert_eq!(problems(&p).len(), 6, "{:?}", problems(&p));
+    }
+
+    #[test]
+    fn any_ssh_port_but_22() {
+        let mut p = profile();
+        assert_eq!(ssh_port(&p, 2022), 2222);
+        if let Some(s) = p.ssh.as_mut() {
+            s.any_port = Some(true);
+        }
+        assert!(problems(&p).is_empty());
+        // On another port: that one is fine (firewall, fail2ban follow it).
+        assert_eq!(ssh_port(&p, 2022), 2022);
+        // Still on 22: Fix moves it to `port`.
+        assert_eq!(ssh_port(&p, 22), 2222);
+        let ctx = Ctx { baseline: None, port_now: 2022 };
+        let it = items(&p, &ctx).into_iter().find(|i| i.id == "ssh-port").expect("ssh-port item");
+        assert_eq!(it.expected.as_deref(), Some("not 22 (2022)"));
+        if let Some(s) = p.ssh.as_mut() {
+            s.port = None;
+        }
+        assert!(!problems(&p).is_empty());
     }
 
     #[test]

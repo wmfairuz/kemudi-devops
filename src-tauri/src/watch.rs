@@ -252,6 +252,29 @@ pub struct Setup {
     pub bad: u32,
     /// Titles of what doesn't match.
     pub failing: Vec<String>,
+    /// The profile (and helpers) it was checked against; a result for a
+    /// profile that has changed since isn't shown and is checked again.
+    pub fingerprint: String,
+}
+
+/// What a server's setup check depends on: its profile and the helpers.
+pub fn setup_fingerprint(config: &Config, server_id: &str) -> Option<String> {
+    use std::hash::{Hash, Hasher};
+    let profile = config.profile_for(server_id)?;
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    serde_json::to_string(profile).unwrap_or_default().hash(&mut h);
+    serde_json::to_string(&config.baseline).unwrap_or_default().hash(&mut h);
+    Some(format!("{:016x}", h.finish()))
+}
+
+/// Results as they apply now: a setup result for another profile is left out.
+fn current(config: &Config, id: &str, w: &ServerWatch) -> ServerWatch {
+    let mut w = w.clone();
+    let fp = setup_fingerprint(config, id);
+    if w.setup.as_ref().is_some_and(|s| Some(&s.value.fingerprint) != fp.as_ref()) {
+        w.setup = None;
+    }
+    w
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -435,7 +458,7 @@ fn due(server: &Server, config: &Config, w: &ServerWatch, settings: &Settings, n
             Check::System => w.system.as_ref().map(|s| s.at),
             Check::Updates => w.updates.as_ref().map(|s| s.at),
             Check::Certs => w.certs.as_ref().map(|s| s.at),
-            Check::Setup => w.setup.as_ref().map(|s| s.at),
+            Check::Setup => current(config, &server.id, w).setup.map(|s| s.at),
         };
         if check == Check::Certs {
             let soon = w.certs.as_ref().is_some_and(|c| {
@@ -681,16 +704,17 @@ pub fn snapshot(state: &AppState) -> Snapshot {
         .filter(|s| s.state == crate::preflight::State::Down)
         .map(|s| s.server_id)
         .collect();
-    let items = state
+    let (servers, items) = state
         .config
         .config()
         .map(|c| {
             let servers: BTreeMap<_, _> = servers
                 .iter()
                 .filter(|(id, _)| c.server(id).is_some())
-                .map(|(k, v)| (k.clone(), v.clone()))
+                .map(|(k, v)| (k.clone(), current(&c, k, v)))
                 .collect();
-            items(&c, &servers, &snoozed, &down, &settings, now)
+            let items = items(&c, &servers, &snoozed, &down, &settings, now);
+            (servers, items)
         })
         .unwrap_or_default();
     let mut running: Vec<String> = w.running.lock().unwrap_or_else(|e| e.into_inner()).iter().cloned().collect();
@@ -877,7 +901,7 @@ pub fn certs_of(h: &crate::health::Health) -> Certs {
     }
 }
 
-pub fn setup_of(s: &crate::setup::SetupStatus) -> Setup {
+pub fn setup_of(s: &crate::setup::SetupStatus, fingerprint: String) -> Setup {
     let count = |st: &str| s.items.iter().filter(|i| i.state == st).count() as u32;
     Setup {
         profile: s.profile.clone(),
@@ -885,6 +909,7 @@ pub fn setup_of(s: &crate::setup::SetupStatus) -> Setup {
         warn: count("warn"),
         bad: count("bad"),
         failing: s.items.iter().filter(|i| i.state == "bad").map(|i| i.title.clone()).collect(),
+        fingerprint,
     }
 }
 
@@ -897,9 +922,11 @@ pub fn record_certs(app: &AppHandle, server_id: &str, h: &crate::health::Health)
 }
 
 pub fn record_setup(app: &AppHandle, server_id: &str, s: &crate::setup::SetupStatus) {
-    app.state::<AppState>()
+    let state = app.state::<AppState>();
+    let fp = state.config.config().and_then(|c| setup_fingerprint(&c, server_id)).unwrap_or_default();
+    state
         .watch
-        .put(server_id, Check::Setup, Ok(setup_of(s)), |w, v| w.setup = Some(v));
+        .put(server_id, Check::Setup, Ok(setup_of(s, fp)), |w, v| w.setup = Some(v));
     emit(app);
 }
 
@@ -954,9 +981,10 @@ async fn check_server(app: &AppHandle, server: &Server, checks: &[Check]) {
         emit(app);
     }
     if checks.contains(&Check::Setup) {
+        let fp = state.config.config().and_then(|c| setup_fingerprint(&c, id)).unwrap_or_default();
         let r = crate::setup::check(&state, id, None)
             .await
-            .map(|s| setup_of(&s))
+            .map(|s| setup_of(&s, fp))
             .map_err(|e| e.to_string());
         w.put(id, Check::Setup, r, |w, v| w.setup = Some(v));
         emit(app);
@@ -1232,6 +1260,32 @@ servers:
         // Off: never in the background.
         let off = Settings { updates_hours: 0, ..Settings::default() };
         assert!(!due(server, &c, &failing, &off, now, false).contains(&Check::Updates));
+    }
+
+    #[test]
+    fn setup_result_for_a_changed_profile_is_dropped() {
+        let yaml = |users: &str| {
+            format!(
+                "setup:\n  default: web\n  profiles:\n    - id: web\n      ntp: true\n{users}servers:\n  - {{ id: web-1, host: web-1, env: prod }}\n"
+            )
+        };
+        let before = crate::config::validate::parse(&yaml("      users: [{ name: deploy, sudo: true }]\n")).config.expect("config");
+        let after = crate::config::validate::parse(&yaml("")).config.expect("config");
+        let server = before.server("web-1").expect("server").clone();
+        let now = 1_700_100_000;
+        let w = ServerWatch {
+            setup: Some(Stamped {
+                at: now - 60,
+                value: Setup { profile: "web".into(), bad: 1, fingerprint: setup_fingerprint(&before, "web-1").expect("fp"), ..Setup::default() },
+            }),
+            ..ServerWatch::default()
+        };
+        let s = Settings::default();
+        assert!(current(&before, "web-1", &w).setup.is_some());
+        assert!(!due(&server, &before, &w, &s, now, false).contains(&Check::Setup));
+        // The profile lost its users: the old ✗ isn't shown, and it's due.
+        assert!(current(&after, "web-1", &w).setup.is_none());
+        assert!(due(&server, &after, &w, &s, now, false).contains(&Check::Setup));
     }
 
     #[test]

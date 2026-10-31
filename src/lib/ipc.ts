@@ -1687,6 +1687,8 @@ export interface WatchSetup {
   warn: number;
   bad: number;
   failing: string[];
+  /** The profile it was checked against (a changed one isn't shown). */
+  fingerprint: string;
 }
 
 export interface ServerWatch {

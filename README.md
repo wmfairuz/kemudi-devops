@@ -724,7 +724,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
         fail2ban: { maxretry: 3, bantime: 1h, findtime: 10m }   # or true
         auditd: true
         lynis: true
-        ssh: { port: 2222, password_auth: false }
+        ssh: { port: 2222, password_auth: false }   # any_port: true: any port but 22 is fine (2222: where Fix moves it)
         custom: [{ name: Swap on, check: "swapon --show | grep -q .", fix: "…" }]
       - id: legacy
         extends: web                   # what's set here wins; lists replace

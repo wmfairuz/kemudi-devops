@@ -1,3 +1,4 @@
+import { agoS, useWatch } from "@/stores/watch";
 import { ChevronDown, ChevronRight, RotateCw, Wrench } from "lucide-react";
 import { useEffect, useState } from "react";
 import { create } from "zustand";
@@ -51,7 +52,7 @@ const KEYS: [string, string][] = [
   ["packages", "[nginx, git, …]"],
   ["php", '{ version: "8.4", extensions: [fpm, …], ppa, default }'],
   ["composer / mysql_secure", "true"],
-  ["ssh", "{ port: 2222, password_auth: false }"],
+  ["ssh", "{ port: 2222, any_port: true (any but 22), password_auth: false }"],
   ["firewall", '{ allow: ["Nginx Full", 6379/tcp] }'],
   ["fail2ban", "true, or { maxretry, bantime, findtime }"],
   ["auditd / lynis", "true"],
@@ -161,6 +162,18 @@ function Counts({ results }: { results: Result[] }) {
 }
 
 function RowState({ server, row }: { server: Server; row: Row | undefined }) {
+  // Not checked here yet: the background check's counts, if it has run.
+  const bg = useWatch((x) => x.snapshot?.servers[server.id]?.setup);
+  if (!row && bg)
+    return (
+      <span className="flex items-center gap-3" title="From the background checks; Check reads it again">
+        <span className="text-[#17702a]">✓ {bg.value.ok}</span>
+        {bg.value.bad > 0 && <span className="text-env-prod-fg">✗ {bg.value.bad}</span>}
+        {bg.value.warn > 0 && <span className="text-[#8a5a12]">! {bg.value.warn}</span>}
+        {bg.value.bad + bg.value.warn === 0 && <span className="text-[#17702a]">all as the profile says</span>}
+        <span className="text-subtle-foreground">{agoS(bg.at)}</span>
+      </span>
+    );
   if (!row) return <span className="text-subtle-foreground">not checked yet</span>;
   if (row.state === "busy")
     return (
