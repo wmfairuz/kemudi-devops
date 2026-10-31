@@ -33,6 +33,7 @@ mod tune;
 mod updates;
 mod util;
 mod vault;
+mod watch;
 mod workflows;
 
 use std::sync::{Arc, LazyLock};
@@ -53,6 +54,8 @@ pub struct AppState {
     pub status: preflight::StatusBoard,
     /// Err holds why the audit DB couldn't open; actions still run.
     pub audit: Result<Arc<AuditLog>, String>,
+    /// Background checks and what they found (Home's Needs attention).
+    pub watch: watch::Watch,
 }
 
 impl AppState {
@@ -108,6 +111,7 @@ pub fn run() {
             config: ConfigStore::new(config::config_path()),
             status: preflight::StatusBoard::default(),
             audit: open_audit(),
+            watch: watch::Watch::load(),
         })
         .menu(menu::build)
         .on_menu_event(|app, event| {
@@ -130,6 +134,7 @@ pub fn run() {
                 Err(e) => eprintln!("kemudi: config hot-reload disabled: {e}"),
             }
             preflight::start_poller(app.handle().clone());
+            watch::start(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -179,6 +184,11 @@ pub fn run() {
             ssh_hosts::ssh_keys,
             ssh_hosts::ssh_managed_hosts,
             ssh_hosts::ssh_host_list,
+            watch::watch_get,
+            watch::watch_refresh,
+            watch::watch_snooze,
+            watch::watch_settings_get,
+            watch::watch_settings_set,
             ssh_hosts::ssh_host_delete,
             ssh_hosts::ssh_host_adopt,
             ssh_hosts::ssh_config_open,

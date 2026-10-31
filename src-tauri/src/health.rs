@@ -75,7 +75,7 @@ fi
 const SYSTEM: &str = r#"echo @@os
 (. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME"); uname -r; cut -d' ' -f1 /proc/uptime
 echo @@updates
-if [ -x /usr/lib/update-notifier/apt-check ]; then /usr/lib/update-notifier/apt-check 2>&1 | tail -1; fi
+if [ -x /usr/lib/update-notifier/apt-check ]; then /usr/lib/update-notifier/apt-check 2>&1 | tail -1; echo; fi
 echo @@reboot
 [ -f /var/run/reboot-required ] && { echo yes; cat /var/run/reboot-required.pkgs 2>/dev/null | head -20; }
 echo @@services
@@ -514,17 +514,23 @@ fn apps_of(server: &crate::config::schema::Server) -> Vec<(String, String, Strin
 }
 
 /// Check a server: SSL (always), and unless `ssl_only` the system and its
-/// apps.
+/// apps. What it finds about certificates counts as the background check.
 #[tauri::command]
 pub async fn health_check(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     server_id: String,
     ssl_only: Option<bool>,
 ) -> AppResult<Health> {
-    let server = lookup(&state, &server_id)?;
+    let h = check(&state, &server_id, ssl_only.unwrap_or(false)).await?;
+    crate::watch::record_certs(&app, &server_id, &h);
+    Ok(h)
+}
+
+pub(crate) async fn check(state: &AppState, server_id: &str, ssl_only: bool) -> AppResult<Health> {
+    let server = lookup(state, server_id)?;
     let apps = apps_of(&server);
-    let ssl_only = ssl_only.unwrap_or(false);
-    let password = saved_sudo(&server_id).await;
+    let password = saved_sudo(server_id).await;
     let prelude = format!("export LC_ALL=C\n{}", sudo_prelude(password.as_deref()));
     // 1: the vhosts' names (and the system and apps, in the same trip).
     let mut first = format!("{prelude}{SSL}");
@@ -532,7 +538,7 @@ pub async fn health_check(
         first.push_str(&system_script());
         first.push_str(&apps_part(&apps));
     }
-    let out = crate::monitor::run_for(&state, &server_id, &first, 60).await?;
+    let out = crate::monitor::run_for(state, server_id, &first, 60).await?;
     crate::remote_files::errors(&out)?;
     let mut h = Health {
         ssl_only,
@@ -573,7 +579,7 @@ pub async fn health_check(
         "for p in $CRTS; do",
         "eval \"set -- $CRTS\"\nfor p in \"$@\"; do",
     );
-    let out2 = crate::monitor::run_for(&state, &server_id, &second, 90).await?;
+    let out2 = crate::monitor::run_for(state, server_id, &second, 90).await?;
     parse_ssl(&out2, &names, &apps, &mut h);
     Ok(h)
 }

@@ -5,21 +5,57 @@ import { Field, TextInput } from "@/components/manage/fields";
 import { errorMessage, filesChooseFolder, settingsSave, type Editor } from "@/lib/ipc";
 import { useConfig } from "@/stores/config";
 import { downloadDir, setDownloadDir, shortPath } from "@/lib/downloads";
-import { useDiskAlerts } from "@/stores/diskAlerts";
-import { useSslAlerts } from "@/stores/sslAlerts";
 import { toastError, useToasts } from "@/stores/toasts";
 import { getVersion } from "@tauri-apps/api/app";
 import { useUpdates } from "@/stores/updates";
 import { useConfirmClose } from "@/stores/confirmClose";
 import { useMcpPrefs } from "@/stores/mcpPrefs";
-import { useTabs } from "@/stores/tabs";
+import { useTabs, type SettingsSection } from "@/stores/tabs";
+import { SetupView } from "@/components/setup/SetupView";
+import { cn } from "@/lib/utils";
+
+import { ChecksSettings } from "./ChecksSettings";
 
 const FONTS = ["Menlo", "SF Mono", "Monaco", "JetBrains Mono", "Fira Code", "Cascadia Code", "Source Code Pro", "Hack"];
 
-/** Kemudi ▸ Settings… (⌘,): a pinned Settings tab: terminal look and
- *  behaviour, tabs, Claude, monitoring, files. Terminal settings are saved
- *  to servers.yaml, the rest on this Mac. */
+/** Kemudi ▸ Settings… (⌘,): a pinned Settings tab with three pages:
+ *  General, Checks (the background checks) and Server setup (profiles,
+ *  helpers, each server's profile). */
 export function SettingsView() {
+  const section = useTabs((s) => s.settingsSection);
+  const pages: { id: SettingsSection; label: string }[] = [
+    { id: "general", label: "General" },
+    { id: "checks", label: "Checks" },
+    { id: "setup", label: "Server setup" },
+  ];
+  return (
+    <div className="light-ui absolute inset-0 flex flex-col bg-background text-foreground">
+      <div className="flex h-10 flex-none items-center gap-0.5 border-b border-divider px-2">
+        {pages.map((p) => (
+          <button
+            key={p.id}
+            onClick={() => useTabs.getState().openSettings(p.id)}
+            className={cn(
+              "flex h-7 cursor-pointer items-center rounded-md px-2.5 text-[12.5px]",
+              p.id === section ? "bg-hover-strong font-medium text-foreground" : "text-subtle-foreground hover:bg-hover hover:text-foreground",
+            )}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <div className="relative min-h-0 flex-1">
+        {section === "general" && <GeneralSettings />}
+        {section === "checks" && <ChecksSettings />}
+        {section === "setup" && <SetupView />}
+      </div>
+    </div>
+  );
+}
+
+/** Terminal look and behaviour, tabs, Claude, files, updates. Terminal
+ *  settings are saved to servers.yaml, the rest on this Mac. */
+function GeneralSettings() {
   const config = useConfig.getState().snapshot?.config;
   const t = config?.terminal ?? {};
   const [font, setFont] = useState(t.fontFamily ?? "Menlo");
@@ -31,8 +67,6 @@ export function SettingsView() {
   // Kept as is (no longer shown).
   const [editor] = useState<Editor | "auto">(config?.editor ?? "auto");
   const [busy, setBusy] = useState(false);
-  const [diskAlerts, setDiskAlerts] = useState(useDiskAlerts.getState().enabled);
-  const [sslAlerts, setSslAlerts] = useState(useSslAlerts.getState().enabled);
   const [updatesAtLaunch, setUpdatesAtLaunch] = useState(useUpdates.getState().atLaunch);
   const [confirmClose, setConfirmClose] = useState(useConfirmClose.getState().enabled);
   const [prodConfirm, setProdConfirm] = useState(useMcpPrefs.getState().prodConfirm);
@@ -67,8 +101,6 @@ export function SettingsView() {
         shellIntegration: integration,
         editor: editor === "auto" ? null : editor,
       });
-      useDiskAlerts.getState().setEnabled(diskAlerts);
-      useSslAlerts.getState().setEnabled(sslAlerts);
       useUpdates.getState().setAtLaunch(updatesAtLaunch);
       useConfirmClose.getState().setEnabled(confirmClose);
       useMcpPrefs.getState().setProdConfirm(prodConfirm);
@@ -179,7 +211,7 @@ export function SettingsView() {
                 Profiles of what a server should have (packages, PHP, SSH, firewall…) and the helper repos; check every server, fix what's off.
               </span>
             </span>
-            <Btn size="sm" variant="outline" onClick={() => useTabs.getState().openBaseline()}>
+            <Btn size="sm" variant="outline" onClick={() => useTabs.getState().openSettings("setup")}>
               Server setup…
             </Btn>
           </div>
@@ -213,26 +245,18 @@ export function SettingsView() {
             ))}
           </div>
           <div className="mt-1 text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">Monitoring</div>
-          <label className="flex cursor-pointer items-start gap-2 text-[12px] text-muted-foreground">
-            <input type="checkbox" className="mt-0.5" checked={diskAlerts} onChange={(e) => setDiskAlerts(e.target.checked)} />
-            <span>
-              Disk alerts
+          <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+            <span className="min-w-0 flex-1">
+              Background checks
               <span className="block text-[11px] text-subtle-foreground">
-                Every 15 minutes, check reachable servers' disks over ssh (read-only `df`) and notify once when one reaches
-                90% (amber from 80%). Servers with a full disk get a red ⚠ badge.
+                Disks, memory, updates, certificates and setup, read-only over ssh, for Home's Needs attention: how often, and when it
+                warns.
               </span>
             </span>
-          </label>
-          <label className="flex cursor-pointer items-start gap-2 text-[12px] text-muted-foreground">
-            <input type="checkbox" className="mt-0.5" checked={sslAlerts} onChange={(e) => setSslAlerts(e.target.checked)} />
-            <span>
-              SSL expiry alerts
-              <span className="block text-[11px] text-subtle-foreground">
-                Every 6 hours, check the certificates reachable servers serve (over ssh, read-only) and notify once when one
-                expires within 14 days. Those servers get a 🔒 badge.
-              </span>
-            </span>
-          </label>
+            <Btn size="sm" variant="outline" onClick={() => useTabs.getState().openSettings("checks")}>
+              Checks…
+            </Btn>
+          </div>
           <div className="mt-1 text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">Files</div>
           <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
             <span className="w-[110px] flex-none">Download folder</span>

@@ -1,4 +1,4 @@
-import { Activity, ChevronDown, ClipboardCheck, Settings, Columns2, Keyboard, Workflow as WorkflowIcon, FolderOpen, Gauge, HeartPulse, House, LayoutDashboard, ListChecks, Network, ScrollText, SquareTerminal } from "lucide-react";
+import { Activity, ChevronDown, ClipboardCheck, Server as ServerIcon, Settings, Columns2, Keyboard, Workflow as WorkflowIcon, FolderOpen, Gauge, HeartPulse, House, LayoutDashboard, ListChecks, Network, ScrollText, SquareTerminal } from "lucide-react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -15,7 +15,7 @@ import { TAB_COLORS, type TabColor } from "@/lib/tabColors";
 import { ColorDot, openTabConfig, useTabConfigs } from "@/components/tabconfigs/TabConfigs";
 import { errorMessage, tabConfigsList, type TabConfigEntry } from "@/lib/ipc";
 import { toastError } from "@/stores/toasts";
-import { BASELINE_ID, HOSTS_ID, SETTINGS_ID, DETAILS_ID, HISTORY_ID, HOME_ID, SNIPPETS_ID, WORKFLOWS_ID, groupOf, isViewTab, openLocalShell, toggleBroadcast, useTabs, type Group, type Tab } from "@/stores/tabs";
+import { HOSTS_ID, SETTINGS_ID, DETAILS_ID, HISTORY_ID, HOME_ID, SNIPPETS_ID, WORKFLOWS_ID, groupOf, isViewTab, openLocalShell, toggleBroadcast, useTabs, type Group, type Tab } from "@/stores/tabs";
 import { useUi } from "@/stores/ui";
 
 function TabIcon({ tab }: { tab: Tab }) {
@@ -27,6 +27,7 @@ function TabIcon({ tab }: { tab: Tab }) {
   if (tab.kind === "setup") return <ClipboardCheck className="size-4 flex-none text-[#50fa7b]" strokeWidth={2} />;
   if (tab.kind === "dash") return <LayoutDashboard className="size-4 flex-none text-[#ffb86c]" strokeWidth={2} />;
   if (tab.kind === "tune") return <Gauge className="size-4 flex-none text-[#bd93f9]" strokeWidth={2} />;
+  if (tab.kind === "server") return <ServerIcon className="size-4 flex-none text-[#8be9fd]" strokeWidth={2} />;
   switch (tab.state) {
     case "running":
       return <Spinner size={12} />;
@@ -186,7 +187,6 @@ export function TabStrip() {
   const historyOpen = useTabs((s) => s.historyOpen);
   const detailsOpen = useTabs((s) => s.detailsOpen);
   const snippetsOpen = useTabs((s) => s.snippetsOpen);
-  const baselineOpen = useTabs((s) => s.baselineOpen);
   const hostsOpen = useTabs((s) => s.hostsOpen);
   const settingsOpen = useTabs((s) => s.settingsOpen);
   const workflowsOpen = useTabs((s) => s.workflowsOpen);
@@ -199,7 +199,6 @@ export function TabStrip() {
   if (detailsOpen) items.push({ key: "details", node: <DetailsTab active={activeId === DETAILS_ID} /> });
   if (historyOpen) items.push({ key: "history", node: <HistoryTab active={activeId === HISTORY_ID} /> });
   if (snippetsOpen) items.push({ key: "snippets", node: <SnippetsTab active={activeId === SNIPPETS_ID} /> });
-  if (baselineOpen) items.push({ key: "baseline", node: <BaselineTab active={activeId === BASELINE_ID} /> });
   if (hostsOpen) items.push({ key: "hosts", node: <HostsTab active={activeId === HOSTS_ID} /> });
   if (settingsOpen) items.push({ key: "settings", node: <SettingsTab active={activeId === SETTINGS_ID} /> });
   if (workflowsOpen) items.push({ key: "workflows", node: <WorkflowsTab active={workflowsFront} /> });
@@ -372,7 +371,7 @@ function DetailsTab({ active }: { active: boolean }) {
 }
 
 /** Pinned tabs that never shrink in a full strip. */
-const FIXED = ["history", "snippets", "workflows", "baseline", "settings"];
+const FIXED = ["history", "snippets", "workflows", "settings"];
 
 /** Drag a tab along the strip to reorder it (a short press still just
  *  picks the tab). */
@@ -467,35 +466,6 @@ function SettingsTab({ active }: { active: boolean }) {
         aria-label="Close Settings"
         onMouseDown={(e) => e.stopPropagation()}
         onClick={closeSettings}
-        className="size-5 flex-none rounded-md text-center text-[16px] leading-[19px] text-faint-foreground hover:bg-hover-strong hover:text-foreground"
-      >
-        ×
-      </button>
-    </div>
-  );
-}
-
-/** The pinned Server setup tab. */
-function BaselineTab({ active }: { active: boolean }) {
-  const { openBaseline, closeBaseline } = useTabs.getState();
-  return (
-    <div
-      role="tab"
-      aria-selected={active}
-      onMouseDown={(e) => {
-        if (e.button === 0) openBaseline();
-      }}
-      className={cn(
-        "flex h-11 flex-none items-center gap-2.5 border-r border-divider pr-2.5 pl-3.5 text-[13px]",
-        active ? "bg-background text-foreground" : "text-dim-foreground shadow-[inset_0_-1px_0_var(--divider)] hover:text-foreground",
-      )}
-    >
-      <ClipboardCheck className="size-4 text-muted-foreground" strokeWidth={1.75} />
-      <span>Server setup</span>
-      <button
-        aria-label="Close Server setup"
-        onMouseDown={(e) => e.stopPropagation()}
-        onClick={closeBaseline}
         className="size-5 flex-none rounded-md text-center text-[16px] leading-[19px] text-faint-foreground hover:bg-hover-strong hover:text-foreground"
       >
         ×

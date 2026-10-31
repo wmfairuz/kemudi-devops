@@ -5,7 +5,7 @@
 // xterm passes every ⌘ chord through (see TerminalSession's key handler);
 // everything else stays in the PTY.
 import { copyCommand, copyOutput } from "@/lib/blockActions";
-import { BASELINE_ID, HOSTS_ID, DETAILS_ID, SETTINGS_ID, HISTORY_ID, HOME_ID, SNIPPETS_ID, WORKFLOWS_ID, groupOf, isViewTab, openLocalShell, toggleBroadcast, useTabs } from "@/stores/tabs";
+import { HOSTS_ID, DETAILS_ID, SETTINGS_ID, HISTORY_ID, HOME_ID, SNIPPETS_ID, WORKFLOWS_ID, groupOf, isViewTab, openLocalShell, toggleBroadcast, useTabs } from "@/stores/tabs";
 import { saveTabAsConfig } from "@/lib/saveTabConfig";
 import { leaves } from "@/lib/layout";
 import { askConfirm, useConfirm } from "@/stores/confirm";
@@ -58,7 +58,6 @@ const COMMANDS: Record<string, () => void> = {
     if (tabs.activeId === HISTORY_ID) tabs.closeHistory();
     else if (tabs.activeId === DETAILS_ID) tabs.closeDetails();
     else if (tabs.activeId === SNIPPETS_ID) tabs.closeSnippets();
-    else if (tabs.activeId === BASELINE_ID) tabs.closeBaseline();
     else if (tabs.activeId === HOSTS_ID) tabs.closeHosts();
     else if (tabs.activeId === SETTINGS_ID) tabs.closeSettings();
     else if (tabs.activeId === WORKFLOWS_ID) tabs.closeWorkflows();
@@ -121,7 +120,7 @@ const COMMANDS: Record<string, () => void> = {
   },
   baseline: () => {
     const tabs = useTabs.getState();
-    if (tabs.activeId === BASELINE_ID) tabs.closeBaseline();
+    if (tabs.activeId === SETTINGS_ID && tabs.settingsSection === "setup") tabs.closeSettings();
     else tabs.openBaseline();
   },
   hosts: () => {

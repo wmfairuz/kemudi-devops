@@ -5,7 +5,7 @@ import { duplicateServer, openDetails, useManage } from "@/stores/manage";
 import { useNewApp } from "@/stores/newApp";
 import { useConfig } from "@/stores/config";
 import { DiscoverDialog } from "./DiscoverDialog";
-import { openFiles, openHealth, openLogs, openMonitor, openQueues, openSetup, openDashboard, openTune, useTabs } from "@/stores/tabs";
+import { openFiles, openHealth, openLogs, openMonitor, openQueues, openSetup, openDashboard, openTune, useTabs, openServer } from "@/stores/tabs";
 import { toastError, useToasts } from "@/stores/toasts";
 import { openAsgShells, whereOf } from "@/lib/fleet";
 import { useFleetUi } from "@/stores/fleetUi";
@@ -77,6 +77,7 @@ export function EntityMenu() {
           app
             ? { label: "Queues", hint: "workers, failed jobs", run: () => void openQueues(server, app) }
             : { label: "Monitor", hint: "CPU, memory, disks, per instance", run: () => void openMonitor(server) },
+          ...(app ? [] : [{ label: "Overview", hint: "what the checks found", run: () => void openServer(server, "overview") }]),
           ...(app ? [] : [{ label: "Forward a database port…", hint: "RDS → 127.0.0.1", run: () => useFleetUi.getState().openForward(server) }]),
           ...(app?.url ? [{ label: "Open site", hint: app.url.replace(/^https?:\/\//, ""), run: () => void openUrl(app.url!).catch((e) => toastError(errorMessage(e))) }] : []),
           app
@@ -114,6 +115,7 @@ export function EntityMenu() {
       ]
     : [
         [
+          { label: "Overview", hint: "what the checks found", run: () => void openServer(server, "overview") },
           { label: "Dashboard", hint: "maintenance mode, basic auth", run: () => void openDashboard(server) },
           { label: "Files", hint: "browse, edit, upload", run: () => void openFiles(server) },
           { label: "Logs", hint: "apps, nginx, PHP, workers", run: () => void openLogs(server) },

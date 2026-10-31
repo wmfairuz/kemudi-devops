@@ -14,8 +14,7 @@ import { askConfirm } from "@/stores/confirm";
 import { toastError, useToasts } from "@/stores/toasts";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/manage/Badge";
-import { DiskBadge } from "@/components/monitor/DiskBadge";
-import { SslBadge } from "@/components/health/SslBadge";
+import { AttentionBadge } from "@/components/watch/AttentionBadge";
 import { openDetails, useManage } from "@/stores/manage";
 import { useSidebar } from "@/stores/sidebar";
 import { useStatus } from "@/stores/status";
@@ -440,8 +439,7 @@ function ServerGroup({ server, apps, forceOpen, next }: { server: Server; apps: 
             {!expanded && server.apps.length > 0 ? ` · ${server.apps.length} app${server.apps.length === 1 ? "" : "s"}` : ""}
           </span>
         </span>
-        <DiskBadge server={server} />
-        <SslBadge server={server} />
+        <AttentionBadge server={server} />
         <span className="flex flex-none flex-col items-end gap-1">
           <EnvTag env={server.env} />
         </span>

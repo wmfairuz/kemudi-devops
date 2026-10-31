@@ -1,3 +1,4 @@
+import { useWatch } from "@/stores/watch";
 import { Command } from "cmdk";
 import { useEffect, useMemo, useState } from "react";
 
@@ -87,6 +88,8 @@ function buildItems(servers: Server[], tabs: Tab[], snippets: Snippet[], close: 
     cmd("SSH to host…", () => useUi.getState().setOverlay("ssh"), "⌥⌘T"),
     cmd("Reopen closed tab", () => reopenClosed(), "⇧⌘T"),
     cmd("Server setup (profiles, check, fix, helpers)", () => useTabs.getState().openBaseline(), "⇧⌘B"),
+    cmd("Check all servers now (disks, updates, certificates…)", () => void useWatch.getState().refresh()),
+    cmd("Checks: how often, when to warn", () => useTabs.getState().openSettings("checks")),
     cmd("History", () => useTabs.getState().openHistory(), "⌘Y"),
     cmd("Settings", () => useTabs.getState().openSettings(), "⌘,"),
     cmd("Passwords…", () => useUi.getState().setOverlay("passwords"), "⇧⌘K"),

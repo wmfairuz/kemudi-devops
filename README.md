@@ -105,13 +105,54 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
 - **Open / closed is remembered**: servers and groups stay as you left them,
   across restarts. Bringing an app's tab to the front no longer reopens its
   server; a closed server whose app is in front is highlighted instead.
-- **Home tab** (pinned first; the start screen): New terminal, SSH to host,
-  Add server; your tab configs (one click opens one), servers with status,
-  SSH hosts (**New** creates one with Test connection; Kemudi's are
-  editable and deletable; **Manage in Kemudi** moves one of your own Host
-  blocks from ~/.ssh/config into Kemudi's file after a timestamped backup,
-  keeping options it has no field for under *Other options*), recent runs (click to run again, asking first like a click),
-  and links to Settings, History, Environment, servers.yaml, ~/.ssh/config.
+- **Home tab** (pinned first; the start screen), the workspace: New
+  terminal, SSH to host, Add server; then
+  - **Needs attention**: what the background checks found on the team in
+    front's servers, worst first (urgent, soon, info), each with when it was
+    read and one button to look into it (Monitor, Health, Dashboard, Setup,
+    the app's page). **Snooze** hides one for a day, 7 or 30 days. **Check
+    all** checks every server now; **Checks…** opens Settings ▸ Checks.
+  - **Servers**: a grid of each server's last results (fullest disk,
+    memory, updates and ↻ restart needed, days to the first certificate
+    running out, failed services, setup ✓/✗, when checked), coloured by the
+    warning levels; grey when the server isn't answering. A cell opens that
+    section of the server's tab; ↻ checks that server now.
+  - your workflows, tab configs (one click opens one) and recent runs
+    (click to run again, asking first like a click), and links to Settings,
+    History, Passwords, SSH hosts, Environment, ~/.ssh/config.
+- **Background checks** (Settings ▸ Checks): read-only, over the same ssh
+  connection the server's tabs use, only on servers that answer the
+  reachability probe. Each has its own interval (0 turns it off; Check now
+  still runs it):
+  - **System**, hourly: disks and inodes, load per CPU, memory, swap,
+    failed systemd units.
+  - **Updates**, every 6 h: pending and security updates (apt-check),
+    restart needed (and since when), each app's APP_ENV / APP_DEBUG and
+    maintenance mode (`storage/framework/down`, and since when).
+  - **Certificates**, daily (every 4 h once one is within the warning):
+    what nginx/Apache serve for each name (as Health checks them) and
+    whether something renews them.
+  - **Setup**, daily: the server against its profile (servers with one).
+
+  System and updates go in one ssh command when both are due. Results are
+  kept in `watch.json` in Kemudi's data folder with when they were read, so
+  a launch shows them straight away and only checks what's due; days left
+  on a certificate are counted on this Mac from its saved end date. A
+  Health or Setup check you run counts too. A check that fails is tried
+  again after 30 minutes. Warning levels (disk 80% / urgent 90%, inodes,
+  memory, swap, load, certificate 21 / urgent 7 days), servers left out,
+  AWS groups on or off, and the notification (one per problem, when it
+  turns urgent) are all set there. Settings are kept in
+  `watch-settings.json`. A test copy (`KEMUDI_QUIET`) checks only when asked.
+- **A server's tab** (one per server): **Overview** (what the background
+  checks last found: disks, load and memory, updates, certificates, apps,
+  setup, and its Needs attention; nothing is read from the server to show
+  it; *Check now*), **Dashboard**, **Monitor**, **Health**, **Tune** and
+  **Setup**. Monitor, Health… from a menu or the server's page open that
+  section; a section you've looked at stays loaded while you switch, so
+  going back doesn't read the server again. ⌘-click a section (or ↗) for a
+  tab of its own. The sidebar's ⚠ badge (red: urgent, amber: a warning)
+  opens the Overview.
 - **Git remote per app** (`repo:`): on the app's page, **Detect** reads
   `git remote get-url origin` in the app's path over ssh (read-only), **Open ↗**
   opens it in the browser; usable as `{{ app.repo }}`. Credentials in a clone
@@ -510,10 +551,9 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   and Apply Supervisor changes). **Apps**: PHP and Laravel versions, APP_ENV, APP_DEBUG (red
   when on in production), and **composer audit** on request (known
   vulnerabilities in composer.lock; asks packagist from the server, as the
-  app's owner, cache in /tmp/kemudi-composer-<owner>). Every 6 hours (and 2
-  minutes after launch) reachable servers' certificates are checked in the
-  background: one expiring within 14 days notifies once and puts a 🔒 badge
-  (days left) on the server; Settings ▸ Monitoring ▸ SSL expiry alerts.
+  app's owner, cache in /tmp/kemudi-composer-<owner>). Certificates are
+  also checked in the background (see *Background checks*); a Health check
+  counts as that check.
   **Let's Encrypt (certbot)** lists certbot's certificates (domains, days
   left, how they renew). One issued with a **manual DNS challenge** (e.g. a
   wildcard), which certbot's timer can't renew, gets **Renew…**: Kemudi
@@ -656,8 +696,8 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   - Root is needed for nginx: as root, passwordless sudo, or the server's
     sudo password in Passwords. Production apps ask before going down, up or
     open. Every change is in History.
-- **Server setup** (View ▸ Server Setup ⇧⌘B, Settings ▸ Server setup…, or
-  ⌘K: a pinned **Server setup** tab; ⌘W closes it): what a server should
+- **Server setup** (Settings ▸ Server setup; also View ▸ Server Setup ⇧⌘B
+  or ⌘K): what a server should
   have, as named **profiles** (`setup:` in servers.yaml, edited in the tab
   with *Edit profiles*, which starts you from a typical new-server list).
   Each server is checked against its profile: `setup: <id>` on the server,
@@ -743,10 +783,6 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   ```yaml
   baseline: { dir: /opt/www, repos: [{ name: server-tools, url: "https://github.com/acme/server-tools.git" }], bashrc: ["alias deploy='/opt/www/server-tools/deploy'"] }
   ```
-- **Disk alerts** (Settings ▸ Monitoring, on by default): every 15 minutes
-  Kemudi checks reachable servers' disks (read-only `df` over ssh) and sends a
-  macOS notification once when one reaches 90%; the server gets a red ⚠ badge
-  in the sidebar and on Home until it drops under 85%.
 - **Tab configs** (Warp-style): the **⌄** next to **+** lists them; one click
   opens a named, coloured tab whose panes each start in a folder on this Mac
   and type their commands once the prompt is ready (e.g. pull/merge/push on
@@ -994,7 +1030,8 @@ the toggle in its confirm dialog / right-click menu (which edits servers.yaml):
 Without `confirm:`, the default is: prod + `danger` → `type`, prod or
 `danger` → `warn`, otherwise `none`.
 
-- **Reachability**: each server's dot is a 2 s TCP probe, every 30 s, on window
+- **Reachability**: each server's dot is a 2 s TCP probe, every 5 minutes
+  (Settings ▸ Checks), on window
   focus, and when you click the dot. Target: `vpn_check`, else `check`, else what
   `ssh -G <alias>` resolves (the first ProxyJump hop if any).
 - **VPN gate**: SSH actions on a server with `vpn:` set probe first (in the UI
@@ -1003,7 +1040,7 @@ Without `confirm:`, the default is: prod + `danger` → `type`, prod or
 - **Audit log**: every run (server, app, action, exact command, edited flag,
   exit code when detectable) goes to SQLite at
   `~/Library/Application Support/kemudi/audit.db` (`KEMUDI_DATA_DIR` overrides).
-  ⌘Y opens History: search, filter, Re-run (through the same guardrails).
+  ⌘Y opens History: search, filter (workflow runs or actions, env, exit, date), Re-run (through the same guardrails).
 
 ## Polish
 
@@ -1083,7 +1120,7 @@ would seem to stop working). Tabs come back through session restore.
 | ⌘⇧P | Fill a saved password (picker) |
 | ⇧⌘K | Passwords |
 | ⇧⌘S | Snippets page: add, edit, organise (again: back where you were) |
-| ⇧⌘B | Server setup: profiles, check every server, fix what's off (again: back where you were) |
+| ⇧⌘B | Settings ▸ Server setup: profiles, helpers, each server's profile (again: back where you were) |
 | ⇧⌘E | SSH hosts: every host in your ssh config, with test, edit, duplicate (again: back where you were) |
 | ⌘D / ⇧⌘D | Split the pane right / down (same server and folder; an action pane gives a shell there) |
 | ⇧⌘L / ⌥⇧⌘L | Split right / down with a shell on this Mac (also the terminal's and the tab's right-click menus) |

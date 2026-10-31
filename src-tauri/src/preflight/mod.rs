@@ -21,7 +21,6 @@ use crate::env::LoginEnv;
 use crate::AppState;
 
 pub const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
-pub const POLL_INTERVAL: Duration = Duration::from_secs(30);
 const MAX_CONCURRENT: usize = 8;
 pub const STATUS_EVENT: &str = "status://changed";
 
@@ -292,11 +291,18 @@ pub async fn refresh(app: &AppHandle, only: Option<&[String]>) -> Vec<Status> {
     out
 }
 
+/// Probe every server, every Settings ▸ Checks ▸ Reachability minutes (and
+/// right away when that changes).
 pub fn start_poller(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         loop {
             refresh(&app, None).await;
-            tokio::time::sleep(POLL_INTERVAL).await;
+            let state = app.state::<AppState>();
+            let every = Duration::from_secs(u64::from(state.watch.settings().reach_mins) * 60);
+            tokio::select! {
+                _ = tokio::time::sleep(every) => {}
+                _ = state.watch.reach_changed.notified() => {}
+            }
         }
     });
 }

@@ -21,7 +21,7 @@ import {
 import { insertSnippet, useSnippets } from "@/stores/snippets";
 import { snippetVisible, useTeam } from "@/stores/team";
 import { useConfig } from "@/stores/config";
-import { activeTab, BASELINE_ID, HOSTS_ID, groupOf, SETTINGS_ID, HISTORY_ID, HOME_ID, SNIPPETS_ID, useTabs, WORKFLOWS_ID } from "@/stores/tabs";
+import { activeTab, HOSTS_ID, groupOf, SETTINGS_ID, HISTORY_ID, HOME_ID, SNIPPETS_ID, useTabs, WORKFLOWS_ID, type Tab } from "@/stores/tabs";
 import { useSidebar } from "@/stores/sidebar";
 import { toastError } from "@/stores/toasts";
 import { cn } from "@/lib/utils";
@@ -31,6 +31,11 @@ import { pinnedHere } from "@/lib/workflows";
 
 const NO_SERVERS: Server[] = [];
 const NO_WORKFLOWS: Workflow[] = [];
+
+/** Wide pages with nothing to run actions in: a server's setup or
+ *  dashboard (as a tab, or its server tab's section) and its Overview. */
+const wide = (t: Tab | undefined) =>
+  !!t && (t.kind === "setup" || t.kind === "dash" || (t.kind === "server" && ["overview", "dash", "setup"].includes(t.section ?? "overview")));
 
 /** Right-hand panel (⌘J): the buttons for the app or server selected on the
  *  left, grouped by where they're defined, each group with "+ Add action". */
@@ -46,7 +51,7 @@ export function ActionsPanel() {
   // Pages with nothing to act on (Home, Workflows, Snippets, History): no
   // panel, whatever ⌘J is set to; it's back on tabs and server/app pages.
   const page = useTabs(
-    (s) => s.activeId === null || [HOME_ID, HISTORY_ID, SNIPPETS_ID, WORKFLOWS_ID, BASELINE_ID, HOSTS_ID, SETTINGS_ID].includes(s.activeId) || !!groupOf(s, s.activeId)?.workflow || ["setup", "dash"].includes(s.tabs.find((t) => t.id === s.activeId)?.kind ?? ""),
+    (s) => s.activeId === null || [HOME_ID, HISTORY_ID, SNIPPETS_ID, WORKFLOWS_ID, HOSTS_ID, SETTINGS_ID].includes(s.activeId) || !!groupOf(s, s.activeId)?.workflow || wide(s.tabs.find((t) => t.id === s.activeId)),
   );
   if (!open || page) return null;
   const server = selected ? servers.find((s) => s.id === selected.serverId) : undefined;

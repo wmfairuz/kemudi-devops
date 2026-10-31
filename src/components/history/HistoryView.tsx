@@ -79,6 +79,7 @@ export function HistoryView() {
   const [query, setQuery] = useState("");
   const [env, setEnv] = useState<Env | "all">("all");
   const [exit, setExit] = useState<NonNullable<AuditQuery["exit"]>>("any");
+  const [what, setWhat] = useState<NonNullable<AuditQuery["what"]>>("all");
   const [range, setRange] = useState<Range>("7d");
   const [data, setData] = useState<{ runs: AuditRun[]; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -86,14 +87,14 @@ export function HistoryView() {
   const tabs = useTabs((s) => s.tabs);
 
   const load = useCallback(() => {
-    auditList({ query, env, exit, sinceMs: sinceMs(range), limit: 500 }).then(
+    auditList({ query, env, exit, what, sinceMs: sinceMs(range), limit: 500 }).then(
       (d) => {
         setData(d);
         setError(null);
       },
       (e) => setError(errorMessage(e)),
     );
-  }, [query, env, exit, range]);
+  }, [query, env, exit, what, range]);
 
   useEffect(() => {
     const t = setTimeout(load, 120);
@@ -139,6 +140,11 @@ export function HistoryView() {
             className="min-w-0 flex-1 bg-transparent text-foreground outline-none placeholder:text-subtle-foreground"
           />
         </label>
+        <select aria-label="Kind" value={what} onChange={(e) => setWhat(e.target.value as typeof what)} className={selectClass}>
+          <option value="all">Everything</option>
+          <option value="workflows">Workflow runs</option>
+          <option value="actions">Actions and shells</option>
+        </select>
         <select aria-label="Environment" value={env} onChange={(e) => setEnv(e.target.value as Env | "all")} className={selectClass}>
           <option value="all">All envs</option>
           <option value="prod">Prod</option>
@@ -172,7 +178,7 @@ export function HistoryView() {
         {error && <div className="px-5 py-4 text-[12.5px] text-env-prod-fg">{error}</div>}
         {data && data.runs.length === 0 && !error && (
           <div className="px-5 py-6 text-[12.5px] text-subtle-foreground">
-            {query || env !== "all" || exit !== "any" ? "No runs match these filters." : "No runs yet. Actions you run appear here."}
+            {query || env !== "all" || exit !== "any" || what !== "all" ? "No runs match these filters." : "No runs yet. Actions you run appear here."}
           </div>
         )}
         {rows.map((row) =>

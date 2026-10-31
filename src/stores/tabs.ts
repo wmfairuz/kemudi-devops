@@ -59,7 +59,9 @@ export interface Tab {
   /** When the action (or shell) finished, for "4m ago". */
   finishedAt?: number;
   /** monitor: a server monitor (its session never starts). */
-  kind: "local" | "ssh" | "action" | "monitor" | "files" | "logs" | "queues" | "health" | "tune" | "setup" | "dash";
+  kind: "local" | "ssh" | "action" | "monitor" | "files" | "logs" | "queues" | "health" | "tune" | "setup" | "dash" | "server";
+  /** server: the section in front. */
+  section?: ServerSection;
   prod: boolean;
   state: TabState;
   exitCode?: number;
@@ -83,7 +85,7 @@ export interface Group {
   workflow?: boolean;
 }
 
-export interface OpenOptions extends Pick<Tab, "title" | "kind">, Partial<Pick<Tab, "serverId" | "host" | "instance" | "cwd" | "appId" | "actionId" | "local" | "prod" | "state">> {
+export interface OpenOptions extends Pick<Tab, "title" | "kind">, Partial<Pick<Tab, "serverId" | "host" | "instance" | "cwd" | "appId" | "actionId" | "local" | "prod" | "state" | "section">> {
   spawn: Spawner;
   intro?: string;
   /** Open without switching to it. */
@@ -104,9 +106,10 @@ export const HISTORY_ID = "history";
 export const DETAILS_ID = "details";
 /** activeId value while the pinned Snippets tab (managing them) is in front. */
 export const SNIPPETS_ID = "snippets";
-export const BASELINE_ID = "baseline";
 export const HOSTS_ID = "hosts";
 export const SETTINGS_ID = "settings";
+/** The Settings tab's pages. */
+export type SettingsSection = "general" | "checks" | "setup";
 /** activeId value while the Workflows tab is in front with no run picked. */
 export const WORKFLOWS_ID = "workflows";
 
@@ -123,15 +126,16 @@ interface TabsState {
   snippetsOpen: boolean;
   openSnippets(): void;
   closeSnippets(): void;
-  baselineOpen: boolean;
+  /** Server setup (profiles, helpers, each server's profile): Settings ▸
+   *  Server setup. */
   openBaseline(): void;
-  closeBaseline(): void;
   /** The pinned SSH hosts tab. */
   hostsOpen: boolean;
   openHosts(): void;
   closeHosts(): void;
   settingsOpen: boolean;
-  openSettings(): void;
+  settingsSection: SettingsSection;
+  openSettings(section?: SettingsSection): void;
   closeSettings(): void;
   /** The tab strip's order after Home, as you dragged it: "details",
    *  "history", "snippets", "workflows" and group ids. Not listed: in their
@@ -186,6 +190,7 @@ export interface ClosedPane {
   appId?: string;
   local?: boolean;
   prod: boolean;
+  section?: ServerSection;
 }
 
 /** A closed tab (its panes and splits), or one pane closed out of a split
@@ -215,6 +220,7 @@ function closedPane(t: Tab): ClosedPane {
     appId: t.appId ?? undefined,
     local: t.local,
     prod: t.prod,
+    section: t.section,
   };
 }
 
@@ -371,7 +377,7 @@ export const useTabs = create<TabsState>((set, get) => {
     historyOpen: false,
     detailsOpen: false,
     snippetsOpen: false,
-    baselineOpen: false,
+    settingsSection: "general",
     hostsOpen: false,
     settingsOpen: false,
     workflowsOpen: false,
@@ -415,8 +421,8 @@ export const useTabs = create<TabsState>((set, get) => {
       set({ snippetsOpen: true, activeId: SNIPPETS_ID });
     },
 
-    openSettings() {
-      set({ settingsOpen: true, activeId: SETTINGS_ID });
+    openSettings(section) {
+      set((s) => ({ settingsOpen: true, activeId: SETTINGS_ID, settingsSection: section ?? s.settingsSection }));
     },
 
     closeSettings() {
@@ -428,15 +434,7 @@ export const useTabs = create<TabsState>((set, get) => {
     },
 
     openBaseline() {
-      set({ baselineOpen: true, activeId: BASELINE_ID });
-    },
-
-    closeBaseline() {
-      const { activeId, groups } = get();
-      set({
-        baselineOpen: false,
-        activeId: activeId === BASELINE_ID ? (groups[groups.length - 1]?.focus ?? HOME_ID) : activeId,
-      });
+      get().openSettings("setup");
     },
 
     openHosts() {
@@ -685,7 +683,8 @@ export function openLocalShell(): string {
 
 /** New `ssh <host>` tab. */
 /** A server monitor (CPU, memory, disks, top processes) as a tab. */
-export function openMonitor(server: { id: string; name: string; host: string; env: string }): string {
+export function openMonitor(server: { id: string; name: string; host: string; env: string }, own = false): string {
+  if (!own) return openServer(server, "monitor");
   return useTabs.getState().open({
     kind: "monitor",
     title: `${server.name} · monitor`,
@@ -761,7 +760,8 @@ export function openQueues(server: { id: string; host: string; env: string }, ap
 }
 
 /** Health checks of a server: SSL, updates, services, apps. */
-export function openHealth(server: { id: string; name: string; host: string; env: string }): string {
+export function openHealth(server: { id: string; name: string; host: string; env: string }, own = false): string {
+  if (!own) return openServer(server, "health");
   const { tabs, activate } = useTabs.getState();
   const same = tabs.find((t) => t.kind === "health" && t.serverId === server.id);
   if (same) {
@@ -780,7 +780,8 @@ export function openHealth(server: { id: string; name: string; host: string; env
 }
 
 /** Fine-tune a server: suggested PHP-FPM / OPcache / MySQL / nginx / swap settings. */
-export function openTune(server: { id: string; name: string; host: string; env: string }): string {
+export function openTune(server: { id: string; name: string; host: string; env: string }, own = false): string {
+  if (!own) return openServer(server, "tune");
   const { tabs, activate } = useTabs.getState();
   const same = tabs.find((t) => t.kind === "tune" && t.serverId === server.id);
   if (same) {
@@ -799,7 +800,8 @@ export function openTune(server: { id: string; name: string; host: string; env: 
 }
 
 /** A server's setup: checked against its profile, fixed item by item. */
-export function openSetup(server: { id: string; name: string; host: string; env: string }): string {
+export function openSetup(server: { id: string; name: string; host: string; env: string }, own = false): string {
+  if (!own) return openServer(server, "setup");
   const { tabs, activate } = useTabs.getState();
   const same = tabs.find((t) => t.kind === "setup" && t.serverId === server.id);
   if (same) {
@@ -818,7 +820,8 @@ export function openSetup(server: { id: string; name: string; host: string; env:
 }
 
 /** A server's dashboard: each app's maintenance mode and basic auth. */
-export function openDashboard(server: { id: string; name: string; host: string; env: string }): string {
+export function openDashboard(server: { id: string; name: string; host: string; env: string }, own = false): string {
+  if (!own) return openServer(server, "dash");
   const { tabs, activate } = useTabs.getState();
   const same = tabs.find((t) => t.kind === "dash" && t.serverId === server.id);
   if (same) {
@@ -836,9 +839,67 @@ export function openDashboard(server: { id: string; name: string; host: string; 
   });
 }
 
+/** A server's tab: Overview (what the background checks found),
+ *  Dashboard (each app's maintenance mode and basic auth), Monitor, Health,
+ *  Tune and Setup. */
+export type ServerSection = "overview" | "dash" | "monitor" | "health" | "tune" | "setup";
+
+export const SERVER_SECTIONS: { id: ServerSection; label: string }[] = [
+  { id: "overview", label: "Overview" },
+  { id: "dash", label: "Dashboard" },
+  { id: "monitor", label: "Monitor" },
+  { id: "health", label: "Health" },
+  { id: "tune", label: "Tune" },
+  { id: "setup", label: "Setup" },
+];
+
+/** The server's one tab, on `section` (one tab per server: a second open
+ *  switches it). Each section can still be its own tab (`own`). */
+export function openServer(server: { id: string; name: string; host: string; env: string }, section: ServerSection = "overview"): string {
+  const { tabs, activate } = useTabs.getState();
+  const same = tabs.find((t) => t.kind === "server" && t.serverId === server.id);
+  if (same) {
+    setSection(same.id, section);
+    activate(same.id);
+    return same.id;
+  }
+  return useTabs.getState().open({
+    kind: "server",
+    title: server.name,
+    serverId: server.id,
+    host: server.host,
+    prod: server.env === "prod",
+    section,
+    // Never attached as a terminal, so this never runs.
+    spawn: () => Promise.reject(new Error("server tabs have no terminal")),
+  });
+}
+
+export function setSection(tabId: string, section: ServerSection): void {
+  useTabs.setState((s) => ({ tabs: s.tabs.map((t) => (t.id === tabId && t.section !== section ? { ...t, section } : t)) }));
+}
+
+/** A section in a tab of its own (the server tab's ↗). */
+export function openSectionAlone(server: { id: string; name: string; host: string; env: string }, section: ServerSection): string | null {
+  switch (section) {
+    case "dash":
+      return openDashboard(server, true);
+    case "monitor":
+      return openMonitor(server, true);
+    case "health":
+      return openHealth(server, true);
+    case "tune":
+      return openTune(server, true);
+    case "setup":
+      return openSetup(server, true);
+    default:
+      return null;
+  }
+}
+
 /** Tabs that show a view of their own, not a terminal. */
 export const isViewTab = (kind: Tab["kind"]) =>
-  kind === "monitor" || kind === "files" || kind === "logs" || kind === "queues" || kind === "health" || kind === "tune" || kind === "setup" || kind === "dash";
+  kind === "monitor" || kind === "files" || kind === "logs" || kind === "queues" || kind === "health" || kind === "tune" || kind === "setup" || kind === "dash" || kind === "server";
 
 /** New `ssh <host>` tab, optionally starting in a remote directory. */
 export function openSsh(

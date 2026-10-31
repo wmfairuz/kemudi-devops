@@ -63,6 +63,8 @@ pub struct Query {
     pub env: Option<String>,
     /// ok | failed | running
     pub exit: Option<String>,
+    /// workflows | actions (else both).
+    pub what: Option<String>,
     pub since_ms: Option<i64>,
     pub limit: Option<u32>,
     pub offset: Option<u32>,
@@ -190,6 +192,11 @@ impl AuditLog {
         if let Some(since) = q.since_ms {
             let p = bind(since.into());
             clauses.push(format!("started_at >= {p}"));
+        }
+        match q.what.as_deref() {
+            Some("workflows") => clauses.push("action_id LIKE 'workflow:%'".into()),
+            Some("actions") => clauses.push("action_id NOT LIKE 'workflow:%'".into()),
+            _ => {}
         }
         match q.exit.as_deref() {
             Some("ok") => clauses.push("exit_code = 0".into()),

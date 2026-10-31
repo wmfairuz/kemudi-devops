@@ -11,7 +11,6 @@ import { LEVEL_BAR, LEVEL_TEXT, levelOf, THRESHOLDS, worst, type Level, type Met
 import { cn } from "@/lib/utils";
 import { findServer } from "@/stores/config";
 import { InstanceSwitch } from "@/components/fleet/InstanceSwitch";
-import { useDiskAlerts } from "@/stores/diskAlerts";
 
 const EVERY_MS = 5000;
 const KEEP = 60; // 5 minutes of 5 s samples
@@ -88,7 +87,6 @@ export function MonitorView({ tab, title, visible }: { tab: Tab; title: string; 
         h.cpu = [...h.cpu, s.cpuPct].slice(-KEEP);
         h.mem = [...h.mem, s.memTotalKb ? (1 - s.memAvailableKb / s.memTotalKb) * 100 : 0].slice(-KEEP);
         history.set(histKey, h);
-        if (!tab.instance) useDiskAlerts.getState().record(serverId, s.disks);
         setSample(s);
         setError(null);
         setAt(Date.now());

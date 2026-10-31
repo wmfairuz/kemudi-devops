@@ -1059,13 +1059,22 @@ fn profile_of<'c>(config: &'c Config, server_id: &str) -> AppResult<(&'c Server,
 /// Check a server (an AWS server: `instance`, else its first) against its
 /// profile. Read-only.
 #[tauri::command]
-pub async fn setup_check(state: State<'_, AppState>, server_id: String, instance: Option<String>) -> AppResult<SetupStatus> {
-    let config = loaded(&state)?;
-    let (server, profile) = profile_of(&config, &server_id)?;
+pub async fn setup_check(app: AppHandle, state: State<'_, AppState>, server_id: String, instance: Option<String>) -> AppResult<SetupStatus> {
+    let s = check(&state, &server_id, instance.as_deref()).await?;
+    // One instance of an AWS group isn't the whole group.
+    if instance.is_none() {
+        crate::watch::record_setup(&app, &server_id, &s);
+    }
+    Ok(s)
+}
+
+pub(crate) async fn check(state: &AppState, server_id: &str, instance: Option<&str>) -> AppResult<SetupStatus> {
+    let config = loaded(state)?;
+    let (server, profile) = profile_of(&config, server_id)?;
     let env = state.env_ready().await;
     let port_now = if server.asg.is_some() { 22 } else { port_of(&server.host, env) };
     let ctx = Ctx { baseline: config.baseline.as_ref(), port_now };
-    let out = crate::monitor::run_on(&state, &server_id, instance.as_deref(), &check_script(profile, &ctx), 90).await?;
+    let out = crate::monitor::run_on(state, server_id, instance, &check_script(profile, &ctx), 90).await?;
     parse(profile, &ctx, &out).map_err(AppError::Invalid)
 }
 

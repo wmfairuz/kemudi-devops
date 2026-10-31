@@ -870,6 +870,8 @@ export interface AuditQuery {
   query?: string;
   env?: Env | "all";
   exit?: "any" | "ok" | "failed" | "running";
+  /** Workflow runs, everything else, or both. */
+  what?: "all" | "workflows" | "actions";
   sinceMs?: number | null;
   limit?: number;
   offset?: number;
@@ -1611,3 +1613,118 @@ export const dashboardMaintenance = (serverId: string, appId: string, down: bool
 /** nginx basic auth on (with a login) or off; nginx -t checked, put back if it fails. */
 export const dashboardAuth = (serverId: string, appId: string, on: boolean, login: BasicLogin | null): Promise<{ check: string; files: string[]; user: string | null }> =>
   invoke("dashboard_auth", { serverId, appId, on, login });
+
+// ---- Watch: background checks (Home's Needs attention) ----
+
+export interface WatchSettings {
+  /** Background checks at all (off: only Refresh). */
+  enabled: boolean;
+  reachMins: number;
+  /** 0 turns a check off in the background. */
+  systemMins: number;
+  updatesHours: number;
+  certsHours: number;
+  certsSoonHours: number;
+  setupHours: number;
+  aws: boolean;
+  notify: boolean;
+  diskWarn: number;
+  diskUrgent: number;
+  inodeWarn: number;
+  memWarn: number;
+  swapWarn: number;
+  loadWarn: number;
+  certWarnDays: number;
+  certUrgentDays: number;
+  /** Servers never checked in the background. */
+  skip: string[];
+}
+
+export interface Stamped<T> {
+  /** Epoch seconds. */
+  at: number;
+  value: T;
+}
+
+export interface DiskUse {
+  mount: string;
+  sizeKb: number;
+  usedKb: number;
+  availKb: number;
+}
+
+export interface WatchSystem {
+  disks: DiskUse[];
+  inodes: [string, number][];
+  load: [number, number, number];
+  cores: number;
+  memTotalKb: number;
+  memAvailableKb: number;
+  swapTotalKb: number;
+  swapFreeKb: number;
+  failedUnits: string[];
+}
+
+export interface WatchUpdates {
+  os: string;
+  uptimeS: number;
+  updates: number | null;
+  security: number | null;
+  rebootRequired: boolean;
+  rebootSince: number | null;
+  apps: { id: string; missing: boolean; appEnv: string | null; appDebug: boolean | null; downSince: number | null }[];
+}
+
+export interface WatchCerts {
+  certs: { name: string; appId: string | null; notAfter: number | null; missing: boolean; covers: boolean }[];
+  renew: string[];
+  renewErrors: string[];
+}
+
+export interface WatchSetup {
+  profile: string;
+  ok: number;
+  warn: number;
+  bad: number;
+  failing: string[];
+}
+
+export interface ServerWatch {
+  system: Stamped<WatchSystem> | null;
+  updates: Stamped<WatchUpdates> | null;
+  certs: Stamped<WatchCerts> | null;
+  setup: Stamped<WatchSetup> | null;
+  tried: Record<string, number>;
+  errors: Record<string, string>;
+}
+
+export type Severity = "urgent" | "warn" | "info";
+
+export interface WatchItem {
+  /** `<server>:<kind>:<subject>`. */
+  key: string;
+  serverId: string;
+  severity: Severity;
+  kind: string;
+  text: string;
+  detail: string | null;
+  appId: string | null;
+  at: number;
+  snoozedUntil: number | null;
+}
+
+export interface WatchSnapshot {
+  now: number;
+  servers: Record<string, ServerWatch>;
+  items: WatchItem[];
+  running: string[];
+}
+
+export const WATCH_CHANGED = "watch://changed";
+export const watchGet = (): Promise<WatchSnapshot> => invoke("watch_get");
+/** Check now (these servers, or all), every check, reachable or not. */
+export const watchRefresh = (serverIds?: string[]): Promise<WatchSnapshot> => invoke("watch_refresh", { serverIds: serverIds ?? null });
+/** Snooze an item for `days` (0: show it again). */
+export const watchSnooze = (key: string, days: number): Promise<WatchSnapshot> => invoke("watch_snooze", { key, days });
+export const watchSettingsGet = (): Promise<WatchSettings> => invoke("watch_settings_get");
+export const watchSettingsSet = (settings: WatchSettings): Promise<WatchSettings> => invoke("watch_settings_set", { settings });

@@ -1,3 +1,4 @@
+import { ServerTabView } from "@/components/watch/ServerTab";
 import { useCallback, useRef, useState } from "react";
 
 import type { Layout } from "@/lib/layout";
@@ -130,6 +131,8 @@ function LayoutView({
           <ServerSetupView tab={tab} visible={visible} />
         ) : tab.kind === "dash" && tab.serverId ? (
           <DashboardView tab={tab} visible={visible} />
+        ) : tab.kind === "server" && tab.serverId ? (
+          <ServerTabView tab={tab} visible={visible} />
         ) : tab.kind === "tune" && tab.serverId ? (
           <TuneView tab={tab} visible={visible} />
         ) : (

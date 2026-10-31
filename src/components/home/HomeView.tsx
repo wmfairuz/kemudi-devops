@@ -1,40 +1,23 @@
-import { Activity, History, KeyRound, Plus, Settings, SquareTerminal, TerminalSquare } from "lucide-react";
+import { History, KeyRound, Plus, RefreshCw, Settings, SquareTerminal, TerminalSquare } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Btn } from "@/components/kit/Btn";
-import { EnvTag } from "@/components/kit/EnvTag";
 import { Hint } from "@/components/kit/Kbd";
 import { LogoMark } from "@/components/kit/Logo";
-import { StatusDot } from "@/components/kit/StatusDot";
-import { Badge } from "@/components/manage/Badge";
-import { DiskBadge } from "@/components/monitor/DiskBadge";
-import { SslBadge } from "@/components/health/SslBadge";
 import { ColorDot, openTabConfig, useTabConfigs } from "@/components/tabconfigs/TabConfigs";
+import { AttentionList, FleetGrid } from "@/components/watch/Watch";
 import { canRunAgain, runAgain } from "@/lib/actions";
-import {
-  auditList,
-  errorMessage,
-  sshConfigOpen,
-  sshHosts,
-  sshManagedHosts,
-  tabConfigsList,
-  type AuditRun,
-  type TabConfigEntry,
-} from "@/lib/ipc";
+import { auditList, errorMessage, sshConfigOpen, tabConfigsList, type AuditRun, type Server, type TabConfigEntry } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { openDetails } from "@/stores/manage";
 import { useCurrentTeam, useTeamServers } from "@/stores/team";
-import { useStatus } from "@/stores/status";
-import { openLocalShell, openMonitor, useTabs } from "@/stores/tabs";
-import { openServerShell, whereOf } from "@/lib/fleet";
+import { openLocalShell, useTabs } from "@/stores/tabs";
 import { toastError } from "@/stores/toasts";
 import { useUi } from "@/stores/ui";
 import { useConfig } from "@/stores/config";
+import { useWatch } from "@/stores/watch";
 import { useWorkflows } from "@/stores/workflows";
 import type { Workflow } from "@/lib/ipc";
-
-import { useSshHostDialog } from "./SshHostDialog";
-
 
 function ago(ms: number): string {
   const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
@@ -44,27 +27,20 @@ function ago(ms: number): string {
   return `${Math.round(s / 86_400)}d ago`;
 }
 
-/** The pinned Home tab: quick actions, tab configs, servers, SSH hosts and
- *  recent runs in one place. Also what shows with no terminals open. */
+/** The pinned Home tab: what needs attention and the fleet grid (from the
+ *  background checks), then workflows, tab configs and recent runs. Also
+ *  what shows with no terminals open. */
 export function HomeView() {
   const servers = useTeamServers();
   const team = useCurrentTeam();
-  const status = useStatus((s) => s.byServer);
-  const saved = useSshHostDialog((s) => s.saved);
   const configsView = useTabConfigs((s) => s.view);
   const [configs, setConfigs] = useState<TabConfigEntry[] | null>(null);
-  const [hosts, setHosts] = useState<string[] | null>(null);
-  const [managed, setManaged] = useState<Set<string>>(new Set());
   const [runs, setRuns] = useState<AuditRun[] | null>(null);
 
   useEffect(() => {
     // Reload when a tab-config dialog closes.
     if (configsView === null) tabConfigsList().then(setConfigs, () => setConfigs([]));
   }, [configsView]);
-  useEffect(() => {
-    sshHosts().then(setHosts, () => setHosts([]));
-    sshManagedHosts().then((m) => setManaged(new Set(m.map((h) => h.alias))), () => {});
-  }, [saved]);
   useEffect(() => {
     auditList({ limit: 6 }).then((d) => setRuns(d.runs), () => setRuns([]));
   }, []);
@@ -94,7 +70,9 @@ export function HomeView() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <Workspace servers={servers} teamName={team?.name ?? null} />
+
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 xl:grid-cols-3">
           <WorkflowsCard />
           <Card
             title="Tab configs"
@@ -117,88 +95,6 @@ export function HomeView() {
                   <span className="text-[11px] text-subtle-foreground">
                     {c.error ? "can't read" : c.source === "warp" ? "Warp" : ""}
                   </span>
-                </Row>
-              ))
-            )}
-          </Card>
-
-          <Card title="Servers" action={{ label: "Add", run: () => openDetails({ kind: "server", serverId: null }) }}>
-            {servers.length === 0 ? (
-              <Empty>
-                {team
-                  ? `No servers in ${team.name} yet: add one, or pick ${team.name} as the team on a server's page.`
-                  : "Add your first server: its SSH host, environment and apps."}
-              </Empty>
-            ) : (
-              servers.map((s) => (
-                <Row key={s.id} onClick={() => openDetails({ kind: "server", serverId: s.id })}>
-                  <span className="relative flex-none">
-                    <Badge id={s.id} name={s.name} size={26} />
-                    <span className="absolute -right-1 -bottom-1 flex rounded-full bg-background p-[2px]">
-                      <StatusDot status={status[s.id]?.state ?? "unknown"} />
-                    </span>
-                  </span>
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-[13px] font-medium">{s.name}</span>
-                    <span className="truncate text-[11px] text-subtle-foreground">
-                      {whereOf(s)} · {s.apps.length} app{s.apps.length === 1 ? "" : "s"}
-                    </span>
-                  </span>
-                  <DiskBadge server={s} />
-                  <SslBadge server={s} />
-                  <EnvTag env={s.env} />
-                  <Btn
-                    size="sm"
-                    variant="outline"
-                    title="Monitor: CPU, memory, disks, top processes"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openMonitor(s);
-                    }}
-                  >
-                    <Activity className="size-3.5" />
-                  </Btn>
-                  <Btn
-                    size="sm"
-                    variant="outline"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openServerShell(s);
-                    }}
-                  >
-                    {s.asg ? "all" : "ssh"}
-                  </Btn>
-                </Row>
-              ))
-            )}
-          </Card>
-
-          <Card
-            title="SSH hosts"
-            action={{ label: "New", run: () => useSshHostDialog.getState().open(null) }}
-            footer={
-              <span className="flex gap-4">
-                <button className="hover:text-foreground" onClick={() => useTabs.getState().openHosts()}>
-                  All SSH hosts ⇧⌘E
-                </button>
-                <button className="hover:text-foreground" onClick={() => void sshConfigOpen().catch((e) => toastError(errorMessage(e)))}>
-                  Open ~/.ssh/config
-                </button>
-              </span>
-            }
-          >
-            {hosts === null ? (
-              <Empty>Loading…</Empty>
-            ) : hosts.length === 0 ? (
-              <Empty>No SSH hosts yet. Add one here instead of editing ~/.ssh/config.</Empty>
-            ) : (
-              hosts.map((h) => (
-                <Row key={h} onClick={() => useSshHostDialog.getState().open(h)}>
-                  <TerminalSquare className="size-4 flex-none text-subtle-foreground" strokeWidth={1.75} />
-                  <span className="flex-1 truncate font-mono text-[12.5px]">{h}</span>
-                  {managed.has(h) && (
-                    <span className="rounded-[4px] border border-primary/30 bg-primary/8 px-1.5 text-[10.5px] text-primary">Kemudi</span>
-                  )}
                 </Row>
               ))
             )}
@@ -256,11 +152,89 @@ export function HomeView() {
           <LinkBtn onClick={() => useUi.getState().setOverlay("passwords")}>
             <KeyRound className="size-3.5" /> Passwords
           </LinkBtn>
+          <LinkBtn onClick={() => useTabs.getState().openHosts()}>
+            <TerminalSquare className="size-3.5" /> SSH hosts ⇧⌘E
+          </LinkBtn>
           <LinkBtn onClick={() => useUi.getState().setOverlay("environment")}>Environment</LinkBtn>
           <LinkBtn onClick={() => void sshConfigOpen().catch((e) => toastError(errorMessage(e)))}>~/.ssh/config</LinkBtn>
         </div>
       </div>
     </div>
+  );
+}
+
+/** Needs attention and the fleet grid, for the team in front. */
+function Workspace({ servers, teamName }: { servers: Server[]; teamName: string | null }) {
+  const snap = useWatch((x) => x.snapshot);
+  const settings = useWatch((x) => x.settings);
+  const [busy, setBusy] = useState(false);
+  const ids = new Set(servers.map((s) => s.id));
+  const items = (snap?.items ?? []).filter((i) => ids.has(i.serverId) && !i.snoozedUntil);
+  const urgent = items.filter((i) => i.severity === "urgent").length;
+  const warn = items.filter((i) => i.severity === "warn").length;
+  const running = (snap?.running ?? []).filter((id) => ids.has(id)).length;
+  const checkAll = async () => {
+    setBusy(true);
+    try {
+      await useWatch.getState().refresh(servers.map((s) => s.id));
+    } catch (e) {
+      toastError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const checks = () => useTabs.getState().openSettings("checks");
+  return (
+    <>
+      <section className="flex flex-col overflow-hidden rounded-xl border border-divider bg-panel">
+        <div className="flex h-11 flex-none items-center gap-2 border-b border-divider px-4">
+          <span className="text-[12px] font-semibold tracking-wide text-subtle-foreground uppercase">Needs attention</span>
+          {urgent > 0 && <span className="rounded-[4px] bg-env-prod px-1.5 font-mono text-[11px] font-semibold text-white">{urgent} urgent</span>}
+          {warn > 0 && <span className="rounded-[4px] bg-env-staging px-1.5 font-mono text-[11px] font-semibold text-white">{warn} soon</span>}
+          <span className="min-w-0 flex-1 truncate text-right text-[11.5px] text-subtle-foreground">
+            {running > 0 ? `checking ${running} server${running === 1 ? "" : "s"}…` : settings && !settings.enabled ? "background checks are off" : ""}
+          </span>
+          <button onClick={checks} className="flex h-7 cursor-pointer items-center rounded-md px-2 text-[12px] text-primary hover:bg-primary/10">
+            Checks…
+          </button>
+          <button
+            onClick={() => void checkAll()}
+            disabled={busy || servers.length === 0}
+            title="Every check on every server now (read-only)"
+            className="flex h-7 cursor-pointer items-center gap-1 rounded-md px-2 text-[12px] text-primary hover:bg-primary/10 disabled:cursor-default disabled:opacity-50"
+          >
+            <RefreshCw className={cn("size-3.5", busy && "animate-spin")} /> Check all
+          </button>
+        </div>
+        <div className="max-h-[320px] overflow-y-auto">
+          <AttentionList
+            servers={servers}
+            empty={
+              Object.keys(snap?.servers ?? {}).some((id) => ids.has(id))
+                ? "Nothing needs attention."
+                : "Nothing checked yet: servers are checked in the background once they answer (Checks… sets how often), or press Check all."
+            }
+          />
+        </div>
+      </section>
+
+      <section className="flex flex-col overflow-hidden rounded-xl border border-divider bg-panel">
+        <div className="flex h-11 flex-none items-center gap-2 border-b border-divider px-4">
+          <span className="flex-1 text-[12px] font-semibold tracking-wide text-subtle-foreground uppercase">Servers{teamName ? ` · ${teamName}` : ""}</span>
+          <button
+            onClick={() => openDetails({ kind: "server", serverId: null })}
+            className="flex h-7 cursor-pointer items-center gap-1 rounded-md px-2 text-[12px] text-primary hover:bg-primary/10"
+          >
+            <Plus className="size-3.5" /> Add
+          </button>
+        </div>
+        {servers.length === 0 ? (
+          <Empty>{teamName ? `No servers in ${teamName} yet: add one, or pick ${teamName} as the team on a server's page.` : "Add your first server: its SSH host, environment and apps."}</Empty>
+        ) : (
+          <FleetGrid servers={servers} />
+        )}
+      </section>
+    </>
   );
 }
 

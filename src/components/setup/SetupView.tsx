@@ -392,7 +392,7 @@ export function ServerSetupView({ tab, visible }: { tab: Tab; visible: boolean }
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         {none && (
           <div className="text-[13px] text-subtle-foreground">
-            {server.name} has no setup profile. Pick one above (or set a default in Server setup ▸ Edit profiles).
+            {server.name} has no setup profile. Pick one above (or set a default in Settings ▸ Server setup ▸ Edit profiles).
           </div>
         )}
         {!none && row?.state === "busy" && results.length === 0 && (

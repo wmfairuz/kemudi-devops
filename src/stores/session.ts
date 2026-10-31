@@ -3,7 +3,7 @@
 import { sessionLoad, sessionSave } from "@/lib/ipc";
 import { ptySpawner } from "@/lib/terminalSession";
 
-import { closedTabs, openFiles, openHealth, openLogs, openMonitor, openQueues, openSetup, openDashboard, openTune, useTabs, type OpenOptions, type Tab } from "./tabs";
+import { closedTabs, openFiles, openHealth, openLogs, openMonitor, openQueues, openServer, openSetup, openDashboard, openTune, useTabs, type OpenOptions, type ServerSection, type Tab } from "./tabs";
 import { useToasts } from "./toasts";
 import { leaves, load as loadLayout, save as saveLayout, type SavedLayout } from "@/lib/layout";
 import { isTabColor } from "@/lib/tabColors";
@@ -19,6 +19,7 @@ interface SavedTab {
   appId?: string;
   local?: boolean;
   prod: boolean;
+  section?: ServerSection;
 }
 
 interface Saved {
@@ -33,7 +34,7 @@ interface Saved {
 }
 
 /** The pinned tabs' names in the strip order. */
-const PINNED = ["details", "history", "snippets", "workflows", "baseline", "settings"];
+const PINNED = ["details", "history", "snippets", "workflows", "settings"];
 
 function isSaved(v: unknown): v is Saved {
   return typeof v === "object" && v !== null && (v as Saved).version === 1 && Array.isArray((v as Saved).tabs);
@@ -45,7 +46,10 @@ function restoreTab(t: SavedTab, into?: OpenOptions["into"]): string {
   // not be loaded yet).
   if (t.kind === "monitor" && t.serverId && t.host) {
     const name = t.title.replace(/ · monitor$/, "");
-    return openMonitor({ id: t.serverId, name, host: t.host, env: t.prod ? "prod" : "dev" });
+    return openMonitor({ id: t.serverId, name, host: t.host, env: t.prod ? "prod" : "dev" }, true);
+  }
+  if (t.kind === "server" && t.serverId) {
+    return openServer({ id: t.serverId, name: t.title, host: t.host ?? "", env: t.prod ? "prod" : "dev" }, t.section ?? "overview");
   }
   if (t.kind === "files" && t.serverId && t.host) {
     return openFiles(
@@ -65,16 +69,16 @@ function restoreTab(t: SavedTab, into?: OpenOptions["into"]): string {
     return id;
   }
   if (t.kind === "health" && t.serverId && t.host) {
-    return openHealth({ id: t.serverId, name: t.title.replace(/ · health$/, ""), host: t.host, env: t.prod ? "prod" : "dev" });
+    return openHealth({ id: t.serverId, name: t.title.replace(/ · health$/, ""), host: t.host, env: t.prod ? "prod" : "dev" }, true);
   }
   if (t.kind === "setup" && t.serverId) {
-    return openSetup({ id: t.serverId, name: t.title.replace(/ · setup$/, ""), host: t.host ?? "", env: t.prod ? "prod" : "dev" });
+    return openSetup({ id: t.serverId, name: t.title.replace(/ · setup$/, ""), host: t.host ?? "", env: t.prod ? "prod" : "dev" }, true);
   }
   if (t.kind === "dash" && t.serverId) {
-    return openDashboard({ id: t.serverId, name: t.title.replace(/ · dashboard$/, ""), host: t.host ?? "", env: t.prod ? "prod" : "dev" });
+    return openDashboard({ id: t.serverId, name: t.title.replace(/ · dashboard$/, ""), host: t.host ?? "", env: t.prod ? "prod" : "dev" }, true);
   }
   if (t.kind === "tune" && t.serverId && t.host) {
-    return openTune({ id: t.serverId, name: t.title.replace(/ · tune$/, ""), host: t.host, env: t.prod ? "prod" : "dev" });
+    return openTune({ id: t.serverId, name: t.title.replace(/ · tune$/, ""), host: t.host, env: t.prod ? "prod" : "dev" }, true);
   }
   // A Session Manager pane (or an action that ran on an instance) comes
   // back as a shell on that instance; if it's gone, ↵ in the pane retries.
@@ -211,6 +215,7 @@ export async function initSession(): Promise<void> {
           appId: t.appId ?? undefined,
           local: t.local,
           prod: t.prod,
+          section: t.section,
         })),
         active: Math.max(0, tabs.findIndex((t) => t.id === activeId)),
         groups: groups.map((g) => ({ layout: saveLayout(g.layout, index), focus: index(g.focus), color: g.color })),

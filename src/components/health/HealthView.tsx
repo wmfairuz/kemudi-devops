@@ -10,7 +10,6 @@ import { useServiceMenu } from "@/components/actions/ServiceMenu";
 import { cn } from "@/lib/utils";
 import { levelOf, type Level } from "@/lib/thresholds";
 import { findServer, useConfig } from "@/stores/config";
-import { useSslAlerts } from "@/stores/sslAlerts";
 import { openLogs, openQueues, type Tab } from "@/stores/tabs";
 
 /** Disk levels on the light Health page (Monitor's are Dracula-dark). */
@@ -100,7 +99,6 @@ export function HealthView({ tab, visible }: { tab: Tab; visible: boolean }) {
       setHealth(h);
       setError(null);
       setCheckedAt(Date.now());
-      useSslAlerts.getState().record(serverId, h);
       void loadCertbot();
     } catch (e) {
       setError(errorMessage(e));

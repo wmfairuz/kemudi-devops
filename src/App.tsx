@@ -37,12 +37,10 @@ import { installShortcuts, runCommand } from "@/lib/keys";
 import { findServer, useConfig } from "@/stores/config";
 import { useSidebar } from "@/stores/sidebar";
 import { initSession } from "@/stores/session";
-import { useDiskAlerts } from "@/stores/diskAlerts";
-import { useSslAlerts } from "@/stores/sslAlerts";
+import { useWatch } from "@/stores/watch";
 import { useStatus } from "@/stores/status";
-import { activeTab, BASELINE_ID, HOSTS_ID, SETTINGS_ID, DETAILS_ID, groupOf, HISTORY_ID, HOME_ID, SNIPPETS_ID, useTabs, WORKFLOWS_ID } from "@/stores/tabs";
+import { activeTab, HOSTS_ID, SETTINGS_ID, DETAILS_ID, groupOf, HISTORY_ID, HOME_ID, SNIPPETS_ID, useTabs, WORKFLOWS_ID } from "@/stores/tabs";
 import { WorkflowCards, WorkflowRuns } from "@/components/workflows/WorkflowRuns";
-import { SetupView } from "@/components/setup/SetupView";
 import { SshHostsView } from "@/components/home/SshHostsView";
 import { SshHostDialog } from "@/components/home/SshHostDialog";
 import { initMcp } from "@/lib/mcp";
@@ -53,7 +51,6 @@ export default function App() {
   const showHistory = useTabs((s) => s.activeId === HISTORY_ID);
   const showDetails = useTabs((s) => s.activeId === DETAILS_ID);
   const showSnippets = useTabs((s) => s.activeId === SNIPPETS_ID);
-  const showBaseline = useTabs((s) => s.activeId === BASELINE_ID);
   const showHosts = useTabs((s) => s.activeId === HOSTS_ID);
   const showSettings = useTabs((s) => s.activeId === SETTINGS_ID);
   // The Workflows tab: workflow cards, its runs on the right (a run's
@@ -62,13 +59,12 @@ export default function App() {
   const showRuns = useTabs((s) => s.activeId === WORKFLOWS_ID || !!groupOf(s, s.activeId)?.workflow);
   const showHome = useTabs((s) => s.activeId === HOME_ID || s.activeId === null);
   const filterRef = useRef<HTMLInputElement>(null);
-  const title = showHistory ? "Kemudi Devops — History" : showSnippets ? "Kemudi Devops — Snippets" : showBaseline ? "Kemudi Devops — Server setup" : showHosts ? "Kemudi Devops — SSH hosts" : showSettings ? "Kemudi Devops — Settings" : showRuns ? "Kemudi Devops — Workflows" : active ? `Kemudi Devops — ${active.title}` : "Kemudi Devops";
+  const title = showHistory ? "Kemudi Devops — History" : showSnippets ? "Kemudi Devops — Snippets" : showHosts ? "Kemudi Devops — SSH hosts" : showSettings ? "Kemudi Devops — Settings" : showRuns ? "Kemudi Devops — Workflows" : active ? `Kemudi Devops — ${active.title}` : "Kemudi Devops";
 
   useEffect(() => useConfig.getState().init(), []);
   useEffect(() => useStatus.getState().init(), []);
   useEffect(() => initMcp(), []);
-  useEffect(() => useDiskAlerts.getState().init(), []);
-  useEffect(() => useSslAlerts.getState().init(), []);
+  useEffect(() => useWatch.getState().init(), []);
   // Restores tabs once and saves them for the app's lifetime.
   useEffect(() => void initSession(), []);
   useEffect(() => installShortcuts(), []);
@@ -142,7 +138,6 @@ export default function App() {
               {showHistory && <HistoryView />}
               {showDetails && <DetailsView />}
               {showSnippets && <SnippetsView />}
-              {showBaseline && <SetupView />}
               {showHosts && <SshHostsView />}
               {showSettings && <SettingsView />}
               {noRun && <WorkflowCards />}
