@@ -840,6 +840,9 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   RemoteCommand is `sudo …` run as root through `sudo -H bash -lc` instead
   (keeping the intent); with any other RemoteCommand the ssh button logs in
   plainly so it runs, and actions skip it.
+- **Toolbar** (the title bar, right): check all servers now (spins while
+  checks run), new terminal, SSH to host, add server, Passwords, SSH hosts,
+  Settings, a search field that opens ⌘K, and the actions panel (⌘J).
 - **Actions panel (right, ⌘J)** shows the buttons for the app or server
   selected on the left, grouped: *Only this app*, *All apps* (shared),
   *Only this server*, *All servers* (shared). Each group's **+** adds an
