@@ -18,16 +18,35 @@ import { PILL, PILL_OFF, PILL_ON, PILL_ON_DARK } from "@/components/kit/capsule"
 import { HOSTS_ID, SETTINGS_ID, DETAILS_ID, HISTORY_ID, HOME_ID, SNIPPETS_ID, WORKFLOWS_ID, groupOf, isViewTab, openLocalShell, toggleBroadcast, useTabs, type Group, type Tab } from "@/stores/tabs";
 import { useUi } from "@/stores/ui";
 
-function TabIcon({ tab }: { tab: Tab }) {
-  if (tab.kind === "monitor") return <Activity className="size-4 flex-none text-[#8be9fd]" strokeWidth={2} />;
-  if (tab.kind === "files") return <FolderOpen className="size-4 flex-none text-[#f1fa8c]" strokeWidth={2} />;
-  if (tab.kind === "logs") return <ScrollText className="size-4 flex-none text-[#ffb86c]" strokeWidth={2} />;
-  if (tab.kind === "queues") return <ListChecks className="size-4 flex-none text-[#50fa7b]" strokeWidth={2} />;
-  if (tab.kind === "health") return <HeartPulse className="size-4 flex-none text-[#ff79c6]" strokeWidth={2} />;
-  if (tab.kind === "setup") return <ClipboardCheck className="size-4 flex-none text-[#50fa7b]" strokeWidth={2} />;
-  if (tab.kind === "dash") return <LayoutDashboard className="size-4 flex-none text-[#ffb86c]" strokeWidth={2} />;
-  if (tab.kind === "tune") return <Gauge className="size-4 flex-none text-[#bd93f9]" strokeWidth={2} />;
-  if (tab.kind === "server") return <ServerIcon className="size-4 flex-none text-[#8be9fd]" strokeWidth={2} />;
+/** Dracula hues on a dark tab, the Alucard (light Dracula) ones on a light
+ *  pill, where the pale Dracula ones disappear. */
+const HUE = {
+  cyan: ["#8be9fd", "#036a96"],
+  yellow: ["#f1fa8c", "#846e15"],
+  orange: ["#ffb86c", "#a34d14"],
+  green: ["#50fa7b", "#14710a"],
+  pink: ["#ff79c6", "#a3144d"],
+  purple: ["#bd93f9", "#644ac9"],
+} as const;
+
+const VIEW_ICONS: Partial<Record<Tab["kind"], [typeof Activity, keyof typeof HUE]>> = {
+  monitor: [Activity, "cyan"],
+  files: [FolderOpen, "yellow"],
+  logs: [ScrollText, "orange"],
+  queues: [ListChecks, "green"],
+  health: [HeartPulse, "pink"],
+  setup: [ClipboardCheck, "green"],
+  dash: [LayoutDashboard, "orange"],
+  tune: [Gauge, "purple"],
+  server: [ServerIcon, "cyan"],
+};
+
+function TabIcon({ tab, dark }: { tab: Tab; dark: boolean }) {
+  const view = VIEW_ICONS[tab.kind];
+  if (view) {
+    const [Icon, hue] = view;
+    return <Icon className="size-4 flex-none" style={{ color: HUE[hue][dark ? 0 : 1] }} strokeWidth={2} />;
+  }
   switch (tab.state) {
     case "running":
       return <Spinner size={12} />;
@@ -82,7 +101,7 @@ function TabItem({ tab, group, panes, active }: { tab: Tab; group: Group; panes:
         active ? (isViewTab(tab.kind) ? PILL_ON : PILL_ON_DARK) : PILL_OFF,
       )}
     >
-      <TabIcon tab={tab} />
+      <TabIcon tab={tab} dark={dark} />
       {editing ? (
         <input
           autoFocus
