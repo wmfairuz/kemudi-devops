@@ -1,5 +1,6 @@
 import { KeyRound, Network, PanelRight, Plus, RefreshCw, Search, Server, Settings, SquareTerminal } from "lucide-react";
 
+import { CAPSULE } from "@/components/kit/capsule";
 import { LogoMark } from "@/components/kit/Logo";
 import { errorMessage } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
@@ -27,13 +28,9 @@ function Tool({ title, onClick, active, children }: { title: string; onClick: ()
   );
 }
 
-/** The capsule look (macOS 26 style): white, round, a hairline and a soft
- *  shadow. */
-const capsule = "rounded-full border border-black/[0.06] bg-background shadow-[0_1px_2px_rgba(0,0,0,0.06),0_2px_8px_rgba(0,0,0,0.05)]";
-
 /** Buttons that belong together, in one capsule. */
 function Group({ children }: { children: React.ReactNode }) {
-  return <div className={cn("flex h-[38px] flex-none items-center gap-0.5 px-[3px]", capsule)}>{children}</div>;
+  return <div className={cn("flex h-[38px] flex-none items-center gap-0.5 px-[3px]", CAPSULE)}>{children}</div>;
 }
 
 const icon = "size-[18px]";
@@ -91,7 +88,7 @@ export function TitleBar({ title }: { title: string }) {
         onClick={() => useUi.getState().setOverlay("palette")}
         className={cn(
           "flex h-[38px] w-[38px] flex-none cursor-pointer items-center justify-center gap-2 px-3 text-[13.5px] text-subtle-foreground hover:text-foreground lg:w-[300px] lg:justify-start",
-          capsule,
+          CAPSULE,
         )}
       >
         <Search className="size-[16px] flex-none" strokeWidth={1.6} />

@@ -1,8 +1,7 @@
-import { Activity, ChevronDown, ClipboardCheck, Server as ServerIcon, Settings, Columns2, Keyboard, Workflow as WorkflowIcon, FolderOpen, Gauge, HeartPulse, House, LayoutDashboard, ListChecks, Network, ScrollText, SquareTerminal } from "lucide-react";
+import { Activity, ChevronDown, Plus, ClipboardCheck, Server as ServerIcon, Settings, Columns2, Keyboard, Workflow as WorkflowIcon, FolderOpen, Gauge, HeartPulse, House, LayoutDashboard, ListChecks, Network, ScrollText, SquareTerminal } from "lucide-react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
 
-import { Kbd } from "@/components/kit/Kbd";
 import { Glyph, Spinner } from "@/components/kit/Spinner";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/manage/Badge";
@@ -15,6 +14,7 @@ import { TAB_COLORS, type TabColor } from "@/lib/tabColors";
 import { ColorDot, openTabConfig, useTabConfigs } from "@/components/tabconfigs/TabConfigs";
 import { errorMessage, tabConfigsList, type TabConfigEntry } from "@/lib/ipc";
 import { toastError } from "@/stores/toasts";
+import { PILL, PILL_OFF, PILL_ON, PILL_ON_DARK } from "@/components/kit/capsule";
 import { HOSTS_ID, SETTINGS_ID, DETAILS_ID, HISTORY_ID, HOME_ID, SNIPPETS_ID, WORKFLOWS_ID, groupOf, isViewTab, openLocalShell, toggleBroadcast, useTabs, type Group, type Tab } from "@/stores/tabs";
 import { useUi } from "@/stores/ui";
 
@@ -49,20 +49,14 @@ function TabItem({ tab, group, panes, active }: { tab: Tab; group: Group; panes:
   const terminals = panes.filter((p) => !isViewTab(p.kind)).length;
   const broadcast = !!group.broadcast && terminals > 1;
   const color = group.color ? TAB_COLORS[group.color] : null;
-  // A coloured strip on top and a light tint; Dracula hue on the dark
-  // active tab, the Alucard one on the light strip.
+  // A light tint and a ring in its colour (a red one outside it on
+  // production); Dracula hue on the dark active tab, Alucard on the strip.
   const tint = color
     ? {
         backgroundImage: `linear-gradient(${active ? color.dark : color.light}${active ? "26" : "1a"}, ${active ? color.dark : color.light}${active ? "26" : "1a"})`,
-        boxShadow: `inset 0 3px 0 ${active ? color.dark : color.light}${prod ? ", inset 0 -2px 0 var(--env-prod)" : ""}`,
+        boxShadow: `inset 0 0 0 1.5px ${active ? color.dark : color.light}${prod ? ", 0 0 0 1.5px var(--env-prod)" : ""}`,
       }
     : undefined;
-
-  const shadow = prod
-    ? "shadow-[inset_0_-2px_0_var(--env-prod)]"
-    : active
-      ? ""
-      : "shadow-[inset_0_-1px_0_var(--divider)]";
 
   return (
     <div
@@ -83,10 +77,11 @@ function TabItem({ tab, group, panes, active }: { tab: Tab; group: Group; panes:
       }}
       style={tint}
       className={cn(
-        "group flex h-11 max-w-[260px] min-w-0 flex-[0_1_auto] items-center gap-2.5 border-r border-divider pr-2.5 pl-3.5 text-[13px]",
+        PILL,
+        "group max-w-[260px] min-w-0 flex-[0_1_auto] pr-1.5 pl-3",
         // The active tab is the same colour as the terminal under it.
-        active ? "dracula bg-terminal text-foreground" : "text-dim-foreground hover:text-foreground",
-        shadow,
+        active ? PILL_ON_DARK : PILL_OFF,
+        prod && !color && "ring-[1.5px] ring-env-prod ring-inset",
       )}
     >
       <TabIcon tab={tab} />
@@ -133,7 +128,7 @@ function TabItem({ tab, group, panes, active }: { tab: Tab; group: Group; panes:
         aria-label={`Close ${tab.title}${panes.length > 1 ? ` and its ${panes.length} panes` : ""}`}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={() => closeGroup(group.id)}
-        className="size-5 flex-none rounded-md text-center text-[16px] leading-[19px] text-faint-foreground hover:bg-hover-strong hover:text-foreground"
+        className="size-5 flex-none rounded-full text-center text-[15px] leading-[19px] text-faint-foreground hover:bg-hover-strong hover:text-foreground"
       >
         ×
       </button>
@@ -216,8 +211,8 @@ export function TabStrip() {
   const drag = useStripDrag(ordered.map((o) => o.key));
 
   return (
-    <div role="tablist" className="flex h-11 flex-none bg-sidebar">
-      <div className="flex min-w-0 flex-[0_1_auto] overflow-hidden">
+    <div role="tablist" className="flex h-[46px] flex-none items-center gap-1 border-b border-divider bg-sidebar pl-2">
+      <div className="flex min-w-0 flex-[0_1_auto] items-center gap-1 overflow-hidden py-1.5 pr-1">
         <HomeTab active={activeId === HOME_ID || activeId === null} />
         {ordered.map((o) => (
           <div
@@ -234,7 +229,7 @@ export function TabStrip() {
           >
             {o.node}
             {drag.over?.key === o.key && (
-              <span className={cn("pointer-events-none absolute top-1.5 bottom-1.5 z-10 w-[3px] rounded bg-primary", drag.over.after ? "-right-[2px]" : "-left-[2px]")} />
+              <span className={cn("pointer-events-none absolute top-1.5 bottom-1.5 z-10 w-[3px] rounded bg-primary", drag.over.after ? "-right-[3px]" : "-left-[3px]")} />
             )}
           </div>
         ))}
@@ -242,19 +237,12 @@ export function TabStrip() {
       <button
         title="New local shell (⌘T) · ⌥-click: SSH to host (⌥⌘T)"
         onClick={(e) => (e.altKey ? setOverlay("ssh") : openLocalShell())}
-        className="flex h-11 w-9 flex-none items-center justify-center text-[19px] text-subtle-foreground shadow-[inset_0_-1px_0_var(--divider)] hover:text-foreground"
+        className="flex size-[30px] flex-none cursor-pointer items-center justify-center rounded-full text-subtle-foreground hover:bg-hover-strong hover:text-foreground"
       >
-        +
+        <Plus className="size-[17px]" strokeWidth={1.75} aria-hidden />
       </button>
       <TabConfigButton />
-      <div
-        data-tauri-drag-region
-        className="flex flex-1 items-center justify-end gap-1.5 pr-3 shadow-[inset_0_-1px_0_var(--divider)]"
-      >
-        <button title="Command palette" onClick={() => setOverlay("palette")}>
-          <Kbd className="border-control-border bg-transparent text-faint-foreground hover:text-muted-foreground">⌘K</Kbd>
-        </button>
-      </div>
+      <div data-tauri-drag-region className="h-full flex-1" />
     </div>
   );
 }
@@ -270,8 +258,9 @@ function HomeTab({ active }: { active: boolean }) {
         if (e.button === 0) useTabs.setState({ activeId: HOME_ID });
       }}
       className={cn(
-        "flex h-11 flex-none items-center gap-2 border-r border-divider px-3.5 text-[13px]",
-        active ? "bg-background text-foreground" : "text-dim-foreground shadow-[inset_0_-1px_0_var(--divider)] hover:text-foreground",
+        PILL,
+        "flex-none px-3.5",
+        active ? PILL_ON : PILL_OFF,
       )}
     >
       <House className="size-4" strokeWidth={1.75} aria-hidden />
@@ -295,7 +284,7 @@ function TabConfigButton() {
             (err) => toastError(errorMessage(err)),
           );
         }}
-        className="-ml-1.5 flex h-11 w-6 flex-none items-center justify-center text-subtle-foreground shadow-[inset_0_-1px_0_var(--divider)] hover:text-foreground"
+        className="-ml-1 flex size-[26px] flex-none cursor-pointer items-center justify-center rounded-full text-subtle-foreground hover:bg-hover-strong hover:text-foreground"
       >
         <ChevronDown className="size-4" strokeWidth={2} aria-hidden />
       </button>
@@ -352,8 +341,9 @@ function DetailsTab({ active }: { active: boolean }) {
         if (e.button === 0) useTabs.getState().openDetails();
       }}
       className={cn(
-        "flex h-11 max-w-[240px] min-w-0 flex-[0_1_auto] items-center gap-2.5 border-r border-divider pr-2.5 pl-3 text-[13px]",
-        active ? "bg-background text-foreground" : "text-dim-foreground shadow-[inset_0_-1px_0_var(--divider)] hover:text-foreground",
+        PILL,
+        "max-w-[240px] min-w-0 flex-[0_1_auto] pr-1.5 pl-2",
+        active ? PILL_ON : PILL_OFF,
       )}
     >
       <Badge id={badgeId} name={label} size={20} className="flex-none rounded-[5px]" />
@@ -362,7 +352,7 @@ function DetailsTab({ active }: { active: boolean }) {
         aria-label="Close details"
         onMouseDown={(e) => e.stopPropagation()}
         onClick={() => useTabs.getState().closeDetails()}
-        className="size-5 flex-none rounded-md text-center text-[16px] leading-[19px] text-faint-foreground hover:bg-hover-strong hover:text-foreground"
+        className="size-5 flex-none rounded-full text-center text-[15px] leading-[19px] text-faint-foreground hover:bg-hover-strong hover:text-foreground"
       >
         ×
       </button>
@@ -426,8 +416,9 @@ function WorkflowsTab({ active }: { active: boolean }) {
         if (e.button === 0 && !active) openWorkflows();
       }}
       className={cn(
-        "flex h-11 flex-none items-center gap-2.5 border-r border-divider pr-2.5 pl-3.5 text-[13px]",
-        active ? "dracula bg-terminal text-foreground" : "text-dim-foreground shadow-[inset_0_-1px_0_var(--divider)] hover:text-foreground",
+        PILL,
+        "flex-none pr-1.5 pl-3",
+        active ? PILL_ON_DARK : PILL_OFF,
       )}
     >
       {running ? <Spinner size={11} /> : <WorkflowIcon className="size-3.5 text-muted-foreground" strokeWidth={1.75} />}
@@ -437,7 +428,7 @@ function WorkflowsTab({ active }: { active: boolean }) {
         title="Close: finished runs are cleared (they stay in History); a running one carries on"
         onMouseDown={(e) => e.stopPropagation()}
         onClick={closeWorkflows}
-        className="size-5 flex-none rounded-md text-center text-[16px] leading-[19px] text-faint-foreground hover:bg-hover-strong hover:text-foreground"
+        className="size-5 flex-none rounded-full text-center text-[15px] leading-[19px] text-faint-foreground hover:bg-hover-strong hover:text-foreground"
       >
         ×
       </button>
@@ -456,8 +447,9 @@ function SettingsTab({ active }: { active: boolean }) {
         if (e.button === 0) openSettings();
       }}
       className={cn(
-        "flex h-11 flex-none items-center gap-2.5 border-r border-divider pr-2.5 pl-3.5 text-[13px]",
-        active ? "bg-background text-foreground" : "text-dim-foreground shadow-[inset_0_-1px_0_var(--divider)] hover:text-foreground",
+        PILL,
+        "flex-none pr-1.5 pl-3",
+        active ? PILL_ON : PILL_OFF,
       )}
     >
       <Settings className="size-4 text-muted-foreground" strokeWidth={1.75} />
@@ -466,7 +458,7 @@ function SettingsTab({ active }: { active: boolean }) {
         aria-label="Close Settings"
         onMouseDown={(e) => e.stopPropagation()}
         onClick={closeSettings}
-        className="size-5 flex-none rounded-md text-center text-[16px] leading-[19px] text-faint-foreground hover:bg-hover-strong hover:text-foreground"
+        className="size-5 flex-none rounded-full text-center text-[15px] leading-[19px] text-faint-foreground hover:bg-hover-strong hover:text-foreground"
       >
         ×
       </button>
@@ -485,8 +477,9 @@ function HostsTab({ active }: { active: boolean }) {
         if (e.button === 0) openHosts();
       }}
       className={cn(
-        "flex h-11 flex-none items-center gap-2.5 border-r border-divider pr-2.5 pl-3.5 text-[13px]",
-        active ? "bg-background text-foreground" : "text-dim-foreground shadow-[inset_0_-1px_0_var(--divider)] hover:text-foreground",
+        PILL,
+        "flex-none pr-1.5 pl-3",
+        active ? PILL_ON : PILL_OFF,
       )}
     >
       <Network className="size-4 text-muted-foreground" strokeWidth={1.75} />
@@ -495,7 +488,7 @@ function HostsTab({ active }: { active: boolean }) {
         aria-label="Close SSH hosts"
         onMouseDown={(e) => e.stopPropagation()}
         onClick={closeHosts}
-        className="size-5 flex-none rounded-md text-center text-[16px] leading-[19px] text-faint-foreground hover:bg-hover-strong hover:text-foreground"
+        className="size-5 flex-none rounded-full text-center text-[15px] leading-[19px] text-faint-foreground hover:bg-hover-strong hover:text-foreground"
       >
         ×
       </button>
@@ -514,8 +507,9 @@ function SnippetsTab({ active }: { active: boolean }) {
         if (e.button === 0) openSnippets();
       }}
       className={cn(
-        "flex h-11 flex-none items-center gap-2.5 border-r border-divider pr-2.5 pl-3.5 text-[13px]",
-        active ? "bg-background text-foreground" : "text-dim-foreground shadow-[inset_0_-1px_0_var(--divider)] hover:text-foreground",
+        PILL,
+        "flex-none pr-1.5 pl-3",
+        active ? PILL_ON : PILL_OFF,
       )}
     >
       <Glyph className="text-muted-foreground">{"{}"}</Glyph>
@@ -524,7 +518,7 @@ function SnippetsTab({ active }: { active: boolean }) {
         aria-label="Close Snippets"
         onMouseDown={(e) => e.stopPropagation()}
         onClick={closeSnippets}
-        className="size-5 flex-none rounded-md text-center text-[16px] leading-[19px] text-faint-foreground hover:bg-hover-strong hover:text-foreground"
+        className="size-5 flex-none rounded-full text-center text-[15px] leading-[19px] text-faint-foreground hover:bg-hover-strong hover:text-foreground"
       >
         ×
       </button>
@@ -543,8 +537,9 @@ function HistoryTab({ active }: { active: boolean }) {
         if (e.button === 0) openHistory();
       }}
       className={cn(
-        "flex h-11 flex-none items-center gap-2.5 border-r border-divider pr-2.5 pl-3.5 text-[13px]",
-        active ? "bg-background text-foreground" : "text-dim-foreground shadow-[inset_0_-1px_0_var(--divider)] hover:text-foreground",
+        PILL,
+        "flex-none pr-1.5 pl-3",
+        active ? PILL_ON : PILL_OFF,
       )}
     >
       <Glyph className="text-muted-foreground">↺</Glyph>
@@ -553,7 +548,7 @@ function HistoryTab({ active }: { active: boolean }) {
         aria-label="Close History"
         onMouseDown={(e) => e.stopPropagation()}
         onClick={closeHistory}
-        className="size-5 flex-none rounded-md text-center text-[16px] leading-[19px] text-faint-foreground hover:bg-hover-strong hover:text-foreground"
+        className="size-5 flex-none rounded-full text-center text-[15px] leading-[19px] text-faint-foreground hover:bg-hover-strong hover:text-foreground"
       >
         ×
       </button>

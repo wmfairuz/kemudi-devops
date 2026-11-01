@@ -54,7 +54,7 @@ export function ServerTabView({ tab, visible }: { tab: Tab; visible: boolean }) 
               else setSection(tab.id, x.id);
             }}
             className={cn(
-              "flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-[12.5px]",
+              "flex h-7 cursor-pointer items-center gap-1.5 rounded-full px-3 text-[12.5px]",
               x.id === section ? "bg-hover-strong font-medium text-foreground" : "text-subtle-foreground hover:bg-hover hover:text-foreground",
             )}
           >
@@ -71,7 +71,7 @@ export function ServerTabView({ tab, visible }: { tab: Tab; visible: boolean }) 
           <button
             title="Open this section in a tab of its own"
             onClick={() => openSectionAlone(server, section)}
-            className="flex size-7 cursor-pointer items-center justify-center rounded-md text-subtle-foreground hover:bg-hover hover:text-foreground"
+            className="flex size-7 cursor-pointer items-center justify-center rounded-full text-subtle-foreground hover:bg-hover hover:text-foreground"
           >
             <ExternalLink className="size-3.5" />
           </button>

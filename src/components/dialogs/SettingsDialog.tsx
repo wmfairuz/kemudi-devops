@@ -36,7 +36,7 @@ export function SettingsView() {
             key={p.id}
             onClick={() => useTabs.getState().openSettings(p.id)}
             className={cn(
-              "flex h-7 cursor-pointer items-center rounded-md px-2.5 text-[12.5px]",
+              "flex h-7 cursor-pointer items-center rounded-full px-3 text-[12.5px]",
               p.id === section ? "bg-hover-strong font-medium text-foreground" : "text-subtle-foreground hover:bg-hover hover:text-foreground",
             )}
           >
