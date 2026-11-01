@@ -49,13 +49,11 @@ function TabItem({ tab, group, panes, active }: { tab: Tab; group: Group; panes:
   const terminals = panes.filter((p) => !isViewTab(p.kind)).length;
   const broadcast = !!group.broadcast && terminals > 1;
   const color = group.color ? TAB_COLORS[group.color] : null;
-  // A light tint and a ring in its colour (a red one outside it on
-  // production); Dracula hue on the dark active tab, Alucard on the strip.
+  // Its colour as a soft tint, nothing more (Dracula hue on a dark
+  // terminal tab in front, Alucard otherwise).
+  const dark = active && !isViewTab(tab.kind);
   const tint = color
-    ? {
-        backgroundImage: `linear-gradient(${active ? color.dark : color.light}${active ? "26" : "1a"}, ${active ? color.dark : color.light}${active ? "26" : "1a"})`,
-        boxShadow: `inset 0 0 0 1.5px ${active ? color.dark : color.light}${prod ? ", 0 0 0 1.5px var(--env-prod)" : ""}`,
-      }
+    ? { backgroundImage: `linear-gradient(${dark ? color.dark : color.light}${active ? "33" : "24"}, ${dark ? color.dark : color.light}${active ? "33" : "24"})` }
     : undefined;
 
   return (
@@ -79,9 +77,9 @@ function TabItem({ tab, group, panes, active }: { tab: Tab; group: Group; panes:
       className={cn(
         PILL,
         "group max-w-[260px] min-w-0 flex-[0_1_auto] pr-1.5 pl-3",
-        // The active tab is the same colour as the terminal under it.
-        active ? PILL_ON_DARK : PILL_OFF,
-        prod && !color && "ring-[1.5px] ring-env-prod ring-inset",
+        // The active tab is the colour of what's under it: a terminal's dark,
+        // a page's (server, monitor, files…) white.
+        active ? (isViewTab(tab.kind) ? PILL_ON : PILL_ON_DARK) : PILL_OFF,
       )}
     >
       <TabIcon tab={tab} />
@@ -124,6 +122,7 @@ function TabItem({ tab, group, panes, active }: { tab: Tab; group: Group; panes:
           {panes.length}
         </span>
       )}
+      {prod && <span title="Production" aria-label="Production" className="size-[7px] flex-none rounded-full bg-env-prod" />}
       <button
         aria-label={`Close ${tab.title}${panes.length > 1 ? ` and its ${panes.length} panes` : ""}`}
         onMouseDown={(e) => e.stopPropagation()}
