@@ -49,6 +49,10 @@ function KindIcon({ kind, className }: { kind: string; className?: string }) {
       return <Lock className={c} />;
     case "security":
     case "updates":
+    case "secops":
+    case "secops-app":
+    case "secops-warn":
+    case "secops-root":
       return <ShieldAlert className={c} />;
     case "reboot":
       return <RotateCw className={c} />;
@@ -89,12 +93,18 @@ function actionOf(item: WatchItem, server: Server): { label: string; run: () => 
       return go("dash", "Dashboard");
     case "setup":
       return go("setup", "Setup");
+    case "secops":
+    case "secops-app":
+    case "secops-warn":
+    case "secops-root":
+      return go("security", "Security");
     case "debug":
     case "missing":
       return item.appId ? { label: "App page", run: () => openDetails({ kind: "app", serverId: server.id, appId: item.appId }) } : null;
     case "unreachable":
       return { label: "Probe again", run: () => void useStatus.getState().refresh([server.id]) };
     case "error":
+      if (item.key.endsWith(":error:security")) return go("security", "Security");
       return { label: "Check again", run: () => void useWatch.getState().refresh([server.id]).catch((e) => toastError(errorMessage(e))) };
     default:
       return null;

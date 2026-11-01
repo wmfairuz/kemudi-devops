@@ -9,14 +9,15 @@ import { Glyph, Spinner } from "@/components/kit/Spinner";
 import { StatusDot } from "@/components/kit/StatusDot";
 import { SearchIcon } from "@/components/sidebar/SidebarFrame";
 import { triggerAction } from "@/lib/actions";
-import { actionRender, type Action, type App, type Server, type Snippet } from "@/lib/ipc";
+import { actionRender, errorMessage, type Action, type App, type Server, type Snippet } from "@/lib/ipc";
 import { ENV_WORDS, highlight, rank, tokenize, type Searchable } from "@/lib/paletteSearch";
 import { cn } from "@/lib/utils";
 import { useSidebar } from "@/stores/sidebar";
 import { insertSnippet, useSnippets } from "@/stores/snippets";
 import { snippetVisible, useTeam, useTeamServers } from "@/stores/team";
 import { useStatus } from "@/stores/status";
-import { openLocalShell, toggleBroadcast, useTabs, type Tab } from "@/stores/tabs";
+import { openLocalShell, openServer, toggleBroadcast, useTabs, type Tab } from "@/stores/tabs";
+import { toastError } from "@/stores/toasts";
 import { openServerShell, whereOf } from "@/lib/fleet";
 import { useFleetUi } from "@/stores/fleetUi";
 import { useConfig } from "@/stores/config";
@@ -100,6 +101,20 @@ function buildItems(servers: Server[], tabs: Tab[], snippets: Snippet[], close: 
     cmd("Workflows (runs)", () => useTabs.getState().openWorkflows(), "⇧⌘R"),
     cmd("Type in all panes (on/off)", () => toggleBroadcast(), "⌥⌘I"),
   );
+  // The security check (read-only; minutes on a big server).
+  const checkable = servers.filter((s) => !s.asg);
+  for (const server of checkable) {
+    items.push(
+      cmd(`Security check: ${server.name}`, () => {
+        openServer(server, "security");
+        void useWatch.getState().securityCheck([server.id]).catch((e) => toastError(errorMessage(e)));
+      }, "malware, web shells, weak spots"),
+    );
+  }
+  if (checkable.length > 1)
+    items.push(
+      cmd("Security check all servers", () => void useWatch.getState().securityCheck(checkable.map((s) => s.id)).catch((e) => toastError(errorMessage(e))), `${checkable.length} servers, 3 at a time`),
+    );
   // AWS servers: one instance, and database forwarding.
   for (const server of servers.filter((s) => s.asg)) {
     items.push(

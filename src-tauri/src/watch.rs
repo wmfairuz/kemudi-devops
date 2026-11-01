@@ -11,7 +11,10 @@
 //! shows the last ones straight away and only checks what's due. System and
 //! updates go in one ssh command when both are due. Only servers that answer
 //! the reachability probe are checked; the others keep their last values.
-//! A Health or Setup tab's check counts too.
+//! A Health or Setup tab's check counts too. The **security check** (your
+//! secops skill's script, see `secops`) walks every app, so it runs only
+//! when asked (Security ▸ Run, or its own interval when one is set), never
+//! with Check all.
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
@@ -48,6 +51,11 @@ pub struct Settings {
     /// Certificates again this often once one is within `cert_warn_days`.
     pub certs_soon_hours: u32,
     pub setup_hours: u32,
+    /// The security check's interval (0: only when you run it).
+    pub security_hours: u32,
+    /// The secops folder (its `scripts/` and `reports/`); empty: the skill's,
+    /// ~/.claude/skills/secops.
+    pub secops_dir: String,
     /// Check AWS groups too (each check asks AWS for an instance).
     pub aws: bool,
     /// A macOS notification when something becomes urgent.
@@ -76,6 +84,8 @@ impl Default for Settings {
             certs_hours: 24,
             certs_soon_hours: 4,
             setup_hours: 24,
+            security_hours: 0,
+            secops_dir: String::new(),
             aws: true,
             notify: true,
             disk_warn: 80,
@@ -121,6 +131,7 @@ impl Settings {
         if self.certs_soon_hours == 0 {
             self.certs_soon_hours = self.certs_hours;
         }
+        self.secops_dir = self.secops_dir.trim().to_string();
         self.skip.sort();
         self.skip.dedup();
         Ok(self)
@@ -132,6 +143,7 @@ impl Settings {
             Check::Updates => i64::from(self.updates_hours) * 3600,
             Check::Certs => i64::from(self.certs_hours) * 3600,
             Check::Setup => i64::from(self.setup_hours) * 3600,
+            Check::Security => i64::from(self.security_hours) * 3600,
         }
     }
 }
@@ -142,6 +154,7 @@ enum Check {
     Updates,
     Certs,
     Setup,
+    Security,
 }
 
 impl Check {
@@ -151,6 +164,7 @@ impl Check {
             Check::Updates => "updates",
             Check::Certs => "certs",
             Check::Setup => "setup",
+            Check::Security => "security",
         }
     }
 }
@@ -284,6 +298,7 @@ pub struct ServerWatch {
     pub updates: Option<Stamped<Updates>>,
     pub certs: Option<Stamped<Certs>>,
     pub setup: Option<Stamped<Setup>>,
+    pub security: Option<Stamped<crate::secops::Security>>,
     /// Last attempt per check, so a failing one isn't retried every minute.
     pub tried: BTreeMap<String, i64>,
     /// Why the last attempt failed, per check (cleared when one works).
@@ -332,6 +347,8 @@ pub struct Snapshot {
     pub items: Vec<Item>,
     /// Servers being checked right now.
     pub running: Vec<String>,
+    /// Servers whose security check is running.
+    pub security_running: Vec<String>,
 }
 
 /// Kept in AppState.
@@ -339,6 +356,7 @@ pub struct Watch {
     store: Mutex<Store>,
     settings: Mutex<Settings>,
     running: Mutex<HashSet<String>>,
+    security_running: Mutex<HashSet<String>>,
     /// Wakes the reachability poller when its interval changes.
     pub reach_changed: Notify,
     dir: Option<PathBuf>,
@@ -366,6 +384,7 @@ impl Watch {
             store: Mutex::new(store),
             settings: Mutex::new(settings),
             running: Mutex::new(HashSet::new()),
+            security_running: Mutex::new(HashSet::new()),
             reach_changed: Notify::new(),
             dir,
         }
@@ -438,8 +457,12 @@ pub fn now() -> i64 {
 /// What's due on a server now (all that apply when `force`).
 fn due(server: &Server, config: &Config, w: &ServerWatch, settings: &Settings, now: i64, force: bool) -> Vec<Check> {
     let mut out = Vec::new();
-    for check in [Check::System, Check::Updates, Check::Certs, Check::Setup] {
+    for check in [Check::System, Check::Updates, Check::Certs, Check::Setup, Check::Security] {
         if check == Check::Setup && config.profile_for(&server.id).is_none() {
+            continue;
+        }
+        // Only on its own interval or when asked (not on AWS groups yet).
+        if check == Check::Security && (force || server.asg.is_some()) {
             continue;
         }
         // Health (certificates) isn't offered on AWS groups.
@@ -459,6 +482,7 @@ fn due(server: &Server, config: &Config, w: &ServerWatch, settings: &Settings, n
             Check::Updates => w.updates.as_ref().map(|s| s.at),
             Check::Certs => w.certs.as_ref().map(|s| s.at),
             Check::Setup => current(config, &server.id, w).setup.map(|s| s.at),
+            Check::Security => w.security.as_ref().map(|s| s.at),
         };
         if check == Check::Certs {
             let soon = w.certs.as_ref().is_some_and(|c| {
@@ -680,6 +704,9 @@ pub fn items(
                 );
             }
         }
+        if let Some(sc) = &w.security {
+            security_items(server, sc, &mut push);
+        }
         for (check, err) in &w.errors {
             let at = w.tried.get(check).copied().unwrap_or(now);
             push(Severity::Info, "error", check, format!("couldn't check {check}"), Some(err.clone()), None, at);
@@ -687,6 +714,61 @@ pub fn items(
     }
     out.sort_by(|(oa, a), (ob, b)| a.severity.cmp(&b.severity).then(oa.cmp(ob)));
     out.into_iter().map(|(_, i)| i).collect()
+}
+
+/// The app in servers.yaml for a folder the security check names
+/// (`acme/shop` for `/opt/www/acme/shop`).
+fn app_for<'a>(server: &'a Server, name: &str) -> Option<&'a str> {
+    let tail = format!("/{name}");
+    server
+        .apps
+        .iter()
+        .find(|a| {
+            let p = a.path.trim_end_matches('/');
+            let p = p.strip_suffix("/current").unwrap_or(p);
+            p.ends_with(&tail)
+        })
+        .map(|a| a.id.as_str())
+}
+
+type Push<'p> = dyn FnMut(Severity, &'static str, &str, String, Option<String>, Option<&str>, i64) + 'p;
+
+fn security_items(server: &Server, sc: &Stamped<crate::secops::Security>, push: &mut Push) {
+    use crate::secops::{Level, Verdict};
+    let v = &sc.value;
+    let crit: Vec<&str> = v
+        .sections
+        .iter()
+        .flat_map(|s| &s.lines)
+        .filter(|l| l.level == Level::Crit)
+        .map(|l| l.text.as_str())
+        .collect();
+    let planted: Vec<&str> = v.apps.iter().filter(|a| a.exploited()).map(|a| a.name.as_str()).collect();
+    if v.verdict == Verdict::Compromised {
+        let text = if v.crit > 0 {
+            format!("security check: {} critical", plural(v.crit as usize, "finding"))
+        } else {
+            format!("security check: planted files in {}", plural(planted.len(), "app"))
+        };
+        let detail: Vec<&str> = crit.iter().chain(planted.iter()).take(2).copied().collect();
+        push(Severity::Urgent, "secops", "", text, Some(detail.join("; ")).filter(|d| !d.is_empty()), None, sc.at);
+    }
+    for a in &v.apps {
+        let Some(flag) = a.rce() else { continue };
+        let text = if flag.starts_with("LIVEWIRE") {
+            format!("{}: Livewire {} can be taken over (CVE-2025-54068)", a.name, a.livewire.as_deref().unwrap_or("?"))
+        } else {
+            format!("{}: Ignition {} with APP_DEBUG on can be taken over (CVE-2021-3129)", a.name, a.ignition.as_deref().unwrap_or("?"))
+        };
+        let fix = if flag.starts_with("LIVEWIRE") { "Upgrade Livewire to 3.6.4 or later, or block /livewire/ in nginx" } else { "Turn APP_DEBUG off, upgrade Ignition" };
+        push(Severity::Urgent, "secops-app", &a.name, text, Some(fix.into()), app_for(server, &a.name), sc.at);
+    }
+    if v.warn > 0 {
+        push(Severity::Info, "secops-warn", "", format!("security check: {} to review", plural(v.warn as usize, "warning")), None, None, sc.at);
+    }
+    if !v.root {
+        push(Severity::Info, "secops-root", "", "security check ran without root, so it saw less".into(), Some("Passwordless sudo, or a saved sudo password, lets it see everything".into()), None, sc.at);
+    }
 }
 
 pub fn snapshot(state: &AppState) -> Snapshot {
@@ -719,7 +801,15 @@ pub fn snapshot(state: &AppState) -> Snapshot {
         .unwrap_or_default();
     let mut running: Vec<String> = w.running.lock().unwrap_or_else(|e| e.into_inner()).iter().cloned().collect();
     running.sort();
-    Snapshot { now, servers, items, running }
+    let mut security_running: Vec<String> = w
+        .security_running
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .cloned()
+        .collect();
+    security_running.sort();
+    Snapshot { now, servers, items, running, security_running }
 }
 
 fn emit(app: &AppHandle) {
@@ -989,6 +1079,34 @@ async fn check_server(app: &AppHandle, server: &Server, checks: &[Check]) {
         w.put(id, Check::Setup, r, |w, v| w.setup = Some(v));
         emit(app);
     }
+    if checks.contains(&Check::Security) {
+        security_check(app, server, false).await;
+    }
+}
+
+/// One server's security check (skipped when it's already running there).
+async fn security_check(app: &AppHandle, server: &Server, audit: bool) {
+    let state = app.state::<AppState>();
+    let w = &state.watch;
+    let fresh = w
+        .security_running
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(server.id.clone());
+    if !fresh {
+        return;
+    }
+    emit(app);
+    let dir = w.settings().secops_dir;
+    let r = crate::secops::run(&state, server, &dir, audit)
+        .await
+        .map_err(|e| e.to_string());
+    w.put(&server.id, Check::Security, r, |w, v| w.security = Some(v));
+    w.security_running
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&server.id);
+    emit(app);
 }
 
 /// One round: every server with something due (all of `only`'s checks
@@ -1090,6 +1208,34 @@ pub async fn watch_get(state: State<'_, AppState>) -> AppResult<Snapshot> {
 pub async fn watch_refresh(app: AppHandle, server_ids: Option<Vec<String>>) -> AppResult<Snapshot> {
     round(&app, server_ids.as_deref(), true).await;
     Ok(snapshot(&app.state::<AppState>()))
+}
+
+/// The security check on these servers (reachable or not), 3 at a time.
+#[tauri::command]
+pub async fn watch_security(app: AppHandle, server_ids: Vec<String>, audit: bool) -> AppResult<Snapshot> {
+    let state = app.state::<AppState>();
+    let config = state
+        .config
+        .config()
+        .ok_or_else(|| AppError::Config("Kemudi's server list isn't loaded".into()))?;
+    let servers: Vec<Server> = config
+        .servers
+        .iter()
+        .filter(|s| server_ids.contains(&s.id) && s.asg.is_none())
+        .cloned()
+        .collect();
+    let limit = Arc::new(Semaphore::new(AT_ONCE));
+    let mut tasks = tokio::task::JoinSet::new();
+    for server in servers {
+        let app = app.clone();
+        let limit = limit.clone();
+        tasks.spawn(async move {
+            let _permit = limit.acquire_owned().await.ok();
+            security_check(&app, &server, audit).await;
+        });
+    }
+    while tasks.join_next().await.is_some() {}
+    Ok(snapshot(&state))
 }
 
 /// Snooze an item for `days` (0: show it again).
@@ -1224,6 +1370,39 @@ servers:
         assert!(it[1].snoozed_until.is_some());
         assert_eq!(it[2].text, "shop.example.com: certificate expires in 10 days");
         assert_eq!(it[2].detail.as_deref(), Some("Nothing on the server seems to renew it"));
+    }
+
+    #[test]
+    fn security_items_and_when_due() {
+        use crate::secops::{AppRow, Security, Verdict};
+        let c = config();
+        let now = 1_700_100_000;
+        let sec = Security {
+            verdict: Verdict::AtRisk,
+            crit: 0,
+            warn: 2,
+            host: String::new(),
+            root: true,
+            audit: false,
+            sections: vec![],
+            apps: vec![AppRow { name: "shop".into(), livewire: Some("3.6.3".into()), flags: vec!["LIVEWIRE-RCE(CVE-2025-54068)".into()], ..AppRow::default() }],
+            report: None,
+        };
+        let mut servers = BTreeMap::new();
+        servers.insert("web-1".to_string(), ServerWatch { security: Some(Stamped { at: now, value: sec }), ..ServerWatch::default() });
+        let s = Settings::default();
+        let it = items(&c, &servers, &BTreeMap::new(), &HashSet::new(), &s, now);
+        let kinds: Vec<_> = it.iter().map(|i| (i.kind, i.severity, i.app_id.as_deref())).collect();
+        assert_eq!(kinds, vec![("secops-app", Severity::Urgent, Some("shop")), ("secops-warn", Severity::Info, None)]);
+        assert_eq!(it[0].key, "web-1:secops-app:shop");
+        assert!(it[0].text.contains("Livewire 3.6.3"));
+        // Never with Check all; on its own interval when one is set.
+        let server = c.server("web-1").expect("server");
+        assert!(!due(server, &c, &ServerWatch::default(), &s, now, true).contains(&Check::Security));
+        assert!(!due(server, &c, &ServerWatch::default(), &s, now, false).contains(&Check::Security));
+        let daily = Settings { security_hours: 24, ..Settings::default() };
+        assert!(due(server, &c, &ServerWatch::default(), &daily, now, false).contains(&Check::Security));
+        assert!(!due(server, &c, &ServerWatch::default(), &daily, now, true).contains(&Check::Security));
     }
 
     #[test]

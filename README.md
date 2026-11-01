@@ -144,11 +144,30 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   AWS groups on or off, and the notification (one per problem, when it
   turns urgent) are all set there. Settings are kept in
   `watch-settings.json`. A test copy (`KEMUDI_QUIET`) checks only when asked.
+- **Security check** (a server's tab ▸ **Security**, its menu, or ⌘K
+  *Security check: …* / *Security check all servers*): runs your secops
+  skill's read-only `secops-check.sh` on the server: miners, backdoors, web
+  shells, bad cron, dropped files, open database ports, firewall and SSH,
+  patches, old PHP, certificates, Livewire / Ignition holes, APP_DEBUG,
+  planted PHP, tampered system files. The script is piped in over the same
+  ssh connection (nothing is copied to the server) and runs as root through
+  sudo when it can (passwordless, or the server's saved sudo password). It
+  shows a verdict (Compromised, At risk, Hardening, Clean), the critical and
+  warning findings with their detail, the Laravel app table (only flagged
+  apps unless you ask for all) and everything it checked; *composer audit*
+  adds `composer audit` per app. The raw output is saved as
+  `reports/<host>-<date>.txt` in the secops folder, as `/secops` does, so
+  `/secops <host> --fix` in Claude Code picks it up. Compromised and
+  takeover-able apps (Livewire < 3.6.4, Ignition with APP_DEBUG) show in
+  Needs attention as urgent. It walks every app, so it never runs with Check
+  all; Settings ▸ Checks can give it its own interval (off by default) and
+  set the secops folder (default `~/.claude/skills/secops`, the script in
+  its `scripts/`). Not on AWS groups yet.
 - **A server's tab** (one per server): **Overview** (what the background
   checks last found: disks, load and memory, updates, certificates, apps,
   setup, and its Needs attention; nothing is read from the server to show
-  it; *Check now*), **Dashboard**, **Monitor**, **Health**, **Tune** and
-  **Setup**. Monitor, Health… from a menu or the server's page open that
+  it; *Check now*), **Dashboard**, **Monitor**, **Health**, **Security**,
+  **Tune** and **Setup**. Monitor, Health… from a menu or the server's page open that
   section; a section you've looked at stays loaded while you switch, so
   going back doesn't read the server again. ⌘-click a section (or ↗) for a
   tab of its own. The sidebar's ⚠ badge (red: urgent, amber: a warning)

@@ -842,13 +842,14 @@ export function openDashboard(server: { id: string; name: string; host: string; 
 /** A server's tab: Overview (what the background checks found),
  *  Dashboard (each app's maintenance mode and basic auth), Monitor, Health,
  *  Tune and Setup. */
-export type ServerSection = "overview" | "dash" | "monitor" | "health" | "tune" | "setup";
+export type ServerSection = "overview" | "dash" | "monitor" | "health" | "security" | "tune" | "setup";
 
 export const SERVER_SECTIONS: { id: ServerSection; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "dash", label: "Dashboard" },
   { id: "monitor", label: "Monitor" },
   { id: "health", label: "Health" },
+  { id: "security", label: "Security" },
   { id: "tune", label: "Tune" },
   { id: "setup", label: "Setup" },
 ];

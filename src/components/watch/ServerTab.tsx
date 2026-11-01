@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { DashboardView } from "@/components/dashboard/DashboardView";
 import { HealthView } from "@/components/health/HealthView";
 import { MonitorView } from "@/components/monitor/MonitorView";
+import { SecurityView } from "@/components/security/SecurityView";
 import { ServerSetupView } from "@/components/setup/SetupView";
 import { TuneView } from "@/components/tune/TuneView";
 import { cn } from "@/lib/utils";
@@ -35,6 +36,8 @@ export function ServerTabView({ tab, visible }: { tab: Tab; visible: boolean }) 
         return <MonitorView key={tab.instance ?? ""} tab={tab} title={server.name} visible={shown} />;
       case "health":
         return <HealthView tab={tab} visible={shown} />;
+      case "security":
+        return <SecurityView server={server} />;
       case "tune":
         return <TuneView tab={tab} visible={shown} />;
       case "setup":
@@ -45,12 +48,12 @@ export function ServerTabView({ tab, visible }: { tab: Tab; visible: boolean }) 
   return (
     <div className="absolute inset-0 flex flex-col">
       <div className="light-ui flex h-10 flex-none items-center gap-0.5 border-b border-divider bg-background px-2 text-foreground">
-        {SERVER_SECTIONS.filter((x) => !server.asg || (x.id !== "health" && x.id !== "tune")).map((x) => (
+        {SERVER_SECTIONS.filter((x) => !server.asg || (x.id !== "health" && x.id !== "tune" && x.id !== "security")).map((x) => (
           <button
             key={x.id}
-            title={x.id === "overview" ? undefined : "⌘-click: in a tab of its own"}
+            title={x.id === "overview" || x.id === "security" ? undefined : "⌘-click: in a tab of its own"}
             onClick={(e) => {
-              if (e.metaKey) openSectionAlone(server, x.id);
+              if (e.metaKey && x.id !== "security") openSectionAlone(server, x.id);
               else setSection(tab.id, x.id);
             }}
             className={cn(
@@ -67,7 +70,7 @@ export function ServerTabView({ tab, visible }: { tab: Tab; visible: boolean }) 
           </button>
         ))}
         <span className="flex-1" />
-        {section !== "overview" && (
+        {section !== "overview" && section !== "security" && (
           <button
             title="Open this section in a tab of its own"
             onClick={() => openSectionAlone(server, section)}

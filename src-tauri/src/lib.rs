@@ -21,6 +21,7 @@ mod preflight;
 mod pty;
 mod queues;
 mod remote_files;
+mod secops;
 mod secret_cache;
 mod session;
 mod shell_integration;
@@ -186,6 +187,7 @@ pub fn run() {
             ssh_hosts::ssh_host_list,
             watch::watch_get,
             watch::watch_refresh,
+            watch::watch_security,
             watch::watch_snooze,
             watch::watch_settings_get,
             watch::watch_settings_set,

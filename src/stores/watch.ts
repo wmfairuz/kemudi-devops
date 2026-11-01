@@ -12,6 +12,7 @@ import {
   watchRefresh,
   watchSettingsGet,
   watchSettingsSet,
+  watchSecurity,
   watchSnooze,
   type WatchItem,
   type WatchSettings,
@@ -28,6 +29,8 @@ interface WatchState {
   init(): () => void;
   /** Check now (these servers, or all). */
   refresh(serverIds?: string[]): Promise<void>;
+  /** The security check (never part of Check all). */
+  securityCheck(serverIds: string[], audit?: boolean): Promise<void>;
   snooze(key: string, days: number): Promise<void>;
   saveSettings(s: WatchSettings): Promise<void>;
 }
@@ -91,6 +94,10 @@ export const useWatch = create<WatchState>((set, get) => ({
   async refresh(serverIds) {
     set((s) => (s.snapshot ? { snapshot: { ...s.snapshot, running: [...new Set([...s.snapshot.running, ...(serverIds ?? [])])] } } : {}));
     set({ snapshot: await watchRefresh(serverIds) });
+  },
+  async securityCheck(serverIds, audit = false) {
+    set((s) => (s.snapshot ? { snapshot: { ...s.snapshot, securityRunning: [...new Set([...s.snapshot.securityRunning, ...serverIds])] } } : {}));
+    set({ snapshot: await watchSecurity(serverIds, audit) });
   },
   async snooze(key, days) {
     set({ snapshot: await watchSnooze(key, days) });

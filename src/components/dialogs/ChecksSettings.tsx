@@ -40,6 +40,7 @@ export function ChecksSettings() {
     ["certsHours", 0, 720],
     ["certsSoonHours", 0, 720],
     ["setupHours", 0, 720],
+    ["securityHours", 0, 720],
     ["diskWarn", 1, 100],
     ["diskUrgent", 1, 100],
     ["inodeWarn", 1, 100],
@@ -124,6 +125,24 @@ export function ChecksSettings() {
           {numField({ k: "certsHours", label: "Certificates", unit: "hours", min: 0, max: 720 })}
           {numField({ k: "certsSoonHours", label: "Certificates, once one is within the warning below", unit: "hours", min: 0, max: 720 })}
           {numField({ k: "setupHours", label: "Setup (against the server's profile)", unit: "hours", min: 0, max: 720 })}
+
+          <Heading>Security check</Heading>
+          <span className="-mt-1 text-[11px] text-subtle-foreground">
+            Your secops skill's secops-check.sh, read-only. It walks every app, so it never runs with Check all: only from a server's Security, ⌘K, or this interval.
+          </span>
+          {numField({ k: "securityHours", label: "Security check in the background (0: only when you run it)", unit: "hours", min: 0, max: 720 })}
+          <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
+            <span className="min-w-0 flex-1">
+              Secops folder (its scripts/ and reports/)
+              <span className="block text-[11px] text-subtle-foreground">Empty: ~/.claude/skills/secops. Reports are saved in its reports/, as /secops does.</span>
+            </span>
+            <TextInput
+              className="h-7 w-[260px] font-mono text-[11.5px]"
+              placeholder="~/.claude/skills/secops"
+              value={draft.secopsDir}
+              onChange={(e) => setDraft({ ...draft, secopsDir: e.target.value })}
+            />
+          </label>
 
           <Heading>Warn when</Heading>
           {numField({ k: "diskWarn", label: "A disk is this full (a warning)", unit: "%", min: 1, max: 100 })}

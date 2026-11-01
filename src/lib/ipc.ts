@@ -1626,6 +1626,10 @@ export interface WatchSettings {
   certsHours: number;
   certsSoonHours: number;
   setupHours: number;
+  /** The security check's interval (0: only when you run it). */
+  securityHours: number;
+  /** The secops folder (scripts/, reports/); "" = ~/.claude/skills/secops. */
+  secopsDir: string;
   aws: boolean;
   notify: boolean;
   diskWarn: number;
@@ -1691,11 +1695,41 @@ export interface WatchSetup {
   fingerprint: string;
 }
 
+export type SecVerdict = "compromised" | "at-risk" | "hardening" | "clean";
+export type SecLevel = "crit" | "warn" | "ok" | "info";
+
+export interface SecApp {
+  /** Its folder under the web root. */
+  name: string;
+  laravel: string | null;
+  livewire: string | null;
+  ignition: string | null;
+  extraPhp: number;
+  phpMedia: number;
+  flags: string[];
+  audit: string[];
+}
+
+/** The security check (your secops skill's secops-check.sh), read. */
+export interface WatchSecurity {
+  verdict: SecVerdict;
+  crit: number;
+  warn: number;
+  host: string;
+  root: boolean;
+  audit: boolean;
+  sections: { title: string; lines: { level: SecLevel; text: string }[] }[];
+  apps: SecApp[];
+  /** Where the raw output was saved. */
+  report: string | null;
+}
+
 export interface ServerWatch {
   system: Stamped<WatchSystem> | null;
   updates: Stamped<WatchUpdates> | null;
   certs: Stamped<WatchCerts> | null;
   setup: Stamped<WatchSetup> | null;
+  security: Stamped<WatchSecurity> | null;
   tried: Record<string, number>;
   errors: Record<string, string>;
 }
@@ -1720,12 +1754,15 @@ export interface WatchSnapshot {
   servers: Record<string, ServerWatch>;
   items: WatchItem[];
   running: string[];
+  securityRunning: string[];
 }
 
 export const WATCH_CHANGED = "watch://changed";
 export const watchGet = (): Promise<WatchSnapshot> => invoke("watch_get");
 /** Check now (these servers, or all), every check, reachable or not. */
 export const watchRefresh = (serverIds?: string[]): Promise<WatchSnapshot> => invoke("watch_refresh", { serverIds: serverIds ?? null });
+/** The security check on these servers (read-only; minutes on a big one). */
+export const watchSecurity = (serverIds: string[], audit: boolean): Promise<WatchSnapshot> => invoke("watch_security", { serverIds, audit });
 /** Snooze an item for `days` (0: show it again). */
 export const watchSnooze = (key: string, days: number): Promise<WatchSnapshot> => invoke("watch_snooze", { key, days });
 export const watchSettingsGet = (): Promise<WatchSettings> => invoke("watch_settings_get");

@@ -121,6 +121,7 @@ export function EntityMenu() {
           { label: "Logs", hint: "apps, nginx, PHP, workers", run: () => void openLogs(server) },
           { label: "Monitor", hint: "CPU, memory, disks", run: () => void openMonitor(server) },
           { label: "Health", hint: "SSL, updates, services", run: () => void openHealth(server) },
+          { label: "Security check", hint: "malware, web shells, weak spots", run: () => void openServer(server, "security") },
           { label: "Fine-tune", hint: "PHP-FPM, OPcache, MySQL, nginx", run: () => void openTune(server) },
           { label: "Setup", hint: "check against its profile, fix", run: () => void openSetup(server) },
           { label: "Details…", run: () => openDetails({ kind: "server", serverId: server.id }) },
