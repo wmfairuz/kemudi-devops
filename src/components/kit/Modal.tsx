@@ -14,7 +14,7 @@ interface Props {
   onOpenAutoFocus?: (e: Event) => void;
 }
 
-/** Design dialog shell: dims everything below the 38px title bar, #161618
+/** Design dialog shell: dims everything below the 52px title bar, #161618
  *  panel, 12px radius. Body/footer layout is up to the caller. */
 export function Modal({ open, onOpenChange, title, width = 600, top, children, className, onOpenAutoFocus }: Props) {
   return (
@@ -22,7 +22,7 @@ export function Modal({ open, onOpenChange, title, width = 600, top, children, c
       <D.Portal>
         <D.Overlay
           data-modal-backdrop
-          className="fixed inset-x-0 top-[38px] bottom-0 z-50 bg-overlay data-[state=open]:animate-in data-[state=open]:fade-in-0" />
+          className="fixed inset-x-0 top-[52px] bottom-0 z-50 bg-overlay data-[state=open]:animate-in data-[state=open]:fade-in-0" />
         <D.Content
           aria-describedby={undefined}
           onOpenAutoFocus={onOpenAutoFocus}
