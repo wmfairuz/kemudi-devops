@@ -609,7 +609,8 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   every file, MySQL and sysctl value and removes a swap file it made, then
   tests and reloads (backups in /root/.kemudi-tune/). Recorded in History.
 - **New vhost** (Inspect ▸ Web server ▸ *New vhost*; the main button when
-  no vhost serves the app): a Laravel nginx vhost from a few choices:
+  no vhost serves the app): a Laravel nginx vhost (only `index.php` runs;
+  any other `.php` gets a 404, so a planted file neither runs nor downloads) from a few choices:
   domains, file name, root (`<app>/public`), the PHP-FPM socket (found on the
   server, the app's PHP version picked), HTTPS (HTTP only, an existing Let's
   Encrypt certificate with an HTTP→HTTPS redirect, or certbot afterwards),
