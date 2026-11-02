@@ -1,4 +1,4 @@
-import { Check, Copy, KeyRound, RefreshCw, X } from "lucide-react";
+import { Check, Copy, ExternalLink, KeyRound, RefreshCw, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Btn } from "@/components/kit/Btn";
@@ -9,6 +9,7 @@ import { Modal, ModalFooter, ModalHeader } from "@/components/kit/Modal";
 import { Field, Segmented, TextInput, VALID_ID } from "@/components/manage/fields";
 import { blockIntro } from "@/lib/actions";
 import { copyText } from "@/lib/clipboard";
+import { deployKeyPage, keyFingerprint } from "@/lib/gitHost";
 import {
   appSave,
   certsList,
@@ -19,6 +20,7 @@ import {
   newappRun,
   newappScript,
   newAppHookSave,
+  openUrl,
   type NewAppHooks,
   type CertbotCert,
   type Env,
@@ -442,7 +444,7 @@ function NewApp({ server }: { server: Server }) {
                     </div>
                   )}
                 </Field>
-                <DeployKeys probe={probe} serverId={serverId} busy={keyBusy} onCreate={() => void createKey()} failed={!!repoCheck && repoCheck !== "checking" && !repoCheck.ok} />
+                <DeployKeys probe={probe} serverId={serverId} repo={d.repo} busy={keyBusy} onCreate={() => void createKey()} failed={!!repoCheck && repoCheck !== "checking" && !repoCheck.ok} />
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Branch" hint={d.branch ? undefined : "Empty: the repository's default"}>
                     {(fid) => (
@@ -828,8 +830,20 @@ function Center({ children }: { children: React.ReactNode }) {
 }
 
 /** The server's public key(s): what to add on the git host. */
-function DeployKeys({ probe, serverId, busy, onCreate, failed }: { probe: NewAppProbe; serverId: string; busy: boolean; onCreate: () => void; failed: boolean }) {
+function DeployKeys({ probe, serverId, repo, busy, onCreate, failed }: { probe: NewAppProbe; serverId: string; repo: string; busy: boolean; onCreate: () => void; failed: boolean }) {
   const [copied, setCopied] = useState<string | null>(null);
+  const page = useMemo(() => deployKeyPage(repo), [repo]);
+  // Git hosts list keys by SHA256: the same key may already be there (another project's).
+  const [prints, setPrints] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let stale = false;
+    void Promise.all(probe.keys.map(async (k) => [k.path, await keyFingerprint(k.key)] as const)).then((all) => {
+      if (!stale) setPrints(Object.fromEntries(all.filter((e): e is readonly [string, string] => !!e[1])));
+    });
+    return () => {
+      stale = true;
+    };
+  }, [probe.keys]);
   return (
     <div className={cn("flex flex-col gap-1.5 rounded-lg border px-3 py-2", failed ? "border-env-staging/50 bg-env-staging/6" : "border-divider")}>
       <div className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
@@ -868,7 +882,32 @@ function DeployKeys({ probe, serverId, busy, onCreate, failed }: { probe: NewApp
           </div>
         ))
       )}
-      <div className="text-[11px] leading-4 text-subtle-foreground">GitHub allows one repository per deploy key; for several, add the key to a machine user instead.</div>
+      {probe.keys.map(
+        (k) =>
+          prints[k.path] && (
+            <div key={k.path} className="selectable truncate font-mono text-[10.5px] text-subtle-foreground" title="How GitHub and GitLab list the key">
+              {prints[k.path]}
+              {k.key.trim().split(/\s+/)[2] ? ` · ${k.key.trim().split(/\s+/)[2]}` : ""}
+            </div>
+          ),
+      )}
+      {page && (
+        <div className="flex items-center gap-2">
+          <Btn size="sm" variant="outline" onClick={() => void openUrl(page.url).catch((e) => toastError(errorMessage(e)))}>
+            <ExternalLink className="size-3.5" /> Deploy keys on {page.host}
+          </Btn>
+          <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-faint-foreground" title={page.url}>
+            {page.url.replace(/^https:\/\//, "").replace(/#.*$/, "")}
+          </span>
+        </div>
+      )}
+      <div className="text-[11px] leading-4 text-subtle-foreground">
+        {page?.host === "GitLab"
+          ? "Already on another project? Find the fingerprint above under Privately accessible deploy keys and click Enable (leave write access off)."
+          : page?.host === "GitHub"
+            ? "GitHub allows one repository per deploy key; for several, add the key to a machine user instead."
+            : "If the key is already on another repository there (same fingerprint), enable it instead of adding it again."}
+      </div>
     </div>
   );
 }

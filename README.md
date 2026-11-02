@@ -444,7 +444,10 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   databases, Supervisor's folder, certificates. You fill in name, domain,
   APP_ENV, repository (*Check access* runs `git ls-remote` on the server with
   its own key and lists the branches; the key is shown to copy as a read-only
-  deploy key, or created if there's none), branch, path (next to the
+  deploy key, or created if there's none, with its SHA256 fingerprint (to
+  spot it already on another project: on GitLab, *Enable* it there instead)
+  and a button to the repository's deploy-keys page on GitHub, GitLab or
+  Bitbucket), branch, path (next to the
   server's other apps), PHP, owner (like the other apps), and pick:
   - database: a **new user** (password made on the server, written only to
     the app's .env), an **existing user** (you type its password in the
