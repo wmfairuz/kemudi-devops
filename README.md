@@ -559,7 +559,11 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   call from this Mac): days left, expiry, issuer, the app it serves, *wrong
   cert* when it isn't for that name, *renewed on disk* when the file is newer
   than what's served (reload the web server), and what renews them (certbot
-  timer / cron / acme.sh). If certbot's last run failed it says so, with
+  timer / cron / acme.sh). Sites on plain HTTP (an nginx vhost with no 443
+  and no certificate, names no HTTPS vhost already serves) show as *http
+  only* with **Get certificate**: `certbot --nginx -d … --redirect` in a
+  terminal tab, as root (production asks first; DNS must point at the
+  server; *Check again* afterwards). If certbot's last run failed it says so, with
   the reason from its log (e.g. `--manual` DNS-challenge certificates,
   which can't renew unattended). **System**: OS, kernel, uptime, pending
   updates (and security ones), reboot needed, the usual services and any

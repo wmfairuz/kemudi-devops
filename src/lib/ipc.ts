@@ -1188,10 +1188,22 @@ export interface HealthCert {
   newerOnDisk: number | null;
 }
 
+/** A vhost on plain HTTP: no certificate yet. */
+export interface HealthPlainSite {
+  /** Its names that no HTTPS vhost serves. */
+  names: string[];
+  file: string;
+  appId: string | null;
+  /** nginx (certbot --nginx can add HTTPS). */
+  nginx: boolean;
+}
+
 export interface Health {
   now: number;
   certs: HealthCert[];
   moreNames: number;
+  /** Sites on plain HTTP: Get certificate. */
+  httpOnly: HealthPlainSite[];
   renew: string[];
   /** certbot's last run failed: "certbot.service failed" and lines from its log. */
   renewErrors: string[];

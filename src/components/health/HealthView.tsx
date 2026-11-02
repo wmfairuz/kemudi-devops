@@ -6,6 +6,7 @@ import { BaselineSection } from "@/components/baseline/Baseline";
 import { EnvTag } from "@/components/kit/EnvTag";
 import { certsList, errorMessage, healthCheck, healthComposerAudit, openUrl, type CertbotCert, type ComposerAudit, type Health, type HealthCert } from "@/lib/ipc";
 import { CertRenewDialog } from "./CertRenewDialog";
+import { triggerAction } from "@/lib/actions";
 import { useServiceMenu } from "@/components/actions/ServiceMenu";
 import { cn } from "@/lib/utils";
 import { levelOf, type Level } from "@/lib/thresholds";
@@ -271,7 +272,34 @@ export function HealthView({ tab, visible }: { tab: Tab; visible: boolean }) {
                   </div>
                 );
               })()}
-              {h.certs.length === 0 && !h.sslError && <div className="text-[0.85em] text-subtle-foreground">No HTTPS sites in the web server's config.</div>}
+              {h.certs.length === 0 && h.httpOnly.length === 0 && !h.sslError && <div className="text-[0.85em] text-subtle-foreground">No HTTPS sites in the web server's config.</div>}
+              {/* Sites with no HTTPS yet: certbot --nginx gets a certificate and adds HTTPS (and the redirect). */}
+              {h.httpOnly.map((p) => (
+                <div key={p.file} className="grid grid-cols-[7.5em_minmax(0,26em)_minmax(0,9em)_minmax(0,1fr)_auto] items-baseline gap-3 border-b border-divider/60 py-1">
+                  <span>
+                    <Pill tone="warn">http only</Pill>
+                  </span>
+                  <span className="truncate" title={`${p.names.join(" ")}\n${p.file}`}>
+                    {p.names.join(", ")}
+                  </span>
+                  <span className="truncate text-[0.85em] text-subtle-foreground">{appName(p.appId) ?? ""}</span>
+                  <span className="min-w-0 truncate text-[0.85em] text-subtle-foreground">
+                    {p.nginx ? "no certificate: its DNS must point here first" : "Apache vhost: add HTTPS with certbot --apache"}
+                  </span>
+                  {p.nginx ? (
+                    <Btn
+                      size="sm"
+                      variant="outline"
+                      title={`certbot --nginx -d ${p.names.join(" -d ")} --redirect (in a terminal tab; Check again afterwards)`}
+                      onClick={() => void triggerAction({ serverId, appId: null, actionId: `certbot:${p.names.join(",")}` })}
+                    >
+                      Get certificate
+                    </Btn>
+                  ) : (
+                    <span />
+                  )}
+                </div>
+              ))}
               {h.certs.map((c) => {
                 const tone = certTone(c);
                 return (

@@ -1048,7 +1048,7 @@ fi
             "HTTPS certificate",
             format!(
                 r#"if $S certbot --nginx{names} --redirect --keep-until-expiring; then ok "HTTPS is on"
-else warn "certbot didn't finish; the app works over http. Its DNS must point here: try again from Health ▸ SSL later."; fi
+else warn "certbot didn't finish; the app works over http. When its DNS points here: Health ▸ SSL certificates ▸ Get certificate."; fi
 "#
             ),
         ));

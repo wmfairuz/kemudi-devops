@@ -27,8 +27,8 @@ names=""
 for f in $VH; do
   [ -f "$f" ] || continue
   t=$(rd "$f") || continue
-  case "$t" in *443*|*ssl_certificate*|*SSLEngine*) ;; *) continue ;; esac
-  echo "@@vhost $f"
+  # HTTP-only vhosts are listed too: they can get a certificate.
+  case "$t" in *443*|*ssl_certificate*|*SSLEngine*) echo "@@vhost $f" ;; *) echo "@@plain $f" ;; esac
   printf '%s\n' "$t" | sed 's/#.*//' | tr ';{}' '\n\n\n' | sed -n 's/^[[:space:]]*\(server_name\|ServerName\|ServerAlias\)[[:space:]]\{1,\}\(.*\)/name \2/p;s/^[[:space:]]*\(root\|DocumentRoot\)[[:space:]]\{1,\}\([^[:space:]]*\).*/root \2/p;s/^[[:space:]]*\(ssl_certificate\|SSLCertificateFile\)[[:space:]]\{1,\}\([^[:space:]]*\).*/crt \2/p'
 done
 "#;
@@ -146,6 +146,18 @@ pub struct Cert {
     pub newer_on_disk: Option<i64>,
 }
 
+/// A vhost served over HTTP only (no 443, no certificate).
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlainSite {
+    /// Its names that no HTTPS vhost serves.
+    pub names: Vec<String>,
+    pub file: String,
+    pub app_id: Option<String>,
+    /// An nginx vhost (`certbot --nginx` can add HTTPS to it).
+    pub nginx: bool,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Service {
@@ -174,6 +186,8 @@ pub struct Health {
     pub certs: Vec<Cert>,
     /// Names left out (too many).
     pub more_names: usize,
+    /// Sites on plain HTTP: Get certificate.
+    pub http_only: Vec<PlainSite>,
     /// What renews certificates (certbot timer, cron…); empty: nothing found.
     pub renew: Vec<String>,
     /// certbot's last run failed: "certbot.service failed" and why (its log).
@@ -261,23 +275,55 @@ struct Vhosts {
     /// name → (file, root)
     names: Vec<(String, String, Option<String>)>,
     crts: Vec<String>,
+    /// HTTP-only vhosts: (file, names no HTTPS vhost serves, root).
+    plain: Vec<(String, Vec<String>, Option<String>)>,
+}
+
+/// The app whose folder `root` is (or is inside).
+fn app_of_root(root: Option<&str>, apps: &[(String, String, String)]) -> Option<String> {
+    let r = root?;
+    apps.iter()
+        .find(|(_, p, _)| {
+            let p = p.trim_end_matches('/');
+            r == p || r.starts_with(&format!("{p}/"))
+        })
+        .map(|(id, _, _)| id.clone())
 }
 
 fn parse_vhosts(out: &str) -> Vhosts {
     let mut v = Vhosts {
         names: Vec::new(),
         crts: Vec::new(),
+        plain: Vec::new(),
     };
     let mut file = String::new();
+    let mut plain = false;
     let mut roots: BTreeMap<String, String> = BTreeMap::new();
     let mut pending: Vec<(String, String)> = Vec::new();
     for l in out.lines() {
         if let Some(f) = l.strip_prefix("@@vhost ") {
             file = f.trim().to_string();
+            plain = false;
+        } else if let Some(f) = l.strip_prefix("@@plain ") {
+            file = f.trim().to_string();
+            plain = true;
+            v.plain.push((file.clone(), Vec::new(), None));
+        } else if l.starts_with("@@") {
+            file.clear();
+            plain = false;
+        } else if file.is_empty() {
         } else if let Some(n) = l.strip_prefix("name ") {
             for n in n.split_whitespace() {
-                if checkable(n) && !pending.iter().any(|(x, _)| x == n) {
-                    pending.push((n.to_ascii_lowercase(), file.clone()));
+                let n = n.to_ascii_lowercase();
+                if !checkable(&n) {
+                } else if plain {
+                    if let Some((_, list, _)) = v.plain.last_mut() {
+                        if !list.contains(&n) {
+                            list.push(n);
+                        }
+                    }
+                } else if !pending.iter().any(|(x, _)| *x == n) {
+                    pending.push((n, file.clone()));
                 }
             }
         } else if let Some(r) = l.strip_prefix("root ") {
@@ -291,6 +337,12 @@ fn parse_vhosts(out: &str) -> Vhosts {
             }
         }
     }
+    // A name an HTTPS vhost serves already has its certificate.
+    for (f, list, root) in &mut v.plain {
+        list.retain(|n| !pending.iter().any(|(x, _)| x == n));
+        *root = roots.get(f.as_str()).cloned();
+    }
+    v.plain.retain(|(_, list, _)| !list.is_empty());
     v.names = pending
         .into_iter()
         .map(|(n, f)| {
@@ -299,6 +351,18 @@ fn parse_vhosts(out: &str) -> Vhosts {
         })
         .collect();
     v
+}
+
+fn plain_sites(plain: &[(String, Vec<String>, Option<String>)], apps: &[(String, String, String)]) -> Vec<PlainSite> {
+    plain
+        .iter()
+        .map(|(file, names, root)| PlainSite {
+            names: names.clone(),
+            file: file.clone(),
+            app_id: app_of_root(root.as_deref(), apps),
+            nginx: file.starts_with("/etc/nginx/"),
+        })
+        .collect()
 }
 
 fn read_cert_lines(lines: &[&str], c: &mut Cert) {
@@ -367,14 +431,7 @@ fn parse_ssl(
             ..Cert::default()
         };
         read_cert_lines(&lines, &mut c);
-        c.app_id = root.as_deref().and_then(|r| {
-            apps.iter()
-                .find(|(_, p, _)| {
-                    let p = p.trim_end_matches('/');
-                    r == p || r.starts_with(&format!("{p}/"))
-                })
-                .map(|(id, _, _)| id.clone())
-        });
+        c.app_id = app_of_root(root.as_deref(), apps);
         if !c.missing {
             c.covers = covers(&c.name, &c.subject, &c.sans);
             c.days_left = c.not_after.map(|e| (e - h.now).div_euclid(86400));
@@ -553,6 +610,7 @@ pub(crate) async fn check(state: &AppState, server_id: &str, ssl_only: bool) -> 
         parse_system(&out, &mut h);
     }
     let vh = parse_vhosts(&out);
+    h.http_only = plain_sites(&vh.plain, &apps);
     h.more_names = vh.names.len().saturating_sub(MAX_NAMES);
     let names: Vec<_> = vh.names.into_iter().take(MAX_NAMES).collect();
     if names.is_empty() && vh.crts.is_empty() {
@@ -708,6 +766,7 @@ mod tests {
         assert_eq!(vh.names.len(), 2);
         assert_eq!(vh.names[0].2.as_deref(), Some("/opt/www/app/public"));
         assert_eq!(vh.crts, ["/etc/letsencrypt/live/app.x.com/fullchain.pem"]);
+        assert!(vh.plain.is_empty());
         let second = "@@cert app.x.com\nvia local\nend 1864000\nissuer C = US, O = Let's Encrypt, CN = R11\nsubject CN = app.x.com\ndns app.x.com www.app.x.com \n@@cert www.app.x.com\nnone\n@@file /etc/letsencrypt/live/app.x.com/fullchain.pem\nend 9000000\nsubject CN = app.x.com\ndns app.x.com www.app.x.com\n@@renew\ncertbot.timer\n@@renewerr\ncertbot.service failed\nFailed to renew certificate x.com with error: The manual plugin is not working\n";
         let apps = vec![(
             "web".to_string(),
@@ -729,6 +788,26 @@ mod tests {
         assert_eq!(c.newer_on_disk, Some(9_000_000));
         assert_eq!(h.renew, ["certbot.timer"]);
         assert_eq!(h.renew_errors.len(), 2);
+    }
+
+    #[test]
+    fn lists_http_only_sites() {
+        // shop: HTTP only; app: its port-80 redirect file doesn't count (HTTPS
+        // elsewhere serves app.x.com); default: no real name.
+        let out = "@@now 1\n@@plain /etc/nginx/sites-enabled/shop\nname shop.x.com www.shop.x.com\nroot /opt/www/shop/public\n@@vhost /etc/nginx/sites-enabled/app\nname app.x.com\nroot /opt/www/app/public\n@@plain /etc/nginx/sites-enabled/app-redirect\nname app.x.com\n@@plain /etc/nginx/sites-enabled/default\nname _\nroot /var/www/html\n@@os\nname not.a.vhost.com\n";
+        let vh = parse_vhosts(out);
+        assert_eq!(vh.names.len(), 1);
+        let apps = vec![("shop".to_string(), "/opt/www/shop".to_string(), "php".to_string())];
+        let sites = plain_sites(&vh.plain, &apps);
+        assert_eq!(
+            sites,
+            [PlainSite {
+                names: vec!["shop.x.com".into(), "www.shop.x.com".into()],
+                file: "/etc/nginx/sites-enabled/shop".into(),
+                app_id: Some("shop".into()),
+                nginx: true,
+            }]
+        );
     }
 
     #[test]

@@ -193,7 +193,8 @@ pub fn builtin(id: &str) -> Option<Action> {
         return Some(Action {
             id: id.to_string(),
             label: format!("Get HTTPS certificate for {}", domains[0]),
-            run: as_root(&format!("certbot --nginx {}", args.join(" "))),
+            // --redirect: http:// goes to https:// (what New app does too).
+            run: as_root(&format!("certbot --nginx {} --redirect", args.join(" "))),
             shared: false,
             inherited: false,
             team: None,
@@ -705,7 +706,7 @@ mod tests {
             super::builtin("certbot:shop.example.com,www.shop.example.com")
                 .expect("certbot")
                 .run,
-            as_root("certbot --nginx -d shop.example.com -d www.shop.example.com")
+            as_root("certbot --nginx -d shop.example.com -d www.shop.example.com --redirect")
         );
         let s = super::builtin("service:restart:php8.4-fpm").expect("service");
         assert!(s.danger && s.run.ends_with("asroot systemctl restart php8.4-fpm"));
