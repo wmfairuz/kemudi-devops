@@ -841,8 +841,11 @@ fi
   [ -n "$DBPASS" ] && as_db -e 'SELECT 1' >/dev/null 2>&1 || die "MySQL user $DBUSER already exists: choose “Existing user” instead"
   note "MySQL user $DBUSER is already set up"
 else
-  DBPASS=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
-  [ ${{#DBPASS}} = 32 ] || die "couldn't make a password"
+  R=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 30)
+  [ ${{#R}} = 30 ] || die "couldn't make a password"
+  # MySQL's validate_password (MEDIUM / STRONG) also wants a symbol and every kind of letter and digit; - _ . are
+  # safe inside SQL quotes, the shell and .env.
+  DBPASS="${{R:0:10}}-${{R:10:10}}_${{R:20:10}}.Kq7"
   my -e "CREATE USER '$DBUSER'@'localhost' IDENTIFIED BY '$DBPASS';" || die "couldn't create MySQL user $DBUSER"
   ok "created MySQL user $DBUSER (its password is only in .env)"
 fi
