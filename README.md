@@ -1132,7 +1132,7 @@ would seem to stop working). Tabs come back through session restore.
 
 | Keys | Action |
 |---|---|
-| ⌘K | Command palette: actions, apps, servers, tabs, commands (`pull akaun stg`); ↵ runs, ⌘↵ edits first |
+| ⌘K | Search everything (`pull akaun stg`, an IP, `3306`): actions, apps (URL, path, repo), servers by where they ssh to (`Hostname`, port, user from ~/.ssh/config), ssh hosts with no server (↵ opens ssh), tabs, commands, workflows (their steps' commands too), what needs attention, the last security check's findings, and past commands (3+ letters; ↵ opens History searching it); ↵ runs, ⌘↵ edits first |
 | ⌘T | New local shell tab |
 | ⌥⌘T | SSH to a host alias from `~/.ssh/config` |
 | ⌘W | Close the pane (the tab goes with its last pane). Settings ▸ *Ask before ⌘W closes a tab* makes it ask first (↵ closes, esc keeps it) |

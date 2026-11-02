@@ -9,14 +9,28 @@ import { Glyph, Spinner } from "@/components/kit/Spinner";
 import { StatusDot } from "@/components/kit/StatusDot";
 import { SearchIcon } from "@/components/sidebar/SidebarFrame";
 import { triggerAction } from "@/lib/actions";
-import { actionRender, errorMessage, type Action, type App, type Server, type Snippet } from "@/lib/ipc";
+import {
+  actionRender,
+  auditList,
+  errorMessage,
+  sshHostList,
+  type Action,
+  type App,
+  type AuditRun,
+  type HostRow,
+  type Server,
+  type ServerWatch,
+  type Snippet,
+  type WatchItem,
+  type WorkflowStep,
+} from "@/lib/ipc";
 import { ENV_WORDS, highlight, rank, tokenize, type Searchable } from "@/lib/paletteSearch";
 import { cn } from "@/lib/utils";
 import { useSidebar } from "@/stores/sidebar";
 import { insertSnippet, useSnippets } from "@/stores/snippets";
 import { snippetVisible, useTeam, useTeamServers } from "@/stores/team";
 import { useStatus } from "@/stores/status";
-import { openLocalShell, openServer, toggleBroadcast, useTabs, type Tab } from "@/stores/tabs";
+import { openLocalShell, openServer, openSsh, toggleBroadcast, useTabs, type Tab } from "@/stores/tabs";
 import { toastError } from "@/stores/toasts";
 import { openServerShell, whereOf } from "@/lib/fleet";
 import { useFleetUi } from "@/stores/fleetUi";
@@ -24,17 +38,24 @@ import { useConfig } from "@/stores/config";
 import { useWorkflows } from "@/stores/workflows";
 import { useUi } from "@/stores/ui";
 import { reopenClosed } from "@/stores/session";
+import { actionOf } from "@/components/watch/Watch";
 
 type Item = Searchable & { key: string } & (
     | { type: "action"; server: Server; app: App | null; action: Action }
     | { type: "snippet"; snippet: Snippet }
     | { type: "tab"; tab: Tab }
     | { type: "app"; server: Server; app: App }
-    | { type: "server"; server: Server }
+    | { type: "server"; server: Server; addr: string }
+    | { type: "host"; alias: string; addr: string }
+    | { type: "attention"; server: Server; item: WatchItem }
+    | { type: "finding"; server: Server; level: "crit" | "warn"; text: string; detail: string[] }
     | { type: "command"; label: string; hint?: string; run: () => void }
+    | { type: "history"; run: AuditRun }
   );
 
 // Stable empty list: a fresh `[]` from a store selector re-renders forever.
+const NO_WATCH: Record<string, ServerWatch> = {};
+const NO_ITEMS: WatchItem[] = [];
 
 const GROUPS: { type: Item["type"]; heading: string; limit: number }[] = [
   { type: "action", heading: "Actions", limit: 8 },
@@ -42,11 +63,46 @@ const GROUPS: { type: Item["type"]; heading: string; limit: number }[] = [
   { type: "tab", heading: "Open tabs", limit: 6 },
   { type: "app", heading: "Apps", limit: 5 },
   { type: "server", heading: "Servers", limit: 5 },
+  { type: "host", heading: "SSH hosts (no server in Kemudi)", limit: 4 },
+  { type: "attention", heading: "Needs attention", limit: 5 },
+  { type: "finding", heading: "Security findings", limit: 5 },
   { type: "command", heading: "Commands", limit: 6 },
+  { type: "history", heading: "History · ↵ shows it there", limit: 6 },
 ];
 
-function buildItems(servers: Server[], tabs: Tab[], snippets: Snippet[], close: () => void): Item[] {
+/** Where an ssh alias really goes: `hostname:port`, `user@` when set. */
+function addrOf(row: HostRow | undefined): string {
+  if (!row?.entry.hostname) return "";
+  const { hostname, port, user } = row.entry;
+  return `${user ? `${user}@` : ""}${hostname}${port && port !== 22 ? `:${port}` : ""}`;
+}
+
+/** Each crit/warn line of the last security check, with the info lines under it. */
+function findingsOf(watch: ServerWatch | undefined): { level: "crit" | "warn"; text: string; detail: string[]; section: string }[] {
+  const out: { level: "crit" | "warn"; text: string; detail: string[]; section: string }[] = [];
+  for (const sec of watch?.security?.value.sections ?? []) {
+    let last: (typeof out)[number] | null = null;
+    for (const l of sec.lines) {
+      if (l.level === "crit" || l.level === "warn") out.push((last = { level: l.level, text: l.text, detail: [], section: sec.title }));
+      else if (l.level === "info" && last) last.detail.push(l.text);
+      else last = null;
+    }
+  }
+  return out;
+}
+
+interface Sources {
+  servers: Server[];
+  tabs: Tab[];
+  snippets: Snippet[];
+  hosts: HostRow[];
+  watch: Record<string, ServerWatch>;
+  attention: WatchItem[];
+}
+
+function buildItems({ servers, tabs, snippets, hosts, watch, attention }: Sources, close: () => void): Item[] {
   const items: Item[] = [];
+  const hostOf = new Map(hosts.map((h) => [h.alias, h]));
   for (const snippet of snippets) {
     items.push({ type: "snippet", key: `n:${snippet.id}`, snippet, fields: [snippet.name, snippet.command, snippet.notes] });
   }
@@ -70,12 +126,38 @@ function buildItems(servers: Server[], tabs: Tab[], snippets: Snippet[], close: 
       }
       items.push({
         type: "app", key: `p:${server.id}:${app.id}`, server, app, prod: appProd,
-        fields: [app.id, app.name, server.id, server.name, ...appWords],
+        fields: [app.id, app.name, server.id, server.name, ...appWords, app.url ?? "", app.path, app.repo ?? "", app.branch ?? ""],
       });
     }
+    const row = hostOf.get(server.host);
+    const addr = addrOf(row);
     items.push({
-      type: "server", key: `s:${server.id}`, server, prod,
-      fields: [server.id, server.name, server.host, ...envWords],
+      type: "server", key: `s:${server.id}`, server, addr, prod,
+      fields: [server.id, server.name, server.host, ...envWords, addr, row?.entry.hostname ?? "", server.check?.host ?? "", server.vpnCheck?.host ?? ""],
+    });
+    // The last security check's findings: search "xmrig", "3306", "PermitRootLogin"…
+    for (const [i, f] of findingsOf(watch[server.id]).entries()) {
+      items.push({
+        type: "finding", key: `f:${server.id}:${i}`, server, level: f.level, text: f.text, detail: f.detail, prod,
+        fields: [f.text, ...f.detail, f.section, server.id, server.name],
+      });
+    }
+  }
+  // ssh aliases no server uses (`ssh` them straight away).
+  const used = new Set(servers.map((s) => s.host));
+  for (const h of hosts) {
+    if (used.has(h.alias) || /[*?]/.test(h.alias)) continue;
+    const addr = addrOf(h);
+    items.push({ type: "host", key: `h:${h.alias}`, alias: h.alias, addr, fields: [h.alias, addr, h.entry.hostname] });
+  }
+  // Needs attention (the security check's own lines are under Security findings).
+  const byId = new Map(servers.map((s) => [s.id, s]));
+  for (const a of attention) {
+    const server = byId.get(a.serverId);
+    if (!server || a.snoozedUntil || a.kind === "secops" || a.kind === "secops-warn") continue;
+    items.push({
+      type: "attention", key: `w:${a.key}`, server, item: a, prod: server.env === "prod",
+      fields: [a.text, a.detail ?? "", a.kind, server.id, server.name, a.appId ?? ""],
     });
   }
   for (const tab of tabs) {
@@ -127,9 +209,30 @@ function buildItems(servers: Server[], tabs: Tab[], snippets: Snippet[], close: 
   items.splice(
     items.findIndex((i) => i.type === "command"),
     0,
-    ...workflows.map((w) => cmd(`Workflow: ${w.name}`, () => useWorkflows.getState().run(w.id), `${w.steps.length} steps`)),
+    ...workflows.map((w) => ({
+      ...cmd(`Workflow: ${w.name}`, () => useWorkflows.getState().run(w.id), `${w.steps.length} steps`),
+      fields: [`Workflow: ${w.name}`, ...w.steps.flatMap(stepWords)],
+    })),
   );
   return items;
+}
+
+/** What a workflow step can be found by: its label, command, server, action. */
+function stepWords(step: WorkflowStep): string[] {
+  const own = [step.label ?? ""];
+  switch (step.kind) {
+    case "local":
+      return [...own, step.run];
+    case "server":
+    case "watch":
+      return [...own, step.run, step.server ?? ""];
+    case "action":
+      return [...own, step.server, step.app ?? "", step.action];
+    case "pause":
+      return [...own, step.text];
+    case "parallel":
+      return [...own, ...step.branches.flatMap(stepWords)];
+  }
 }
 
 function Hl({ text, tokens, strong = "text-foreground" }: { text: string; tokens: string[]; strong?: string }) {
@@ -156,10 +259,19 @@ function ago(ms?: number): string {
   return m < 60 ? `${m}m ago` : `${Math.round(m / 60)}h ago`;
 }
 
+/** "14:05" today, else "3 Nov". */
+function when(ms: number): string {
+  const d = new Date(ms);
+  return d.toDateString() === new Date().toDateString()
+    ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : d.toLocaleDateString([], { day: "numeric", month: "short" });
+}
+
 const itemClass =
   "flex min-h-[34px] items-center gap-2.5 rounded-[7px] px-2.5 py-[7px] text-[13px] text-muted-foreground data-[selected=true]:bg-selected";
 
-/** Design frame 1h: ⌘K over servers, apps, actions, tabs and commands. */
+/** Design frame 1h: ⌘K over servers (and where they ssh to), apps, actions, tabs, commands, what needs attention,
+ *  security findings and past commands. */
 export function CommandPalette() {
   const open = useUi((s) => s.overlay === "palette");
   const setOverlay = useUi((s) => s.setOverlay);
@@ -169,6 +281,10 @@ export function CommandPalette() {
   const teamPick = useTeam((s) => s.current);
   const snippets = useMemo(() => allSnippets.filter((s) => snippetVisible(s, teamPick)), [allSnippets, teamPick]);
   const reach = useStatus((s) => s.byServer);
+  const watch = useWatch((s) => s.snapshot?.servers ?? NO_WATCH);
+  const attention = useWatch((s) => s.snapshot?.items ?? NO_ITEMS);
+  const [hosts, setHosts] = useState<HostRow[]>([]);
+  const [history, setHistory] = useState<AuditRun[]>([]);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState("");
   const [preview, setPreview] = useState<{ key: string; command: string } | null>(null);
@@ -177,16 +293,43 @@ export function CommandPalette() {
   useEffect(() => {
     if (open) setQuery("");
     if (open && !useSnippets.getState().loaded) void useSnippets.getState().load();
+    // ~/.ssh/config can change outside Kemudi: read it each time.
+    if (open) sshHostList().then(setHosts, () => setHosts([]));
   }, [open]);
 
+  // Past commands: History's own search (3+ letters).
+  useEffect(() => {
+    const q = query.trim();
+    if (!open || q.length < 3) return setHistory([]);
+    let stale = false;
+    const t = setTimeout(() => {
+      auditList({ query: q, limit: 6 }).then(
+        (d) => !stale && setHistory(d.runs),
+        () => !stale && setHistory([]),
+      );
+    }, 150);
+    return () => {
+      stale = true;
+      clearTimeout(t);
+    };
+  }, [open, query]);
+
   const tokens = tokenize(query);
-  const items = useMemo(() => buildItems(servers, tabs, snippets, close), [servers, tabs, snippets]);
+  const items = useMemo(
+    () => [
+      ...buildItems({ servers, tabs, snippets, hosts, watch, attention }, close),
+      ...history.map((run): Item => ({ type: "history", key: `r:${run.id}`, run, prod: run.env === "prod", fields: [run.label, run.command, run.serverId] })),
+    ],
+    [servers, tabs, snippets, hosts, watch, attention, history],
+  );
   const groups = useMemo(
     () =>
       GROUPS.map((g) => {
         let list = items.filter((i) => i.type === g.type);
         // With no query, skip the long action list and show tabs/commands/servers.
-        if (tokens.length === 0 && (g.type === "action" || g.type === "app" || g.type === "snippet")) list = [];
+        if (tokens.length === 0 && g.type !== "tab" && g.type !== "server" && g.type !== "command") list = [];
+        // History already matched in the database (the whole query as one phrase).
+        if (g.type === "history") return { ...g, items: list.slice(0, g.limit) };
         return { ...g, items: rank(list, tokens, tokens.length ? g.limit : Infinity) };
       }),
     [items, tokens.join(" ")],
@@ -232,6 +375,25 @@ export function CommandPalette() {
         close();
         openServerShell(item.server);
         break;
+      case "host":
+        close();
+        openSsh(item.alias);
+        break;
+      case "attention": {
+        close();
+        const act = actionOf(item.item, item.server);
+        if (act) act.run();
+        else openServer(item.server, "overview");
+        break;
+      }
+      case "finding":
+        close();
+        openServer(item.server, "security");
+        break;
+      case "history":
+        close();
+        useTabs.getState().openHistory(item.run.command.length > 80 ? item.run.label : item.run.command);
+        break;
       case "command":
         item.run();
         break;
@@ -259,7 +421,7 @@ export function CommandPalette() {
             autoFocus
             value={query}
             onValueChange={setQuery}
-            placeholder="Run an action, jump to an app, server or tab…"
+            placeholder="Search actions, servers, IPs, apps, findings, history…"
             className="min-w-0 flex-1 bg-transparent text-[15px] text-foreground outline-none placeholder:text-subtle-foreground"
           />
           <Kbd>esc</Kbd>
@@ -395,11 +557,53 @@ function Row({
           <div className="min-w-0 flex-1 truncate">
             <Hl text={item.server.id} tokens={tokens} strong={strong} />
           </div>
-          <span className="font-mono text-[11px] text-faint-foreground">{item.server.asg ? `all instances of ${whereOf(item.server)}` : `ssh ${item.server.host}`}</span>
+          <span className="truncate font-mono text-[11px] text-faint-foreground">
+            {item.server.asg ? `all instances of ${whereOf(item.server)}` : <>ssh {item.server.host}{item.addr && <> · <Hl text={item.addr} tokens={tokens} strong="text-muted-foreground" /></>}</>}
+          </span>
           <EnvTag env={item.server.env} />
           {enter}
         </>
       );
+    case "host":
+      return (
+        <>
+          <Glyph className="font-mono text-subtle-foreground">$</Glyph>
+          <div className="min-w-0 flex-1 truncate">
+            ssh <Hl text={item.alias} tokens={tokens} strong={strong} />
+          </div>
+          {item.addr && (
+            <span className="truncate font-mono text-[11px] text-faint-foreground">
+              <Hl text={item.addr} tokens={tokens} strong="text-muted-foreground" />
+            </span>
+          )}
+          {enter}
+        </>
+      );
+    case "attention":
+    case "finding": {
+      const urgent = item.type === "finding" ? item.level === "crit" : item.item.severity === "urgent";
+      const text = item.type === "finding" ? item.text : item.item.text;
+      const sub = item.type === "finding" ? item.detail.join(" · ") : (item.item.detail ?? "");
+      return (
+        <>
+          <span className={cn("w-9 flex-none font-mono text-[10.5px] font-semibold", urgent ? "text-term-red" : "text-term-yellow")}>
+            {item.type === "finding" ? item.level.toUpperCase() : urgent ? "URGENT" : item.item.severity.toUpperCase()}
+          </span>
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <div className="truncate">
+              <Hl text={text} tokens={tokens} strong={strong} /> · <Hl text={item.server.id} tokens={tokens} strong={strong} />
+            </div>
+            {sub && (
+              <div className="truncate font-mono text-[11px] text-subtle-foreground">
+                <Hl text={sub} tokens={tokens} strong="text-muted-foreground" />
+              </div>
+            )}
+          </div>
+          <EnvTag env={item.server.env} />
+          {enter}
+        </>
+      );
+    }
     case "command":
       return (
         <>
@@ -410,5 +614,25 @@ function Row({
           {enter}
         </>
       );
+    case "history": {
+      const r = item.run;
+      return (
+        <>
+          <Glyph className={cn("font-mono", r.exitCode === 0 ? "text-term-green" : r.exitCode === null ? "text-subtle-foreground" : "text-term-red")}>
+            {r.exitCode === 0 ? "✓" : r.exitCode === null ? "·" : "✗"}
+          </Glyph>
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <div className="truncate">
+              <Hl text={r.label} tokens={tokens} strong={strong} /> · <Hl text={r.serverId} tokens={tokens} strong={strong} />
+            </div>
+            <div className="truncate font-mono text-[11px] text-subtle-foreground">
+              <Hl text={r.command.split("\n")[0] ?? ""} tokens={tokens} strong="text-muted-foreground" />
+            </div>
+          </div>
+          <span className="font-mono text-[11px] text-faint-foreground">{when(r.startedAt)}</span>
+          {enter}
+        </>
+      );
+    }
   }
 }

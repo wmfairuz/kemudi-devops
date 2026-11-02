@@ -73,7 +73,7 @@ function KindIcon({ kind, className }: { kind: string; className?: string }) {
 const SEV_TEXT = { urgent: "text-env-prod-fg", warn: "text-[#8a5a12]", info: "text-subtle-foreground" } as const;
 
 /** Where an item is looked into (and fixed). */
-function actionOf(item: WatchItem, server: Server): { label: string; run: () => void } | null {
+export function actionOf(item: WatchItem, server: Server): { label: string; run: () => void } | null {
   const go = (section: ServerSection, label: string) => ({ label, run: () => void openServer(server, section) });
   switch (item.kind) {
     case "disk":

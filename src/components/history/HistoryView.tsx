@@ -85,6 +85,14 @@ export function HistoryView() {
   const [error, setError] = useState<string | null>(null);
   const config = useConfig((s) => s.snapshot?.config);
   const tabs = useTabs((s) => s.tabs);
+  const search = useTabs((s) => s.historySearch);
+
+  // A ⌘K history hit opens here searching for it, over all time.
+  useEffect(() => {
+    if (!search) return;
+    setQuery(search.text);
+    setRange("all");
+  }, [search?.n]);
 
   const load = useCallback(() => {
     auditList({ query, env, exit, what, sinceMs: sinceMs(range), limit: 500 }).then(

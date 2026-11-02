@@ -118,7 +118,9 @@ interface TabsState {
   groups: Group[];
   activeId: string | null;
   historyOpen: boolean;
-  openHistory(): void;
+  /** A search for History to start with (⌘K hit); `n` changes on every request. */
+  historySearch: { text: string; n: number } | null;
+  openHistory(search?: string): void;
   closeHistory(): void;
   detailsOpen: boolean;
   openDetails(): void;
@@ -375,6 +377,7 @@ export const useTabs = create<TabsState>((set, get) => {
     groups: [],
     activeId: HOME_ID,
     historyOpen: false,
+    historySearch: null,
     detailsOpen: false,
     snippetsOpen: false,
     settingsSection: "general",
@@ -469,8 +472,12 @@ export const useTabs = create<TabsState>((set, get) => {
       });
     },
 
-    openHistory() {
-      set({ historyOpen: true, activeId: HISTORY_ID });
+    openHistory(search) {
+      set((s) => ({
+        historyOpen: true,
+        activeId: HISTORY_ID,
+        historySearch: search === undefined ? s.historySearch : { text: search, n: (s.historySearch?.n ?? 0) + 1 },
+      }));
     },
 
     closeHistory() {
