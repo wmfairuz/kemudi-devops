@@ -50,7 +50,7 @@ type Item = Searchable & { key: string } & (
     | { type: "attention"; server: Server; item: WatchItem }
     | { type: "finding"; server: Server; level: "crit" | "warn"; text: string; detail: string[] }
     | { type: "command"; label: string; hint?: string; run: () => void }
-    | { type: "history"; run: AuditRun }
+    | { type: "history"; run: AuditRun; serverName: string }
   );
 
 // Stable empty list: a fresh `[]` from a store selector re-renders forever.
@@ -318,7 +318,11 @@ export function CommandPalette() {
   const items = useMemo(
     () => [
       ...buildItems({ servers, tabs, snippets, hosts, watch, attention }, close),
-      ...history.map((run): Item => ({ type: "history", key: `r:${run.id}`, run, prod: run.env === "prod", fields: [run.label, run.command, run.serverId] })),
+      ...history.map((run): Item => {
+        // A server removed since keeps its id.
+        const serverName = servers.find((s) => s.id === run.serverId)?.name ?? run.serverId;
+        return { type: "history", key: `r:${run.id}`, run, serverName, prod: run.env === "prod", fields: [run.label, run.command, run.serverId, serverName] };
+      }),
     ],
     [servers, tabs, snippets, hosts, watch, attention, history],
   );
@@ -493,10 +497,10 @@ function Row({
               {" · "}
               {app && (
                 <>
-                  <Hl text={app.id} tokens={tokens} strong={strong} /> on{" "}
+                  <Hl text={app.name} tokens={tokens} strong={strong} /> on{" "}
                 </>
               )}
-              <Hl text={server.id} tokens={tokens} strong={strong} />
+              <Hl text={server.name} tokens={tokens} strong={strong} />
             </div>
             {selected && preview?.key === item.key && (
               <div className="truncate font-mono text-[11px] text-subtle-foreground">{preview.command}</div>
@@ -543,7 +547,7 @@ function Row({
       return (
         <>
           <div className="min-w-0 flex-1 truncate">
-            <Hl text={item.app.id} tokens={tokens} strong={strong} /> on <Hl text={item.server.id} tokens={tokens} strong={strong} />
+            <Hl text={item.app.name} tokens={tokens} strong={strong} /> on <Hl text={item.server.name} tokens={tokens} strong={strong} />
           </div>
           {item.app.branch && <span className="font-mono text-[11px] text-faint-foreground">{item.app.branch}</span>}
           <EnvTag env={item.app.env} />
@@ -555,7 +559,11 @@ function Row({
         <>
           <StatusDot status={reachOf(item.server.id)} className="mx-0.5" />
           <div className="min-w-0 flex-1 truncate">
-            <Hl text={item.server.id} tokens={tokens} strong={strong} />
+            <Hl text={item.server.name} tokens={tokens} strong={strong} />
+            {/* The id too: it's what workflows and history use. */}
+            <span className="ml-2 font-mono text-[11px] text-faint-foreground">
+              <Hl text={item.server.id} tokens={tokens} strong="text-muted-foreground" />
+            </span>
           </div>
           <span className="truncate font-mono text-[11px] text-faint-foreground">
             {item.server.asg ? `all instances of ${whereOf(item.server)}` : <>ssh {item.server.host}{item.addr && <> · <Hl text={item.addr} tokens={tokens} strong="text-muted-foreground" /></>}</>}
@@ -591,7 +599,7 @@ function Row({
           </span>
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             <div className="truncate">
-              <Hl text={text} tokens={tokens} strong={strong} /> · <Hl text={item.server.id} tokens={tokens} strong={strong} />
+              <Hl text={text} tokens={tokens} strong={strong} /> · <Hl text={item.server.name} tokens={tokens} strong={strong} />
             </div>
             {sub && (
               <div className="truncate font-mono text-[11px] text-subtle-foreground">
@@ -623,7 +631,7 @@ function Row({
           </Glyph>
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             <div className="truncate">
-              <Hl text={r.label} tokens={tokens} strong={strong} /> · <Hl text={r.serverId} tokens={tokens} strong={strong} />
+              <Hl text={r.label} tokens={tokens} strong={strong} /> · <Hl text={item.serverName} tokens={tokens} strong={strong} />
             </div>
             <div className="truncate font-mono text-[11px] text-subtle-foreground">
               <Hl text={r.command.split("\n")[0] ?? ""} tokens={tokens} strong="text-muted-foreground" />
