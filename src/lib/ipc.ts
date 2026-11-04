@@ -1660,6 +1660,24 @@ export const dashboardRuns = (serverId: string, appId: string): Promise<Runs> =>
 export const dashboardWorkers = (serverId: string, appId: string, start: boolean, programs: string[]): Promise<string> =>
   invoke("dashboard_workers", { serverId, appId, start, programs });
 
+/** The scheduler cron line and queue worker Kemudi would add for an app. */
+export interface RunnersPlan {
+  dir: string;
+  owner: string;
+  php: string;
+  cronFile: string;
+  cron: string;
+  workerFile: string | null;
+  worker: string;
+  supervisor: boolean;
+  /** "root", "ok" or "none". */
+  sudo: string;
+}
+export const runnersPlan = (serverId: string, appId: string): Promise<RunnersPlan> => invoke("runners_plan", { serverId, appId });
+/** Writes the scheduler's cron.d file or the worker's Supervisor program. */
+export const runnersAdd = (serverId: string, appId: string, kind: "cron" | "worker", content: string): Promise<string> =>
+  invoke("runners_add", { serverId, appId, kind, content });
+
 // ---- Pictures of apps (their URL, taken by headless Chrome on this Mac) ----
 
 export interface Shot {

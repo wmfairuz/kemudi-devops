@@ -221,6 +221,16 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   in Kemudi (see below); the Laravel version comes from composer.lock. If
   there's no working sudo, Inspect says which files it couldn't read instead
   of reporting them as absent.
+  An app with no cron line running its scheduler gets **Add the scheduler…**
+  in its Cron section, and one with no Supervisor program **Add a queue
+  worker…** in its Supervisor section: a dialog shows the file Kemudi would
+  write, as New app writes them (`/etc/cron.d/laravel-<id>`: `schedule:run`
+  every minute; `<Supervisor's include folder>/<id>-worker.conf`:
+  `queue:work`, one process), run as the owner of its `storage/` with the
+  app's PHP, in its `current/` for Deployer apps. You can edit it first;
+  Add writes only that new file (never over a different one; not when a
+  cron line already runs its scheduler), then `supervisorctl reread` and
+  `update` for a worker. Needs sudo; recorded in History.
 - **How Kemudi gets root** (Inspect, file editing, logs, queues, Discover,
   certificates, New app): as root, nothing; else passwordless `sudo -n`;
   else `sudo -n su` when sudoers allows only that (`user ALL = (root)

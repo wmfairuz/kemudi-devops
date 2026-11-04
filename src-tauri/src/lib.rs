@@ -21,6 +21,7 @@ mod preflight;
 mod pty;
 mod queues;
 mod remote_files;
+mod runners;
 mod secops;
 mod secret_cache;
 mod session;
@@ -177,6 +178,8 @@ pub fn run() {
             dashboard::dashboard_auth,
             dashboard::dashboard_runs,
             dashboard::dashboard_workers,
+            runners::runners_plan,
+            runners::runners_add,
             shots::app_shot,
             shots::app_shot_take,
             setup::setup_check,

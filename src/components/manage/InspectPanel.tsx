@@ -10,6 +10,8 @@ import { useVhostGenerator } from "@/components/manage/VhostGenerator";
 import { appInspect, errorMessage, inspectSecretsRetry, openUrl, type Env, type EnvVar } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { useServiceMenu } from "@/components/actions/ServiceMenu";
+import { RunnerProposal, RunnersDialog, type RunnerKind } from "@/components/manage/RunnersDialog";
+import { useConfig } from "@/stores/config";
 import { toastError, useToasts } from "@/stores/toasts";
 
 function ago(ms: number): string {
@@ -240,6 +242,8 @@ export function InspectPanel({
     };
   }, [serverId, path]);
 
+  const [runner, setRunner] = useState<RunnerKind | null>(null);
+  const serverName = useConfig((st) => st.snapshot?.config?.servers.find((x) => x.id === serverId)?.name) ?? serverId;
   const run = async () => {
     setBusy(true);
     try {
@@ -455,10 +459,23 @@ export function InspectPanel({
           </Section>}
 
           {programMenu.node}
+          {runner && appId && (
+            <RunnersDialog
+              serverId={serverId}
+              serverName={serverName}
+              appId={appId}
+              appName={appName}
+              prod={prod}
+              kind={runner}
+              onClose={() => setRunner(null)}
+              onAdded={() => void run()}
+            />
+          )}
           {show("supervisor") && <Section title={`Supervisor${ins.programs.length ? ` · ${ins.programs.length}` : ""}`}>
             {ins.programs.length === 0 && (
               <div className="text-[12px] text-subtle-foreground">No Supervisor program mentions {path}. Pin its file below if it uses another path.</div>
             )}
+            {ins.programs.length === 0 && appId && <RunnerProposal kind="worker" onAdd={() => setRunner("worker")} />}
             {ins.programs.map((p) => (
               <div key={`${p.file}:${p.name}`} className="flex flex-col gap-1 text-[12.5px]">
                 <div className="flex flex-wrap items-center gap-2">
@@ -559,6 +576,7 @@ export function InspectPanel({
             }
           >
             {ins.cron.length === 0 && <div className="text-[12px] text-subtle-foreground">No cron line mentions {path}.</div>}
+            {appId && !ins.cron.some((c) => c.includes("schedule:run") || c.includes("schedule:work")) && <RunnerProposal kind="cron" onAdd={() => setRunner("cron")} />}
             {ins.cron.map((c) => (
               <div key={c} className="selectable truncate font-mono text-[11.5px]" title={c}>
                 {c}
