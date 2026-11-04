@@ -65,7 +65,9 @@ interface Cursor {
 /** A Logs tab: an app's (or a server's) logs, newest at the bottom, live.
  *  A log follows its newest file, so `laravel.log` with daily files moves on
  *  to the new day's file by itself. */
-export function LogsView({ tab, visible }: { tab: Tab; visible: boolean }) {
+/** `field`: where the open log is kept on the tab (a server tab's Logs
+ *  section keeps it apart from its other sections). */
+export function LogsView({ tab, visible, field = "cwd" }: { tab: Tab; visible: boolean; field?: "cwd" | "logsPath" }) {
   const serverId = tab.serverId ?? "";
   const server = findServer(serverId);
   const appId = tab.appId ?? null;
@@ -128,7 +130,7 @@ export function LogsView({ tab, visible }: { tab: Tab; visible: boolean }) {
       setError(null);
       setSourceKey((cur) => {
         if (cur) return cur;
-        const want = tab.cwd;
+        const want = tab[field];
         if (want) {
           const i = want.lastIndexOf("/");
           const dir = want.slice(0, i) || "/";
@@ -205,7 +207,7 @@ export function LogsView({ tab, visible }: { tab: Tab; visible: boolean }) {
   useEffect(() => {
     if (!source) return;
     void openLog(source, pin);
-    useTabs.getState().update(tab.id, { cwd: keyOf(source) });
+    useTabs.getState().update(tab.id, { [field]: keyOf(source) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceKey, pin]);
 

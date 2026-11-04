@@ -6,7 +6,7 @@ import { errorMessage, serverDuplicate, type App, type Server } from "@/lib/ipc"
 import { useConfig } from "@/stores/config";
 import { toastError, useToasts } from "@/stores/toasts";
 import { useSidebar } from "@/stores/sidebar";
-import { useTabs } from "@/stores/tabs";
+import { openServer, previewServer, useTabs } from "@/stores/tabs";
 
 /** What the details page shows; a null id means "new". */
 export type DetailsTarget =
@@ -37,11 +37,41 @@ export const useManage = create<ManageState>(() => ({
   setDiscover: (discover) => useManage.setState({ discover, menu: null }),
 }));
 
-/** Show a server's/app's details (or a blank one to add) in the main area. */
+/** Show an app's details (or a blank server or app to add) in the main
+ *  area. A server's settings are its tab's Settings section. */
 export function openDetails(target: DetailsTarget): void {
-  useManage.setState({ details: target, menu: null });
   if (target.serverId) useSidebar.getState().select(target.serverId, target.kind === "app" ? target.appId : null);
+  if (target.kind === "server" && target.serverId) {
+    useManage.setState({ menu: null });
+    whenServer(target.serverId, (server) => openServer(server, "settings"));
+    return;
+  }
+  useManage.setState({ details: target, menu: null });
   useTabs.getState().openDetails();
+}
+
+/** A plain click on a server in the sidebar: its tab (a preview tab when it
+ *  has none). */
+export function showServer(server: Server): void {
+  useManage.setState({ menu: null });
+  useSidebar.getState().select(server.id, null);
+  previewServer(server);
+}
+
+/** `run` with the server once the config has it (one just added or
+ *  duplicated may not be loaded yet); nothing after 5 s. */
+function whenServer(id: string, run: (server: Server) => void): void {
+  const find = () => useConfig.getState().snapshot?.config?.servers.find((s) => s.id === id);
+  const now = find();
+  if (now) return run(now);
+  const stop = useConfig.subscribe(() => {
+    const s = find();
+    if (!s) return;
+    stop();
+    clearTimeout(timer);
+    run(s);
+  });
+  const timer = setTimeout(stop, 5000);
 }
 
 /** Kemudi's key for something new, from its name: `slug(name)` (else

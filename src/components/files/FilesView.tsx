@@ -53,13 +53,16 @@ function when(secs: number): string {
 
 /** A Files tab: browse a server's folders (sudo when they need it), open a
  *  file in the editor, download, upload by dropping files from Finder. */
-export function FilesView({ tab, visible }: { tab: Tab; visible: boolean }) {
+/** `field`: where the folder is kept on the tab (a server tab's Files
+ *  section keeps it apart from its other sections). */
+export function FilesView({ tab, visible, field = "cwd" }: { tab: Tab; visible: boolean; field?: "cwd" | "filesDir" }) {
+  const start = tab[field];
   const serverId = tab.serverId ?? "";
   const server = findServer(serverId);
   const [listing, setListing] = useState<FileListing | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [typed, setTyped] = useState(tab.cwd ?? "~");
+  const [typed, setTyped] = useState(start ?? "~");
   const [hidden, setHidden] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
   const [back, setBack] = useState<string[]>([]);
@@ -81,7 +84,7 @@ export function FilesView({ tab, visible }: { tab: Tab; visible: boolean }) {
   const [finding, setFinding] = useState(false);
   const findRef = useRef<HTMLInputElement>(null);
 
-  const dir = listing?.dir ?? tab.cwd ?? "~";
+  const dir = listing?.dir ?? start ?? "~";
   // The list uses the terminal's font (Settings ▸ Terminal).
   const term = useConfig((s) => s.snapshot?.config?.terminal);
   const font = { fontFamily: term?.fontFamily ?? 'Menlo, "SF Mono", monospace', fontSize: `${term?.fontSize ?? 14}px` };
@@ -97,7 +100,7 @@ export function FilesView({ tab, visible }: { tab: Tab; visible: boolean }) {
       setSelected(null);
       // Find results belong to the folder they were found in.
       setFound((f) => (f && f.dir !== l.dir ? null : f));
-      useTabs.getState().update(tab.id, { cwd: l.dir });
+      useTabs.getState().update(tab.id, { [field]: l.dir });
     } catch (e) {
       setError(errorMessage(e));
       setTyped(listing?.dir ?? to);
@@ -106,7 +109,7 @@ export function FilesView({ tab, visible }: { tab: Tab; visible: boolean }) {
     }
   };
   useEffect(() => {
-    void load(tab.cwd ?? "~", false);
+    void load(start ?? "~", false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverId]);
 

@@ -1,4 +1,4 @@
-import { Activity, ClipboardCheck, Eye, FolderOpen, SquareTerminal, Gauge, HeartPulse, LayoutDashboard, ListChecks, PackagePlus, ScanSearch, ScrollText } from "lucide-react";
+import { FolderOpen, ListChecks, PackagePlus, ScanSearch, ScrollText } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Btn } from "@/components/kit/Btn";
@@ -35,7 +35,6 @@ import {
   type Instance,
 } from "@/lib/ipc";
 import { bestMatch, openServerShell, whereOf } from "@/lib/fleet";
-import { useFleetUi } from "@/stores/fleetUi";
 import { triggerAction } from "@/lib/actions";
 import { cn } from "@/lib/utils";
 import { useConfig } from "@/stores/config";
@@ -46,7 +45,7 @@ import { useTeam } from "@/stores/team";
 
 const NO_TEAMS: import("@/lib/ipc").Team[] = [];
 import { useStatus } from "@/stores/status";
-import { openFiles, openHealth, openLogs, openDashboard, openMonitor, openQueues, openSetup, openTune, useTabs, openServer } from "@/stores/tabs";
+import { openFiles, openLogs, openQueues, useTabs, openServer } from "@/stores/tabs";
 import { toastError, useToasts } from "@/stores/toasts";
 import { useUi } from "@/stores/ui";
 import { useVault } from "@/stores/vault";
@@ -199,6 +198,16 @@ function shellFor(server: Server, app?: App) {
 
 
 // ------------------------------------------------------------------ server
+
+/** A server's settings: in its tab's Settings section, and (to add one) on
+ *  the details page. */
+export function ServerSettings({ server }: { server: Server }) {
+  return (
+    <div className="light-ui absolute inset-0 overflow-y-auto bg-background text-foreground">
+      <ServerDetails key={server.id} server={server} />
+    </div>
+  );
+}
 
 function ServerDetails({ server }: { server: Server | null }) {
   const [name, setName] = useState(server?.name ?? "");
@@ -422,7 +431,11 @@ function ServerDetails({ server }: { server: Server | null }) {
     }
     if (ok) {
       done(server ? `Saved ${form.name ?? form.id}` : `Added ${form.name ?? form.id}`);
-      openDetails({ kind: "server", serverId: form.id });
+      // A new one: off the details page, to its own tab (its apps to add).
+      if (!server) {
+        useTabs.getState().closeDetails();
+        openServer({ id: form.id, name: form.name ?? form.id, host: form.host, env: form.env }, "overview");
+      }
     }
   };
   const remove = async () => {
@@ -434,7 +447,8 @@ function ServerDetails({ server }: { server: Server | null }) {
     );
     if (ok && (await run(() => serverDelete(server.id)))) {
       done(`Deleted ${server.name}`);
-      useTabs.getState().closeDetails();
+      const tabs = useTabs.getState();
+      for (const t of tabs.tabs.filter((x) => x.kind === "server" && x.serverId === server.id)) tabs.close(t.id);
     }
   };
 
@@ -493,14 +507,6 @@ function ServerDetails({ server }: { server: Server | null }) {
               </Btn>
             )}
           </>
-        }
-        side={
-          server && (
-            <>
-              <ServerTools server={server} />
-              <AppsList server={server} />
-            </>
-          )
         }
       >
         <Row label="Name">
@@ -923,62 +929,9 @@ function SudoPassword({ serverId }: { serverId: string }) {
   );
 }
 
-/** The server's tools (top of the right column): a shell, and its tabs. */
-function ServerTools({ server }: { server: Server }) {
-  const tool = "justify-start";
-  return (
-    <div className="flex flex-col gap-1.5">
-      <div className="text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">Open</div>
-      <div className="flex flex-col gap-2 rounded-xl border border-divider bg-panel p-3">
-        <Btn variant="primary" className="w-full" onClick={() => openServerShell(server)}>
-          <SquareTerminal className="size-4" /> {server.asg ? "Shells on all instances" : "Open shell"}
-        </Btn>
-        <div className="grid grid-cols-3 gap-2">
-          <Btn variant="outline" className={tool} onClick={() => openServer(server, "overview")} title="What the background checks found">
-            <Eye className="size-4" /> Overview
-          </Btn>
-          <Btn variant="outline" className={tool} onClick={() => openDashboard(server)} title="Each app: maintenance mode and basic auth">
-            <LayoutDashboard className="size-4" /> Dashboard
-          </Btn>
-          <Btn variant="outline" className={tool} onClick={() => openFiles(server)}>
-            <FolderOpen className="size-4" /> Files
-          </Btn>
-          <Btn variant="outline" className={tool} onClick={() => openLogs(server)}>
-            <ScrollText className="size-4" /> Logs
-          </Btn>
-          <Btn variant="outline" className={tool} onClick={() => openMonitor(server)}>
-            <Activity className="size-4" /> Monitor
-          </Btn>
-          {!server.asg && (
-            <>
-              <Btn variant="outline" className={tool} onClick={() => openHealth(server)}>
-                <HeartPulse className="size-4" /> Health
-              </Btn>
-              <Btn variant="outline" className={tool} onClick={() => openTune(server)}>
-                <Gauge className="size-4" /> Fine-tune
-              </Btn>
-              <Btn variant="outline" className={tool} onClick={() => openSetup(server)}>
-                <ClipboardCheck className="size-4" /> Setup
-              </Btn>
-            </>
-          )}
-          {server.asg && (
-            <>
-              <Btn variant="outline" className={tool} onClick={() => useFleetUi.getState().openForward(server)} title="Forward an RDS database to 127.0.0.1 through an instance">
-                Forward DB…
-              </Btn>
-              <Btn variant="outline" className={tool} onClick={() => useFleetUi.getState().openPick(server)}>
-                One instance…
-              </Btn>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AppsList({ server }: { server: Server }) {
+/** The server's apps (its Overview): each opens its page; add, discover
+ *  or set up a new one. */
+export function AppsList({ server }: { server: Server }) {
   return (
     <div className="flex flex-col gap-1.5">
       <div className="text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">Apps on {server.name}</div>

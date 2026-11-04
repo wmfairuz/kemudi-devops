@@ -62,6 +62,12 @@ export interface Tab {
   kind: "local" | "ssh" | "action" | "monitor" | "files" | "logs" | "queues" | "health" | "tune" | "setup" | "dash" | "server";
   /** server: the section in front. */
   section?: ServerSection;
+  /** server: a preview tab (a plain click in the sidebar; italic): the next
+   *  server clicked takes its place, until you do something in it. */
+  preview?: boolean;
+  /** server: where its Files and Logs sections are (their own tabs use `cwd`). */
+  filesDir?: string;
+  logsPath?: string;
   prod: boolean;
   state: TabState;
   exitCode?: number;
@@ -85,7 +91,7 @@ export interface Group {
   workflow?: boolean;
 }
 
-export interface OpenOptions extends Pick<Tab, "title" | "kind">, Partial<Pick<Tab, "serverId" | "host" | "instance" | "cwd" | "appId" | "actionId" | "local" | "prod" | "state" | "section">> {
+export interface OpenOptions extends Pick<Tab, "title" | "kind">, Partial<Pick<Tab, "serverId" | "host" | "instance" | "cwd" | "appId" | "actionId" | "local" | "prod" | "state" | "section" | "preview">> {
   spawn: Spawner;
   intro?: string;
   /** Open without switching to it. */
@@ -324,7 +330,9 @@ export const useTabs = create<TabsState>((set, get) => {
         const groups = s.groups.map((g) =>
           g.id === host.id ? { ...g, layout: split(g.layout, into.from, tab.id, into.dir), focus: tab.id } : g,
         );
-        return { tabs: [...s.tabs, { ...tab, groupId: host.id }], groups, activeId: tab.id };
+        // A pane split next to a preview tab keeps it.
+        const kept = s.tabs.map((t) => (t.groupId === host.id && t.preview ? { ...t, preview: false } : t));
+        return { tabs: [...kept, { ...tab, groupId: host.id }], groups, activeId: tab.id };
       }
       const group: Group = { id: `g${nextGroup++}`, layout: { pane: tab.id }, focus: tab.id, color: defaultColor(tab), workflow: workflowRun || undefined };
       const groups = [...s.groups];
@@ -846,31 +854,43 @@ export function openDashboard(server: { id: string; name: string; host: string; 
   });
 }
 
-/** A server's tab: Overview (what the background checks found),
- *  Dashboard (each app's maintenance mode and basic auth), Monitor, Health,
- *  Tune and Setup. */
-export type ServerSection = "overview" | "dash" | "monitor" | "health" | "security" | "tune" | "setup";
+/** A server's tab, the server's home: Overview (what the background checks
+ *  found, its apps), Dashboard (each app's maintenance mode and basic auth),
+ *  Files, Logs, Monitor, Health, Security, Tune, Setup and Settings (the
+ *  server's own: connection, team, environment…). */
+export type ServerSection = "overview" | "dash" | "files" | "logs" | "monitor" | "health" | "security" | "tune" | "setup" | "settings";
 
 export const SERVER_SECTIONS: { id: ServerSection; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "dash", label: "Dashboard" },
+  { id: "files", label: "Files" },
+  { id: "logs", label: "Logs" },
   { id: "monitor", label: "Monitor" },
   { id: "health", label: "Health" },
   { id: "security", label: "Security" },
   { id: "tune", label: "Tune" },
   { id: "setup", label: "Setup" },
+  { id: "settings", label: "Settings" },
 ];
 
+type ServerRef = { id: string; name: string; host: string; env: string };
+
 /** The server's one tab, on `section` (one tab per server: a second open
- *  switches it). Each section can still be its own tab (`own`). */
-export function openServer(server: { id: string; name: string; host: string; env: string }, section: ServerSection = "overview"): string {
-  const { tabs, activate } = useTabs.getState();
+ *  switches it). Each section can still be its own tab (`own`). Opened like
+ *  this it's a tab to keep (a preview of it stops being one). */
+export function openServer(server: ServerRef, section: ServerSection = "overview"): string {
+  const { tabs, activate, update } = useTabs.getState();
   const same = tabs.find((t) => t.kind === "server" && t.serverId === server.id);
   if (same) {
     setSection(same.id, section);
+    if (same.preview) update(same.id, { preview: false });
     activate(same.id);
     return same.id;
   }
+  return openServerTab(server, section, false);
+}
+
+function openServerTab(server: ServerRef, section: ServerSection, preview: boolean): string {
   return useTabs.getState().open({
     kind: "server",
     title: server.name,
@@ -878,9 +898,49 @@ export function openServer(server: { id: string; name: string; host: string; env
     host: server.host,
     prod: server.env === "prod",
     section,
+    preview: preview || undefined,
     // Never attached as a terminal, so this never runs.
     spawn: () => Promise.reject(new Error("server tabs have no terminal")),
   });
+}
+
+/** A plain click on a server in the sidebar: its tab if it has one (as it
+ *  was), else a preview tab, which takes the place of the last preview (so
+ *  clicking through servers doesn't leave a tab for each). */
+export function previewServer(server: ServerRef): string {
+  const s = useTabs.getState();
+  const same = s.tabs.find((t) => t.kind === "server" && t.serverId === server.id);
+  if (same) {
+    s.activate(same.id);
+    return same.id;
+  }
+  // One alone in its tab (a pane split next to it means you kept it).
+  const old = s.tabs.find((t) => t.kind === "server" && t.preview && s.tabs.filter((x) => x.groupId === t.groupId).length === 1);
+  if (!old) return openServerTab(server, "overview", true);
+  // In its place in the strip, as a new tab (its sections start afresh).
+  const at = s.groups.findIndex((g) => g.id === old.groupId);
+  old.session.dispose();
+  useTabs.setState((st) => ({
+    tabs: st.tabs.filter((t) => t.id !== old.id),
+    groups: st.groups.filter((g) => g.id !== old.groupId),
+  }));
+  return useTabs.getState().open({
+    kind: "server",
+    title: server.name,
+    serverId: server.id,
+    host: server.host,
+    prod: server.env === "prod",
+    section: "overview",
+    preview: true,
+    at: at < 0 ? undefined : at,
+    spawn: () => Promise.reject(new Error("server tabs have no terminal")),
+  });
+}
+
+/** Keep a preview tab (you did something in it). */
+export function keepTab(tabId: string): void {
+  const t = useTabs.getState().tabs.find((x) => x.id === tabId);
+  if (t?.preview) useTabs.getState().update(tabId, { preview: false });
 }
 
 export function setSection(tabId: string, section: ServerSection): void {
@@ -888,8 +948,12 @@ export function setSection(tabId: string, section: ServerSection): void {
 }
 
 /** A section in a tab of its own (the server tab's ↗). */
-export function openSectionAlone(server: { id: string; name: string; host: string; env: string }, section: ServerSection): string | null {
+export function openSectionAlone(server: { id: string; name: string; host: string; env: string }, section: ServerSection, from?: Tab): string | null {
   switch (section) {
+    case "files":
+      return openFiles(server, { dir: from?.filesDir });
+    case "logs":
+      return openLogs(server, { path: from?.logsPath });
     case "dash":
       return openDashboard(server, true);
     case "monitor":

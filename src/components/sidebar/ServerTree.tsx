@@ -15,7 +15,7 @@ import { toastError, useToasts } from "@/stores/toasts";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/manage/Badge";
 import { AttentionBadge } from "@/components/watch/AttentionBadge";
-import { openDetails, useManage } from "@/stores/manage";
+import { openDetails, showServer, useManage } from "@/stores/manage";
 import { useSidebar } from "@/stores/sidebar";
 import { useStatus } from "@/stores/status";
 import { useTabs } from "@/stores/tabs";
@@ -378,9 +378,9 @@ function ServerGroup({ server, apps, forceOpen, next }: { server: Server; apps: 
         role="treeitem"
         aria-expanded={expanded}
         aria-selected={selected}
-        title={`${server.name} · ${whereOf(server)}\nClick: details · double-click: ${server.asg ? "shells on all instances" : "ssh"} · right-click: more`}
+        title={`${server.name} · ${whereOf(server)}\nClick: its tab · double-click: ${server.asg ? "shells on all instances" : "ssh"} · right-click: more`}
         onClick={() => {
-          openDetails({ kind: "server", serverId: server.id });
+          showServer(server);
           if (!expanded) toggle(server.id);
         }}
         onDoubleClick={() => openShell(server)}

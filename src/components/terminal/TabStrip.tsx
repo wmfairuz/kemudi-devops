@@ -15,7 +15,7 @@ import { ColorDot, openTabConfig, useTabConfigs } from "@/components/tabconfigs/
 import { errorMessage, tabConfigsList, type TabConfigEntry } from "@/lib/ipc";
 import { toastError } from "@/stores/toasts";
 import { PILL, PILL_OFF, PILL_ON, PILL_ON_DARK } from "@/components/kit/capsule";
-import { HOSTS_ID, SETTINGS_ID, DETAILS_ID, HISTORY_ID, HOME_ID, SNIPPETS_ID, WORKFLOWS_ID, groupOf, isViewTab, openLocalShell, toggleBroadcast, useTabs, type Group, type Tab } from "@/stores/tabs";
+import { HOSTS_ID, SETTINGS_ID, DETAILS_ID, HISTORY_ID, HOME_ID, SNIPPETS_ID, WORKFLOWS_ID, groupOf, isViewTab, keepTab, openLocalShell, toggleBroadcast, useTabs, type Group, type Tab } from "@/stores/tabs";
 import { useUi } from "@/stores/ui";
 
 /** Dracula hues on a dark tab, the Alucard (light Dracula) ones on a light
@@ -86,7 +86,7 @@ function TabItem({ tab, group, panes, active }: { tab: Tab; group: Group; panes:
       onAuxClick={(e) => {
         if (e.button === 1) closeGroup(group.id);
       }}
-      onDoubleClick={() => setEditing(true)}
+      onDoubleClick={() => (tab.preview ? keepTab(tab.id) : setEditing(true))}
       onContextMenu={(e) => {
         e.preventDefault();
         activate(tab.id);
@@ -119,7 +119,9 @@ function TabItem({ tab, group, panes, active }: { tab: Tab; group: Group; panes:
           className="w-36 min-w-0 rounded-sm bg-muted px-1 text-foreground outline-none ring-1 ring-ring"
         />
       ) : (
-        <span className="truncate">{tab.title}</span>
+        <span className={cn("truncate", tab.preview && "italic")} title={tab.preview ? `${tab.title} · preview: the next server you click takes its place; double-click to keep it` : undefined}>
+          {tab.title}
+        </span>
       )}
       {tab.state === "failed" && tab.exitCode !== undefined && (
         <span className="font-mono text-[10.5px] text-term-red">{tab.exitCode}</span>
@@ -160,6 +162,7 @@ function TabItem({ tab, group, panes, active }: { tab: Tab; group: Group; panes:
           onClose={() => setMenu(null)}
           groups={[
             [
+              ...(tab.preview ? [{ label: "Keep tab", run: () => keepTab(tab.id) }] : []),
               { label: "Rename tab…", run: () => setEditing(true) },
               ...(terminals > 0 ? [{ label: "Save as tab config…", run: () => void saveTabAsConfig(group.id) }] : []),
             ],

@@ -86,17 +86,17 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
 (marked STALE) and shows the error with its line number.
 
 - **Servers and apps in the sidebar** (Querious-style rows with initials):
-  **click** one for its details page in the main area (edit the fields, Save,
-  **Open shell**, Delete…; a server's page lists its apps with + Add app),
+  **click** a server for its tab (below), an app for its page in the main
+  area (edit the fields, Save, **Open shell**, Delete…),
   **double-click** to ssh straight in (into the app's path for an app),
   **right-click** for Details… / Add app… / Duplicate / Delete…. The arrows button next to **+** collapses or expands every server (so does ⌥-clicking a server's arrow). **Duplicate**
-  (also on the server's page) copies a server right after itself, with its
+  (also in the server's Settings) copies a server right after itself, with its
   connection, apps and actions, as "<name> copy" and opens it, so you change
   only what differs (say, the AWS profile for production). The **+** next to
   *Servers* adds one. Kemudi edits only the lines it must, keeps your
   comments, and checks the result before writing it; with no servers.yaml
   yet, the first server creates it.
-- **Server groups**: give servers a `group:` (on the server's page, right-click ▸
+- **Server groups**: give servers a `group:` (in the server's Settings, right-click ▸
   **Group…**, or drag a server onto a group's heading) and the sidebar lists them
   under that heading. Ungrouped servers come first. Click a heading to open or
   close it. Right-click one to **Rename…** it (or merge it into an existing group)
@@ -167,15 +167,25 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   all; Settings ▸ Checks can give it its own interval (off by default) and
   set the secops folder (default `~/.claude/skills/secops`, the script in
   its `scripts/`). Not on AWS groups yet.
-- **A server's tab** (one per server): **Overview** (what the background
-  checks last found: disks, load and memory, updates, certificates, apps,
-  setup, and its Needs attention; nothing is read from the server to show
-  it; *Check now*), **Dashboard**, **Monitor**, **Health**, **Security**,
-  **Tune** and **Setup**. Monitor, Health… from a menu or the server's page open that
+- **A server's tab** (one per server, its home; clicking the server in the
+  sidebar opens it): **Overview** (its Needs attention, its apps with
+  + Add app / Discover apps… / New app…, and what the background checks
+  last found: disks, load and memory, updates, certificates, apps, setup;
+  nothing is read from the server to show it; *Check now*), **Dashboard**,
+  **Files**, **Logs**, **Monitor**, **Health**, **Security**, **Tune**,
+  **Setup** and **Settings** (the server's own: name, SSH host, team,
+  environment, VPN, tab colour…; Save, Duplicate, Delete…). **Open shell**
+  is at the right of the section bar. Monitor, Health… from a menu open that
   section; a section you've looked at stays loaded while you switch, so
   going back doesn't read the server again. ⌘-click a section (or ↗) for a
   tab of its own. The sidebar's ⚠ badge (red: urgent, amber: a warning)
   opens the Overview.
+  A plain click in the sidebar opens a **preview tab** (its name in
+  italics): the next server you click takes its place, so clicking through
+  servers doesn't leave a tab for each. It becomes a normal tab once you do
+  something in it (pick a section, click or type in it), double-click it,
+  or right-click ▸ **Keep tab**; a server that already has a tab just
+  switches to it.
 - **Git remote per app** (`repo:`): on the app's page, **Detect** reads
   `git remote get-url origin` in the app's path over ssh (read-only), **Open ↗**
   opens it in the browser; usable as `{{ app.repo }}`. Credentials in a clone
@@ -254,7 +264,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   stays and you're told. On success, **Reload now** (test & reload, with
   the usual confirm) or **Restore the backup**. A wildcard vhost shows a
   note that it serves every matching app.
-- **Files** (server/app page ▸ *Files*, or right-click a server or app): a
+- **Files** (a server tab ▸ *Files*, an app page ▸ *Files*, or right-click a server or app): a
   file explorer tab on the server, starting in the app's folder (or home).
   Folders that need root are listed with sudo (the saved sudo password
   works). Double-click a folder to open it, a file to open it in the editor
@@ -302,7 +312,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   show only its servers / snippets (*All teams* shows everything, *No team*
   the servers without one). *New team…* / *Edit…* / *Delete…* from the same
   menu: a name, an ID and a colour (its initials badge, and the tab colour of
-  its servers that set none). A server's page has a **Team** choice; a new
+  its servers that set none). A server's Settings have a **Team** choice; a new
   server starts in the team in front. A team has its own **shared actions**:
   the Actions panel shows *All apps in <team>* and *All servers in <team>*
   next to the global shared lists (a team action with the same ID as a
@@ -428,7 +438,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   actions and settings); nothing on either server changes. If the other
   server already has an app with that id, it becomes `<id>-2`. Dragging is
   off while the sidebar filter is in use.
-- **Discover apps** (server page ▸ *Apps on …* ▸ *Discover apps…*, or
+- **Discover apps** (a server tab ▸ Overview ▸ *Discover apps…*, or
   right-click a server): looks around the server (read-only) for Laravel
   apps: an `artisan` under /var/www, /opt, /srv, /home, following links
   (e.g. /opt/www → /mnt/…, Deployer's `current`; never `releases/`), and
@@ -441,7 +451,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   the domains it's served on (wildcard vhosts like `root
   /opt/www/x/$subdomain/public` included). Tick the ones you want, adjust
   names / IDs, *Add*. Apps already in Kemudi are listed as such.
-- **New app** (server page ▸ *Apps on …* ▸ *New app…*, or right-click a
+- **New app** (a server tab ▸ Overview ▸ *New app…*, or right-click a
   server): sets up a Laravel app on the server and adds it to Kemudi. Kemudi
   first looks at the server (read-only): PHP versions, PHP-FPM sockets, the
   login user's public keys, how its other apps are owned, MySQL users and
@@ -526,7 +536,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   cron's `php8.x … artisan`, else the lowest installed PHP composer.json
   allows. It warns when they disagree (workers on another PHP than the site)
   or when composer.json needs a newer PHP than it gets.
-- **Logs** (server/app page ▸ *Logs*, right-click a server or app, or
+- **Logs** (a server tab ▸ *Logs*, an app page ▸ *Logs*, right-click a server or app, or
   double-click a `.log` file in Files): a live log viewer. An app's tab lists
   its `storage/logs` (also under `current/` or `shared/` for release-style
   deploys) and the queue workers' logs from its Supervisor programs; a
@@ -564,7 +574,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   *Flush* need the server's name typed. Recorded in History.
   Supervisor configs are found the way Supervisor finds them (its
   `[include] files =`), including subfolders like `conf.d/<site>/*.conf`.
-- **Health** (server page ▸ *Health*, or right-click a server): read-only
+- **Health** (a server tab ▸ *Health*, or right-click a server): read-only
   checks. **SSL**: every name in the nginx/Apache vhosts (not `_`, regex or
   wildcard names), checked against the certificate actually served (from
   the server itself: `openssl s_client` to 127.0.0.1:443 with the name, no
@@ -606,7 +616,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   and reloaded, the hook is taken back out of the renewal config, and the
   temporary folder is removed. *Stop* cancels it and leaves the certificate
   as it was. Recorded in History.
-- **Fine-tune** (server page ▸ *Fine-tune*, or right-click a server): looks
+- **Fine-tune** (a server tab ▸ *Tune*, or right-click a server): looks
   at the server (read-only: CPUs, RAM, swap, load; each PHP-FPM version's
   pools, how big their workers are and how often they hit
   `pm.max_children`; OPcache and memory_limit; MySQL's buffer pool against
@@ -645,7 +655,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   point to the server).
 - Edits follow symlinks for every file (e.g. a deployer `current/.env` →
   `shared/.env`), and backups made in the same second never collide.
-- **SSH key** (server page): **Install on <host>** copies one of your public
+- **SSH key** (a server's Settings): **Install on <host>** copies one of your public
   keys to the server with `ssh-copy-id -o RemoteCommand=none -i
   ~/.ssh/<key>.pub <host>` in a tab (it asks for the server's password once:
   the Fill chip works there; a key that's already there is skipped). Then
@@ -856,7 +866,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   **Test all** tests the shown hosts four at a time. Click a row to see or
   edit it (your own hosts move into Kemudi's file when edited, as below);
   hosts from other included files stay where they are.
-- **SSH hosts without editing ~/.ssh/config by hand**: in a server's page,
+- **SSH hosts without editing ~/.ssh/config by hand**: in a server's Settings,
   pick an existing SSH host (Kemudi shows what it resolves to) or type a new
   name (a new server's page has **New host from an address**, which names
   it after the server) and fill in Address, User, Port, Key and Jump host.
@@ -1029,7 +1039,7 @@ default) or as Session Manager's own user, and click **Find instances** to check
   to **Instance ids** and list them (`asg: { instances: [i-0123456789abcdef0],
   profile: acme-staging }`). Everything else works the same.
 - **One instance.** Right-click ▸ **Shell on one instance…** (also **One
-  instance…** on the server's page, and in ⌘K) lists the running instances
+  instance…** on the server's Overview, and in ⌘K) lists the running instances
   with their IPs; click one to open a shell on just that instance.
 - **Database port forwarding.** Right-click ▸ **Forward a database port…** (also
   **Forward DB…**, and in ⌘K) works like an `aws-db-fwdport` script. It lists

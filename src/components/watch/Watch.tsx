@@ -10,6 +10,8 @@ import { Spinner } from "@/components/kit/Spinner";
 import { StatusDot } from "@/components/kit/StatusDot";
 import { errorMessage, type Server, type ServerWatch, type WatchItem, type WatchSettings } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
+import { AppsList } from "@/components/manage/DetailsView";
+import { useFleetUi } from "@/stores/fleetUi";
 import { openDetails } from "@/stores/manage";
 import { useStatus } from "@/stores/status";
 import { openServer, type ServerSection } from "@/stores/tabs";
@@ -373,6 +375,18 @@ export function ServerOverview({ server }: { server: Server }) {
           <div className="flex h-10 items-center border-b border-divider px-3.5 text-[11.5px] font-semibold tracking-wide text-subtle-foreground uppercase">Needs attention</div>
           <AttentionList servers={[server]} showServer={false} empty={w ? "Nothing: all checks are fine." : "Not checked yet. Check now reads it (read-only)."} />
         </section>
+
+        <AppsList server={server} />
+        {server.asg && (
+          <div className="flex flex-wrap gap-2">
+            <Btn size="sm" variant="outline" onClick={() => useFleetUi.getState().openPick(server)}>
+              Shell on one instance…
+            </Btn>
+            <Btn size="sm" variant="outline" onClick={() => useFleetUi.getState().openForward(server)} title="Forward an RDS database to 127.0.0.1 through an instance">
+              Forward DB…
+            </Btn>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card title="Disks" at={sys?.at ?? null} section="monitor" server={server}>
