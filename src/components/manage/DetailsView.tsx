@@ -962,14 +962,11 @@ export function AppsList({
         <span className="flex-1" />
         {aside}
       </div>
-      {grid ? (
-        <>
-          {grid}
-          <div className="flex items-center gap-2 pt-3">
-            <AppsAdd server={server} />
-          </div>
-        </>
-      ) : (
+      {/* At the top: with many apps, a row at the bottom gets buried. */}
+      <div className="flex flex-wrap items-center gap-2 pb-1.5">
+        <AppsAdd server={server} />
+      </div>
+      {grid ?? (
         <div className="flex flex-col overflow-hidden rounded-xl border border-divider">
           {server.apps.map((a) => (
             <button
@@ -985,9 +982,7 @@ export function AppsList({
               {status && <span className="flex flex-none items-center gap-2 text-[12px]">{status(a)}</span>}
             </button>
           ))}
-          <div className="flex items-center gap-2 px-3 py-2">
-            <AppsAdd server={server} />
-          </div>
+          {server.apps.length === 0 && <div className="px-3 py-2 text-[12px] text-subtle-foreground">No apps yet.</div>}
         </div>
       )}
     </div>

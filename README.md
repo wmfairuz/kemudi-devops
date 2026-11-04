@@ -172,7 +172,8 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   certificates, apps (how many, and which have APP_DEBUG on, maintenance or
   a missing folder; Open goes to Apps), setup;
   nothing is read from the server to show it; *Check now*), **Apps** (its
-  apps, with + Add app / Discover apps… / New app… and what the checks found
+  apps, with + Add app / Discover apps… / New app… at the top (under the
+  title, so they stay in reach with many apps) and what the checks found
   in each: APP_ENV, APP_DEBUG on, maintenance, folder missing; as
   **Pictures** of each app's front page, like Herd's (the default; the
   switch next to the title gives a **List**): taken
