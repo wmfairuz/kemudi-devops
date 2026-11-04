@@ -41,12 +41,18 @@ function Switch({ on, busy, disabled, onClick, label }: { on: boolean; busy?: bo
         onClick();
       }}
       className={cn(
-        "relative h-5 w-9 flex-none cursor-pointer rounded-full transition-colors disabled:cursor-default disabled:opacity-50",
-        on ? "bg-primary" : "bg-control-border",
+        // macOS 26's switch: a blue track and a wide white pill for a knob.
+        "relative h-[22px] w-[40px] flex-none cursor-pointer rounded-full shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.12)] transition-colors duration-200 disabled:cursor-default disabled:opacity-50",
+        on ? "bg-[#0a84ff]" : "bg-black/[0.12]",
         busy && "animate-pulse",
       )}
     >
-      <span className={cn("absolute top-0.5 size-4 rounded-full bg-white shadow transition-[left]", on ? "left-[18px]" : "left-0.5")} />
+      <span
+        className={cn(
+          "absolute top-[2px] h-[18px] w-[24px] rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.25),0_0_0_0.5px_rgba(0,0,0,0.06)] transition-[left] duration-200 ease-out",
+          on ? "left-[14px]" : "left-[2px]",
+        )}
+      />
     </button>
   );
 }
