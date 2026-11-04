@@ -47,7 +47,7 @@ export function TextInput({
   );
 }
 
-/** Pick one of a few values (env, VPN). */
+/** Pick one of a few values (env, VPN): a capsule, like the toolbar's. */
 export function Segmented<T extends string>({
   value,
   options,
@@ -60,7 +60,11 @@ export function Segmented<T extends string>({
   label: string;
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="flex w-fit rounded-md border border-control-border p-0.5">
+    <div
+      role="radiogroup"
+      aria-label={label}
+      className="flex w-fit items-center gap-0.5 rounded-full border border-black/[0.08] bg-background p-[3px] shadow-[0_1px_2px_rgba(0,0,0,0.06),0_2px_8px_rgba(0,0,0,0.05)] in-[.dracula]:border-white/10"
+    >
       {options.map((o) => {
         const on = o.value === value;
         return (
@@ -71,8 +75,8 @@ export function Segmented<T extends string>({
             aria-checked={on}
             onClick={() => onChange(o.value)}
             className={cn(
-              "h-6 rounded-[4px] px-2.5 text-[11.5px] transition-colors",
-              on ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-hover-strong hover:text-foreground",
+              "h-6 cursor-pointer rounded-full px-3 text-[11.5px] whitespace-nowrap transition-colors active:scale-[0.97]",
+              on ? "bg-primary font-medium text-primary-foreground" : "text-muted-foreground hover:bg-hover-strong hover:text-foreground",
             )}
           >
             {o.label}

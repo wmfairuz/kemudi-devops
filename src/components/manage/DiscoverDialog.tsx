@@ -86,7 +86,7 @@ export function DiscoverDialog({ server, onClose }: { server: { id: string; name
           url: r.url,
           vhostFiles: r.vhostFiles,
           supervisorFiles: r.supervisorFiles,
-        });
+        }, "discover");
         ok++;
         update(r.path, { added: true, pick: false, error: undefined });
       } catch (e) {

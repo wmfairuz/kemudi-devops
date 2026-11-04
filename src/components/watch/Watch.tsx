@@ -8,13 +8,13 @@ import { EnvTag } from "@/components/kit/EnvTag";
 import { PopupMenu } from "@/components/kit/PopupMenu";
 import { Spinner } from "@/components/kit/Spinner";
 import { StatusDot } from "@/components/kit/StatusDot";
-import { errorMessage, openUrl, type App, type Server, type ServerWatch, type WatchItem, type WatchSettings } from "@/lib/ipc";
+import { appsLog, errorMessage, openUrl, type App, type AppsLog, type Env, type Server, type ServerWatch, type WatchItem, type WatchSettings } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/manage/Badge";
 import { AppsList } from "@/components/manage/DetailsView";
 import { Group, Tool, ToolSwitch } from "@/components/kit/Toolbar";
 import { useFleetUi } from "@/stores/fleetUi";
-import { openDetails } from "@/stores/manage";
+import { openDetails, useManage } from "@/stores/manage";
 import { useStatus } from "@/stores/status";
 import { openServer, type ServerSection } from "@/stores/tabs";
 import { loadShots, shotKey, takeShot, useShots } from "@/stores/shots";
@@ -390,6 +390,7 @@ export function ServerApps({ server }: { server: Server }) {
   return (
     <div className="light-ui absolute inset-0 overflow-y-auto bg-background text-foreground">
       <div className="flex w-full flex-col gap-4 px-5 py-5">
+        <AppsStats server={server} now={now} />
         <AppsList
           server={server}
           aside={
@@ -409,6 +410,106 @@ export function ServerApps({ server }: { server: Server }) {
           grid={view === "pictures" ? <AppsGrid server={server} status={status} /> : undefined}
         />
       </div>
+    </div>
+  );
+}
+
+const DAY_S = 86400;
+
+function Stat({ label, value, sub, tone }: { label: string; value: React.ReactNode; sub?: React.ReactNode; tone?: "warn" | "bad" }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5 rounded-xl border border-divider bg-panel px-3.5 py-2.5">
+      <span className="text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">{label}</span>
+      <span className={cn("truncate text-[18px] leading-6 font-semibold tabular-nums", tone === "bad" ? "text-env-prod-fg" : tone === "warn" ? "text-[#8a5a12]" : "text-foreground")}>{value}</span>
+      {sub && <span className="truncate text-[11.5px] text-subtle-foreground">{sub}</span>}
+    </div>
+  );
+}
+
+const ENV_LABEL: Record<Env, string> = { prod: "prod", staging: "staging", qa: "QA", dev: "dev" };
+
+/** The Apps section's numbers: how many, by environment, what the checks
+ *  flagged, when Discover last looked and what was added or removed
+ *  through Kemudi (its log on this Mac). */
+function AppsStats({ server, now }: { server: Server; now: number }) {
+  const up = useWatch((s) => s.snapshot?.servers[server.id]?.updates);
+  const discovering = useManage((s) => s.discover === server.id);
+  const shots = useShots((s) => s.map);
+  const [log, setLog] = useState<AppsLog | null>(null);
+  const ids = server.apps.map((a) => a.id).join(" ");
+  useEffect(() => {
+    if (discovering) return;
+    let live = true;
+    appsLog(server.id).then(
+      (l) => live && setLog(l),
+      () => live && setLog(null),
+    );
+    return () => {
+      live = false;
+    };
+  }, [server.id, ids, discovering]);
+
+  const apps = server.apps;
+  const withUrl = apps.filter((a) => a.url).length;
+  const pictured = apps.filter((a) => shots[shotKey(server.id, a.id)]?.shot).length;
+  const envs = (["prod", "staging", "qa", "dev"] as Env[])
+    .map((e) => [e, apps.filter((a) => a.env === e).length] as const)
+    .filter(([, n]) => n > 0);
+
+  const st = up?.value.apps ?? [];
+  const debug = st.filter((x) => x.appDebug).length;
+  const down = st.filter((x) => x.downSince).length;
+  const missing = st.filter((x) => x.missing).length;
+  const flagged = new Set(st.filter((x) => x.appDebug || x.downSince || x.missing).map((x) => x.id)).size;
+  const flags = [missing && `${missing} folder missing`, debug && `${debug} APP_DEBUG on`, down && `${down} in maintenance`].filter(Boolean).join(" · ");
+
+  const lastDiscover = log?.discovers.at(-1);
+  const events = log?.events ?? [];
+  const month = events.filter((e) => e.at >= now - 30 * DAY_S);
+  const added = month.filter((e) => e.kind === "added");
+  const removed = month.filter((e) => e.kind === "removed").length;
+  const lastAdd = [...events].reverse().find((e) => e.kind === "added");
+  const nameOf = (id: string) => apps.find((a) => a.id === id)?.name ?? id;
+
+  return (
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-3">
+      <Stat label="Apps" value={apps.length} sub={apps.length ? `${withUrl} with a URL · ${pictured} pictured` : "none yet"} />
+      <Stat label="Environments" value={envs.length ? envs.map(([e, n]) => `${n} ${ENV_LABEL[e]}`).join(" · ") : "–"} />
+      <Stat
+        label="Need a look"
+        value={!up ? "–" : flagged}
+        tone={missing || down ? "bad" : debug ? "warn" : undefined}
+        sub={!up ? "not checked yet" : flagged ? flags : `all fine · checked ${agoS(up.at, now)}`}
+      />
+      <Stat
+        label="Last discover"
+        value={lastDiscover ? agoS(lastDiscover.at, now) : "never"}
+        sub={
+          lastDiscover ? (
+            <span title={new Date(lastDiscover.at * 1000).toLocaleString()}>
+              {lastDiscover.found ? `found ${lastDiscover.found} new` : "nothing new"} · {new Date(lastDiscover.at * 1000).toLocaleDateString()}
+            </span>
+          ) : (
+            "not run here yet"
+          )
+        }
+      />
+      <Stat
+        label="Added · 30 days"
+        value={log?.since ? `${added.length}${removed ? ` · ${removed} removed` : ""}` : "–"}
+        sub={
+          lastAdd ? (
+            <span title={new Date(lastAdd.at * 1000).toLocaleString()}>
+              last: {nameOf(lastAdd.appId)}, {agoS(lastAdd.at, now)}
+              {lastAdd.via ? ` (${lastAdd.via})` : ""}
+            </span>
+          ) : log?.since ? (
+            `counted since ${new Date(log.since * 1000).toLocaleDateString()}`
+          ) : (
+            "counted from the next one added"
+          )
+        }
+      />
     </div>
   );
 }

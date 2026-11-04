@@ -1013,7 +1013,7 @@ async function register(server: Server, plan: NewAppPlan, php: string, vhostFile
       url: plan.url,
       vhostFiles,
       supervisorFiles: plan.worker ? [plan.worker.file] : [],
-    });
+    }, "new app");
     useNewApp.getState().forget(server.id);
     const exists = () => !!findServer(server.id)?.apps.some((a) => a.id === plan.id);
     useToasts.getState().push(`${plan.name} is set up and added to Kemudi.`, "info", {

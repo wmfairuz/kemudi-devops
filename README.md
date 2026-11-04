@@ -173,7 +173,13 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   a missing folder; Open goes to Apps), setup;
   nothing is read from the server to show it; *Check now*), **Apps** (its
   apps, with + Add app / Discover apps… / New app… at the top right, in a
-  capsule like the title bar's, so they stay in reach with many apps) and what the checks found
+  capsule like the title bar's, so they stay in reach with many apps; above
+  them a row of numbers: how many apps (with a URL, pictured), by
+  environment, how many need a look, when Discover last ran here and what
+  it found, and apps added / removed in the last 30 days, from a small log
+  on this Mac, `apps-log.json` in the data folder, of what Discover, New app
+  and the app form did; an app added by editing servers.yaml isn't in it)
+  and what the checks found
   in each: APP_ENV, APP_DEBUG on, maintenance, folder missing; as
   **Pictures** of each app's front page, like Herd's (the default; the
   switch next to the title gives a **List**): taken

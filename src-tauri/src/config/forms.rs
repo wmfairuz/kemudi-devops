@@ -379,6 +379,7 @@ pub async fn app_save(
     server_id: String,
     original: Option<String>,
     form: AppForm,
+    via: Option<String>,
 ) -> AppResult<Snapshot> {
     required(&form.id, "An ID")?;
     required(&form.path, "The path")?;
@@ -457,7 +458,11 @@ pub async fn app_save(
                 .is_none_or(|o| o == &id || s.app(o).is_none())
         })
     })?;
-    save(&app, &state, state.config.path(), &edited)
+    let snap = save(&app, &state, state.config.path(), &edited)?;
+    if original.is_none() {
+        crate::apps_log::added(&server_id, &id, via.as_deref());
+    }
+    Ok(snap)
 }
 
 #[tauri::command]
@@ -471,7 +476,9 @@ pub async fn app_delete(
     checked(&edited, |c| {
         c.server(&server_id).is_some_and(|s| s.app(&id).is_none())
     })?;
-    save(&app, &state, state.config.path(), &edited)
+    let snap = save(&app, &state, state.config.path(), &edited)?;
+    crate::apps_log::removed(&server_id, &id);
+    Ok(snap)
 }
 
 #[derive(Debug, Deserialize)]

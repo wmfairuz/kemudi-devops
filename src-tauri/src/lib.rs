@@ -26,6 +26,7 @@ mod secops;
 mod secret_cache;
 mod session;
 mod shots;
+mod apps_log;
 mod shell_integration;
 mod snippets;
 mod ssh;
@@ -213,6 +214,7 @@ pub fn run() {
             runners::runners_add,
             shots::app_shot,
             shots::app_shot_take,
+            apps_log::apps_log,
             setup::setup_check,
             setup::setup_plan,
             setup::setup_source,

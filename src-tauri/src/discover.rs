@@ -1079,7 +1079,9 @@ pub async fn discover_apps(state: State<'_, AppState>, server_id: String) -> App
     )
     .await?;
     crate::remote_files::errors(&out)?;
-    Ok(parse(&out, &server))
+    let found = parse(&out, &server);
+    crate::apps_log::discovered(&server_id, found.len());
+    Ok(found)
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]

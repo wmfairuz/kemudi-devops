@@ -779,8 +779,18 @@ export const serversSetGroup = (ids: string[], group: string | null): Promise<Co
 /** Copy a server (apps and actions too) as `id`, named `name`, right after it. */
 export const serverDuplicate = (original: string, id: string, name: string): Promise<ConfigSnapshot> =>
   invoke("server_duplicate", { original, id, name });
-export const appSave = (serverId: string, original: string | null, form: AppForm): Promise<ConfigSnapshot> =>
-  invoke("app_save", { serverId, original, form });
+/** `via`: how a new app came ("discover", "new app"), for the Apps log. */
+export const appSave = (serverId: string, original: string | null, form: AppForm, via?: "discover" | "new app"): Promise<ConfigSnapshot> =>
+  invoke("app_save", { serverId, original, form, via: via ?? null });
+
+/** What happened to a server's apps through Kemudi (kept on this Mac). */
+export interface AppsLog {
+  discovers: { at: number; found: number }[];
+  events: { at: number; kind: "added" | "removed"; appId: string; via?: string }[];
+  /** When the log started (0: nothing recorded yet). */
+  since: number;
+}
+export const appsLog = (serverId: string): Promise<AppsLog> => invoke("apps_log", { serverId });
 export const appDelete = (serverId: string, id: string): Promise<ConfigSnapshot> =>
   invoke("app_delete", { serverId, id });
 /** Move an app before `before` (null: to the end), on its server or another
