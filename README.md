@@ -173,8 +173,9 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   a missing folder; Open goes to Apps), setup;
   nothing is read from the server to show it; *Check now*), **Apps** (its
   apps, with + Add app / Discover apps… / New app… and what the checks found
-  in each: APP_ENV, APP_DEBUG on, maintenance, folder missing; as a
-  **List** or as **Pictures** of each app's front page, like Herd's: taken
+  in each: APP_ENV, APP_DEBUG on, maintenance, folder missing; as
+  **Pictures** of each app's front page, like Herd's (the default; the
+  switch next to the title gives a **List**): taken
   by Chrome, Edge, Chromium or Brave running headless on this Mac, in a
   profile of its own, so an app behind a login shows that page; kept in
   `shots/` in the data folder and taken again when a day old, or with

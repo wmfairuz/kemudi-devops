@@ -943,18 +943,23 @@ export function AppsList({
   server,
   status,
   aside,
+  lead,
   grid,
 }: {
   server: Server;
   status?: (app: App) => React.ReactNode;
   aside?: React.ReactNode;
+  /** Right after the title (e.g. a view switch). */
+  lead?: React.ReactNode;
   /** Shown instead of the list (the Pictures view). */
   grid?: React.ReactNode;
 }) {
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center gap-2">
-        <span className="flex-1 text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">Apps on {server.name}</span>
+        <span className="text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">Apps on {server.name}</span>
+        {lead}
+        <span className="flex-1" />
         {aside}
       </div>
       {grid ? (

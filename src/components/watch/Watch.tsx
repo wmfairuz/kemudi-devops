@@ -349,9 +349,9 @@ type AppsView = "list" | "pictures";
 const VIEW_KEY = "kemudi.appsView";
 function savedView(): AppsView {
   try {
-    return localStorage.getItem(VIEW_KEY) === "pictures" ? "pictures" : "list";
+    return localStorage.getItem(VIEW_KEY) === "list" ? "list" : "pictures";
   } catch {
-    return "list";
+    return "pictures";
   }
 }
 
@@ -400,9 +400,9 @@ export function ServerApps({ server }: { server: Server }) {
                   <RefreshCw className="size-3.5" /> Retake pictures
                 </Btn>
               )}
-              <Segmented<AppsView> label="Show apps as" value={view} options={[{ value: "list", label: "List" }, { value: "pictures", label: "Pictures" }]} onChange={pick} />
             </>
           }
+          lead={<Segmented<AppsView> label="Show apps as" value={view} options={[{ value: "pictures", label: "Pictures" }, { value: "list", label: "List" }]} onChange={pick} />}
           status={status}
           grid={view === "pictures" ? <AppsGrid server={server} status={status} /> : undefined}
         />
