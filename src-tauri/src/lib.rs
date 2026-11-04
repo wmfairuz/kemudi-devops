@@ -81,6 +81,28 @@ impl AppState {
     }
 }
 
+/// Shrinks the main window to the work area of the screen it's on (and
+/// moves it inside) when it's wider or taller than that screen.
+fn fit_to_screen(app: &tauri::AppHandle) {
+    let Some(w) = app.get_webview_window("main") else { return };
+    let (Ok(Some(m)), Ok(size), Ok(pos)) = (w.current_monitor(), w.outer_size(), w.outer_position()) else {
+        return;
+    };
+    let area = m.work_area();
+    let (aw, ah) = (area.size.width, area.size.height);
+    if aw == 0 || ah == 0 || (size.width <= aw && size.height <= ah) {
+        return;
+    }
+    let (width, height) = (size.width.min(aw), size.height.min(ah));
+    let max_x = area.position.x + i32::try_from(aw - width).unwrap_or(0);
+    let max_y = area.position.y + i32::try_from(ah - height).unwrap_or(0);
+    let _ = w.set_size(tauri::PhysicalSize::new(width, height));
+    let _ = w.set_position(tauri::PhysicalPosition::new(
+        pos.x.clamp(area.position.x, max_x),
+        pos.y.clamp(area.position.y, max_y),
+    ));
+}
+
 /// `$KEMUDI_DATA_DIR`, else ~/Library/Application Support/kemudi.
 pub fn data_dir() -> Option<std::path::PathBuf> {
     match std::env::var_os("KEMUDI_DATA_DIR").filter(|v| !v.is_empty()) {
@@ -136,6 +158,15 @@ pub fn run() {
                 }
                 Err(e) => eprintln!("kemudi: config hot-reload disabled: {e}"),
             }
+            // A size saved across two screens (or a bigger one since gone)
+            // comes back wider than the screen: fit it to the one it's on.
+            fit_to_screen(app.handle());
+            let later = app.handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(400));
+                let h = later.clone();
+                let _ = later.run_on_main_thread(move || fit_to_screen(&h));
+            });
             preflight::start_poller(app.handle().clone());
             watch::start(app.handle().clone());
             Ok(())
