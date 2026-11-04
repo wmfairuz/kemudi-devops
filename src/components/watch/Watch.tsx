@@ -1,6 +1,6 @@
 // The background checks' results, shown: Needs attention (Home and a
 // server's Overview), the fleet grid (Home) and a server's Overview.
-import { AlertTriangle, BellOff, ExternalLink, Bug, Cpu, Database, HardDrive, Lock, MemoryStick, RefreshCw, RotateCw, ShieldAlert, Unplug, Wrench } from "lucide-react";
+import { AlertTriangle, BellOff, ExternalLink, Bug, Cpu, Database, HardDrive, Lock, MemoryStick, RefreshCw, RotateCw, Search, ShieldAlert, Unplug, Wrench, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Btn } from "@/components/kit/Btn";
@@ -8,13 +8,14 @@ import { EnvTag } from "@/components/kit/EnvTag";
 import { PopupMenu } from "@/components/kit/PopupMenu";
 import { Spinner } from "@/components/kit/Spinner";
 import { StatusDot } from "@/components/kit/StatusDot";
-import { appsLog, errorMessage, openUrl, type App, type AppsLog, type Env, type Server, type ServerWatch, type WatchItem, type WatchSettings } from "@/lib/ipc";
+import { appsLog, errorMessage, openUrl, type App, type AppsLog, type AppSwitches, type Env, type Server, type ServerWatch, type WatchUpdates, type WatchItem, type WatchSettings } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/manage/Badge";
 import { AppsList } from "@/components/manage/DetailsView";
 import { Group, Tool, ToolSwitch } from "@/components/kit/Toolbar";
 import { AppSwitchesCompact, ServerNotes } from "@/components/dashboard/AppSwitches";
-import { ensureDash } from "@/stores/dash";
+import { ensureDash, useDash } from "@/stores/dash";
+import { CAPSULE } from "@/components/kit/capsule";
 import { useFleetUi } from "@/stores/fleetUi";
 import { openDetails, useManage } from "@/stores/manage";
 import { useStatus } from "@/stores/status";
@@ -379,6 +380,10 @@ export function ServerApps({ server }: { server: Server }) {
       // Just for now, then.
     }
   };
+  const [f, setF] = useState<AppFilter>(NO_FILTER);
+  const dash = useDash((s) => s.servers[server.id]?.data);
+  const facts = (a: App) => appFacts(up?.value.apps.find((x) => x.id === a.id), dash?.apps.find((x) => x.appId === a.id));
+  const shown = server.apps.filter((a) => matches(a, facts(a), f));
   const status = (a: App) => {
     const st = up?.value.apps.find((x) => x.id === a.id);
     if (!st) return <Dim>–</Dim>;
@@ -394,10 +399,20 @@ export function ServerApps({ server }: { server: Server }) {
   return (
     <div className="light-ui absolute inset-0 overflow-y-auto bg-background text-foreground">
       <div className="flex w-full flex-col gap-4 px-5 py-5">
-        <AppsStats server={server} now={now} />
+        <AppsStats server={server} now={now} onFilter={(g) => setF({ ...NO_FILTER, ...g })} />
         <ServerNotes server={server} />
+        {server.apps.length > 0 && <AppsFilterBar apps={server.apps} facts={facts} f={f} setF={setF} />}
         <AppsList
           server={server}
+          apps={shown}
+          empty={
+            <>
+              No apps match.{" "}
+              <button className="cursor-pointer text-primary hover:underline" onClick={() => setF(NO_FILTER)}>
+                Clear the filter
+              </button>
+            </>
+          }
           aside={
             <>
               <span className="text-[11px] text-subtle-foreground">{up ? `checked ${agoS(up.at, now)}` : "not checked yet"}</span>
@@ -413,18 +428,113 @@ export function ServerApps({ server }: { server: Server }) {
           lead={<ToolSwitch<AppsView> label="Show apps as" value={view} options={[{ value: "pictures", label: "Pictures" }, { value: "list", label: "List" }]} onChange={pick} />}
           status={status}
           extra={(a) => <AppSwitchesCompact server={server} app={a} />}
-          grid={view === "pictures" ? <AppsGrid server={server} status={status} /> : undefined}
+          grid={view === "pictures" ? <AppsGrid server={server} apps={shown} status={status} /> : undefined}
         />
       </div>
     </div>
   );
 }
 
+// ------------------------------------------------------------ filter
+
+type AppFilter = { q: string; env: Env | null; live: "live" | "down" | null; auth: "on" | "off" | null; look: boolean };
+const NO_FILTER: AppFilter = { q: "", env: null, live: null, auth: null, look: false };
+
+/** What an app's filters look at: the background checks (its .env) and
+ *  the switches (maintenance mode, basic auth) as last read. */
+type Facts = { down: boolean | null; auth: boolean | null; look: boolean };
+type ServerWatchApp = WatchUpdates["apps"][number];
+function appFacts(st: ServerWatchApp | undefined, sw: AppSwitches | undefined): Facts {
+  const down = sw?.laravel ? sw.down : st ? !!st.downSince : null;
+  const auth = sw ? (sw.auth.state === "on" || sw.auth.state === "partial" ? true : sw.auth.state === "off" ? false : null) : null;
+  return { down, auth, look: !!st && (st.missing || !!st.appDebug || !!st.downSince) };
+}
+
+function matches(a: App, x: Facts, f: AppFilter): boolean {
+  if (f.env && a.env !== f.env) return false;
+  if (f.live && x.down !== (f.live === "down")) return false;
+  if (f.auth && x.auth !== (f.auth === "on")) return false;
+  if (f.look && !x.look) return false;
+  const hay = `${a.name} ${a.id} ${a.url ?? ""} ${a.path}`.toLowerCase();
+  return f.q
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((w) => hay.includes(w));
+}
+
+/** Find an app (name, URL, folder) and filter by environment, live or
+ *  maintenance, basic auth, and what the checks flagged. A chip again
+ *  clears it. */
+function AppsFilterBar({ apps, facts, f, setF }: { apps: App[]; facts: (a: App) => Facts; f: AppFilter; setF: (f: AppFilter) => void }) {
+  const all = apps.map((a) => [a, facts(a)] as const);
+  const count = (g: Partial<AppFilter>) => all.filter(([a, x]) => matches(a, x, { ...NO_FILTER, ...g })).length;
+  const envs = (["prod", "staging", "qa", "dev"] as Env[]).filter((e) => apps.some((a) => a.env === e));
+  const any = f.q !== "" || f.env || f.live || f.auth || f.look;
+  const chip = (label: string, on: boolean, n: number, flip: () => void, title?: string) => (
+    <button
+      key={label}
+      type="button"
+      title={title}
+      onClick={flip}
+      disabled={!on && n === 0}
+      className={cn(
+        "flex h-[26px] flex-none cursor-pointer items-center gap-1.5 rounded-full px-2.5 text-[12px] whitespace-nowrap transition-colors active:scale-[0.97] disabled:cursor-default disabled:opacity-40",
+        on ? "bg-primary font-medium text-primary-foreground" : "text-foreground/80 enabled:hover:bg-hover-strong enabled:hover:text-foreground",
+      )}
+    >
+      {label}
+      <span className={cn("font-mono text-[10.5px]", on ? "text-primary-foreground/80" : "text-faint-foreground")}>{n}</span>
+    </button>
+  );
+  const group = (children: React.ReactNode) => <div className={cn("flex h-[32px] flex-none items-center gap-0.5 px-[3px]", CAPSULE)}>{children}</div>;
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <label className={cn("flex h-[32px] w-[260px] min-w-[180px] items-center gap-2 px-3", CAPSULE)}>
+        <Search className="size-[15px] flex-none text-subtle-foreground" strokeWidth={1.6} />
+        <input
+          value={f.q}
+          onChange={(e) => setF({ ...f, q: e.target.value })}
+          onKeyDown={(e) => e.key === "Escape" && setF({ ...f, q: "" })}
+          placeholder="Find an app (name, URL, folder)"
+          spellCheck={false}
+          className="min-w-0 flex-1 bg-transparent text-[12.5px] outline-none placeholder:text-faint-foreground"
+        />
+        {f.q && (
+          <button className="cursor-pointer text-subtle-foreground hover:text-foreground" onClick={() => setF({ ...f, q: "" })} aria-label="Clear the search">
+            <X className="size-3.5" />
+          </button>
+        )}
+      </label>
+      {envs.length > 1 && group(envs.map((e) => chip(ENV_LABEL[e], f.env === e, count({ env: e }), () => setF({ ...f, env: f.env === e ? null : e }))))}
+      {group([
+        chip("Live", f.live === "live", count({ live: "live" }), () => setF({ ...f, live: f.live === "live" ? null : "live" })),
+        chip("Maintenance", f.live === "down", count({ live: "down" }), () => setF({ ...f, live: f.live === "down" ? null : "down" })),
+      ])}
+      {group([
+        chip("Auth on", f.auth === "on", count({ auth: "on" }), () => setF({ ...f, auth: f.auth === "on" ? null : "on" }), "Basic auth on (for all or some of its server blocks)"),
+        chip("Auth off", f.auth === "off", count({ auth: "off" }), () => setF({ ...f, auth: f.auth === "off" ? null : "off" }), "Basic auth off (ones set by hand in the vhost aren't counted)"),
+      ])}
+      {group(chip("Need a look", f.look, count({ look: true }), () => setF({ ...f, look: !f.look }), "Folder missing, APP_DEBUG on or in maintenance (the background checks)"))}
+      {any && (
+        <button className="cursor-pointer rounded-full px-2 py-1 text-[12px] text-primary hover:bg-primary/10" onClick={() => setF(NO_FILTER)}>
+          Clear
+        </button>
+      )}
+    </div>
+  );
+}
+
 const DAY_S = 86400;
 
-function Stat({ label, value, sub, tone }: { label: string; value: React.ReactNode; sub?: React.ReactNode; tone?: "warn" | "bad" }) {
+function Stat({ label, value, sub, tone, onClick, title }: { label: string; value: React.ReactNode; sub?: React.ReactNode; tone?: "warn" | "bad"; onClick?: () => void; title?: string }) {
   return (
-    <div className="flex min-w-0 flex-col gap-0.5 rounded-xl border border-divider bg-panel px-3.5 py-2.5">
+    <div
+      className={cn("flex min-w-0 flex-col gap-0.5 rounded-xl border border-divider bg-panel px-3.5 py-2.5", onClick && "cursor-pointer transition-colors hover:border-primary/40 hover:bg-hover")}
+      onClick={onClick}
+      title={title}
+      role={onClick ? "button" : undefined}
+    >
       <span className="text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">{label}</span>
       <span className={cn("truncate text-[18px] leading-6 font-semibold tabular-nums", tone === "bad" ? "text-env-prod-fg" : tone === "warn" ? "text-[#8a5a12]" : "text-foreground")}>{value}</span>
       {sub && <span className="truncate text-[11.5px] text-subtle-foreground">{sub}</span>}
@@ -437,7 +547,7 @@ const ENV_LABEL: Record<Env, string> = { prod: "prod", staging: "staging", qa: "
 /** The Apps section's numbers: how many, by environment, what the checks
  *  flagged, when Discover last looked and what was added or removed
  *  through Kemudi (its log on this Mac). */
-function AppsStats({ server, now }: { server: Server; now: number }) {
+function AppsStats({ server, now, onFilter }: { server: Server; now: number; onFilter: (f: Partial<AppFilter>) => void }) {
   const up = useWatch((s) => s.snapshot?.servers[server.id]?.updates);
   const discovering = useManage((s) => s.discover === server.id);
   const shots = useShots((s) => s.map);
@@ -480,9 +590,25 @@ function AppsStats({ server, now }: { server: Server; now: number }) {
   return (
     <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-3">
       <Stat label="Apps" value={apps.length} sub={apps.length ? `${withUrl} with a URL · ${pictured} pictured` : "none yet"} />
-      <Stat label="Environments" value={envs.length ? envs.map(([e, n]) => `${n} ${ENV_LABEL[e]}`).join(" · ") : "–"} />
+      <Stat
+        label="Environments"
+        value={
+          envs.length
+            ? envs.map(([e, n], i) => (
+                <span key={e}>
+                  {i > 0 && " · "}
+                  <button className="cursor-pointer rounded hover:text-primary hover:underline" title={`Show the ${ENV_LABEL[e]} apps`} onClick={() => onFilter({ env: e })}>
+                    {n} {ENV_LABEL[e]}
+                  </button>
+                </span>
+              ))
+            : "–"
+        }
+      />
       <Stat
         label="Need a look"
+        onClick={up && flagged ? () => onFilter({ look: true }) : undefined}
+        title={up && flagged ? "Show them" : undefined}
         value={!up ? "–" : flagged}
         tone={missing || down ? "bad" : debug ? "warn" : undefined}
         sub={!up ? "not checked yet" : flagged ? flags : `all fine · checked ${agoS(up.at, now)}`}
@@ -520,11 +646,11 @@ function AppsStats({ server, now }: { server: Server; now: number }) {
   );
 }
 
-function AppsGrid({ server, status }: { server: Server; status: (a: App) => React.ReactNode }) {
+function AppsGrid({ server, apps, status }: { server: Server; apps: App[]; status: (a: App) => React.ReactNode }) {
   const shots = useShots((s) => s.map);
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-x-5 gap-y-6">
-      {server.apps.map((a) => {
+      {apps.map((a) => {
         const e = shots[shotKey(server.id, a.id)];
         const open = () => openDetails({ kind: "app", serverId: server.id, appId: a.id });
         return (

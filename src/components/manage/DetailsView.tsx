@@ -948,8 +948,14 @@ export function AppsList({
   aside,
   lead,
   grid,
+  apps,
+  empty,
 }: {
   server: Server;
+  /** The ones to show (a filter's), else all of the server's. */
+  apps?: App[];
+  /** Shown when `apps` is empty but the server has some. */
+  empty?: React.ReactNode;
   status?: (app: App) => React.ReactNode;
   /** Under each row's path (e.g. its switches). */
   extra?: (app: App) => React.ReactNode;
@@ -959,19 +965,25 @@ export function AppsList({
   /** Shown instead of the list (the Pictures view). */
   grid?: React.ReactNode;
 }) {
+  const list = apps ?? server.apps;
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2.5">
-        <span className="text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">Apps on {server.name}</span>
+        <span className="text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">
+          Apps on {server.name}
+          {apps && apps.length !== server.apps.length && ` · ${apps.length} of ${server.apps.length}`}
+        </span>
         {lead}
         <span className="flex-1" />
         {aside}
         {/* At the top: with many apps, a row at the bottom gets buried. */}
         <AppsAdd server={server} />
       </div>
-      {grid ?? (
+      {list.length === 0 && server.apps.length > 0 ? (
+        <div className="rounded-xl border border-dashed border-divider px-4 py-6 text-center text-[12.5px] text-subtle-foreground">{empty ?? "No apps match."}</div>
+      ) : grid ?? (
         <div className="flex flex-col overflow-hidden rounded-xl border border-divider">
-          {server.apps.map((a) => (
+          {list.map((a) => (
             <div
               key={a.id}
               role="button"
