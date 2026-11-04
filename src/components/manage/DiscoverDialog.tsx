@@ -134,7 +134,8 @@ export function DiscoverDialog({ server, onClose }: { server: { id: string; name
                   setRows((list) => (list ?? []).map((r) => (ids.has(r.path) ? { ...r, pick: on } : r)));
                 }}
               />
-              {fresh.length} found
+              {shown.length === fresh.length ? `${fresh.length} found` : `${shown.length} of ${fresh.length} found`}
+              {picked.length > 0 && ` · ${picked.length} picked`}
             </label>
             <span className="flex-1" />
             <div className="relative">
@@ -154,6 +155,7 @@ export function DiscoverDialog({ server, onClose }: { server: { id: string; name
             </div>
           </div>
         )}
+        {rows && fresh.length > 0 && shown.length === 0 && <div className="py-4 text-center text-subtle-foreground">Nothing matches “{query.trim()}”.</div>}
         <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-divider empty:hidden">
           {shown.map((r) => {
             return (

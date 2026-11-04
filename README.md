@@ -169,7 +169,8 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
 - **A server's tab** (one per server, its home; clicking the server in the
   sidebar opens it): **Overview** (its Needs attention and what the
   background checks last found: disks, load and memory, updates,
-  certificates, setup;
+  certificates, apps (how many, and which have APP_DEBUG on, maintenance or
+  a missing folder; Open goes to Apps), setup;
   nothing is read from the server to show it; *Check now*), **Apps** (its
   apps, with + Add app / Discover apps… / New app… and what the checks found
   in each: APP_ENV, APP_DEBUG on, maintenance, folder missing), **Dashboard**,

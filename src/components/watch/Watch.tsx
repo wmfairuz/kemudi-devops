@@ -497,6 +497,30 @@ export function ServerOverview({ server }: { server: Server }) {
             })}
             {certs && certs.value.certs.length > 0 && <Dim>{certs.value.renew.length ? `Renewed by ${certs.value.renew.join(", ")}` : "Nothing seems to renew them"}</Dim>}
           </Card>
+          <Card title="Apps" at={up?.at ?? null} section="apps" server={server}>
+            {server.apps.length === 0 && <Dim>No apps yet: Open ▸ Discover apps… or Add app</Dim>}
+            {server.apps.length > 0 && (() => {
+              const flagged = server.apps.flatMap((a) => {
+                const st = up?.value.apps.find((x) => x.id === a.id);
+                const what = !st ? [] : st.missing ? ["folder missing"] : [...(st.downSince ? ["maintenance"] : []), ...(st.appDebug ? ["APP_DEBUG on"] : [])];
+                return what.length ? [{ a, what: what.join(", "), bad: !!st?.missing || (!!st?.appDebug && (a.env === "prod" || st.appEnv === "production")) }] : [];
+              });
+              return (
+                <>
+                  <span>
+                    {server.apps.length} app{server.apps.length === 1 ? "" : "s"}
+                    {up && <Dim>{flagged.length ? ` · ${flagged.length} to look at` : " · nothing to look at"}</Dim>}
+                  </span>
+                  {flagged.map(({ a, what, bad }) => (
+                    <div key={a.id} className="flex items-center gap-2">
+                      <span className="w-[160px] truncate">{a.name}</span>
+                      <span className={bad ? "text-env-prod-fg" : "text-subtle-foreground"}>{what}</span>
+                    </div>
+                  ))}
+                </>
+              );
+            })()}
+          </Card>
           <Card title="Setup" at={setup?.at ?? null} section="setup" server={server}>
             {!setup && <Dim>No profile, or not checked yet</Dim>}
             {setup && (
