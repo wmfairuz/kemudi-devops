@@ -108,7 +108,7 @@ export function actionOf(item: WatchItem, server: Server): { label: string; run:
       return go("security", "Security");
     case "debug":
     case "missing":
-      return item.appId ? { label: "App page", run: () => openDetails({ kind: "app", serverId: server.id, appId: item.appId }) } : null;
+      return item.appId ? { label: "App tab", run: () => openDetails({ kind: "app", serverId: server.id, appId: item.appId }) } : null;
     case "unreachable":
       return { label: "Probe again", run: () => void useStatus.getState().refresh([server.id]) };
     case "error":

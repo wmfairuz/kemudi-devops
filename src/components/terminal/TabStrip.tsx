@@ -1,4 +1,4 @@
-import { Activity, ChevronDown, Plus, ClipboardCheck, Server as ServerIcon, Settings, Columns2, Keyboard, Workflow as WorkflowIcon, FolderOpen, Gauge, HeartPulse, House, LayoutDashboard, ListChecks, Network, ScrollText, SquareTerminal } from "lucide-react";
+import { Activity, AppWindow, ChevronDown, Plus, ClipboardCheck, Server as ServerIcon, Settings, Columns2, Keyboard, Workflow as WorkflowIcon, FolderOpen, Gauge, HeartPulse, House, LayoutDashboard, ListChecks, Network, ScrollText, SquareTerminal } from "lucide-react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -39,6 +39,7 @@ const VIEW_ICONS: Partial<Record<Tab["kind"], [typeof Activity, keyof typeof HUE
   dash: [LayoutDashboard, "orange"],
   tune: [Gauge, "purple"],
   server: [ServerIcon, "cyan"],
+  app: [AppWindow, "purple"],
 };
 
 function TabIcon({ tab, dark }: { tab: Tab; dark: boolean }) {

@@ -59,13 +59,15 @@ export interface Tab {
   /** When the action (or shell) finished, for "4m ago". */
   finishedAt?: number;
   /** monitor: a server monitor (its session never starts). */
-  kind: "local" | "ssh" | "action" | "monitor" | "files" | "logs" | "queues" | "health" | "tune" | "setup" | "dash" | "server";
+  kind: "local" | "ssh" | "action" | "monitor" | "files" | "logs" | "queues" | "health" | "tune" | "setup" | "dash" | "server" | "app";
   /** server: the section in front. */
   section?: ServerSection;
-  /** server: a preview tab (a plain click in the sidebar; italic): the next
-   *  server clicked takes its place, until you do something in it. */
+  /** app: the section in front. */
+  appSection?: AppSection;
+  /** server, app: a preview tab (a plain click in the sidebar; italic): the
+   *  next server or app clicked takes its place, until you do something in it. */
   preview?: boolean;
-  /** server: where its Files and Logs sections are (their own tabs use `cwd`). */
+  /** server, app: where its Files and Logs sections are (their own tabs use `cwd`). */
   filesDir?: string;
   logsPath?: string;
   prod: boolean;
@@ -91,7 +93,7 @@ export interface Group {
   workflow?: boolean;
 }
 
-export interface OpenOptions extends Pick<Tab, "title" | "kind">, Partial<Pick<Tab, "serverId" | "host" | "instance" | "cwd" | "appId" | "actionId" | "local" | "prod" | "state" | "section" | "preview">> {
+export interface OpenOptions extends Pick<Tab, "title" | "kind">, Partial<Pick<Tab, "serverId" | "host" | "instance" | "cwd" | "appId" | "actionId" | "local" | "prod" | "state" | "section" | "appSection" | "preview" | "filesDir">> {
   spawn: Spawner;
   intro?: string;
   /** Open without switching to it. */
@@ -199,6 +201,7 @@ export interface ClosedPane {
   local?: boolean;
   prod: boolean;
   section?: ServerSection;
+  appSection?: AppSection;
 }
 
 /** A closed tab (its panes and splits), or one pane closed out of a split
@@ -223,12 +226,13 @@ function closedPane(t: Tab): ClosedPane {
     host: t.host,
     instance: t.instance,
     // A local shell comes back in the folder it was in (OSC 7).
-    cwd: local && !t.instance ? (t.session.cwd ?? t.cwd) : t.cwd,
+    cwd: t.kind === "app" ? t.filesDir : local && !t.instance ? (t.session.cwd ?? t.cwd) : t.cwd,
     serverId: t.serverId,
     appId: t.appId ?? undefined,
     local: t.local,
     prod: t.prod,
     section: t.section,
+    appSection: t.appSection,
   };
 }
 
@@ -914,9 +918,23 @@ export function previewServer(server: ServerRef): string {
     s.activate(same.id);
     return same.id;
   }
-  // One alone in its tab (a pane split next to it means you kept it).
-  const old = s.tabs.find((t) => t.kind === "server" && t.preview && s.tabs.filter((x) => x.groupId === t.groupId).length === 1);
-  if (!old) return openServerTab(server, "overview", true);
+  return openPreview({
+    kind: "server",
+    title: server.name,
+    serverId: server.id,
+    host: server.host,
+    prod: server.env === "prod",
+    section: "overview",
+    spawn: () => Promise.reject(new Error("server tabs have no terminal")),
+  });
+}
+
+/** A new preview tab, in the place of the last one (servers and apps share
+ *  it). One with a pane split next to it was kept. */
+function openPreview(opts: OpenOptions): string {
+  const s = useTabs.getState();
+  const old = s.tabs.find((t) => (t.kind === "server" || t.kind === "app") && t.preview && s.tabs.filter((x) => x.groupId === t.groupId).length === 1);
+  if (!old) return s.open({ ...opts, preview: true });
   // In its place in the strip, as a new tab (its sections start afresh).
   const at = s.groups.findIndex((g) => g.id === old.groupId);
   old.session.dispose();
@@ -924,17 +942,67 @@ export function previewServer(server: ServerRef): string {
     tabs: st.tabs.filter((t) => t.id !== old.id),
     groups: st.groups.filter((g) => g.id !== old.groupId),
   }));
-  return useTabs.getState().open({
-    kind: "server",
-    title: server.name,
+  return useTabs.getState().open({ ...opts, preview: true, at: at < 0 ? undefined : at });
+}
+
+/** An app's tab: Overview (its code, what the checks found, what Inspect
+ *  found), Web server, Supervisor, Cron, .env, Files, Logs, Queues and
+ *  Settings (its own: path, URL, branch, PHP…). */
+export type AppSection = "overview" | "web" | "supervisor" | "cron" | "env" | "files" | "logs" | "queues" | "settings";
+
+export const APP_SECTIONS: { id: AppSection; label: string }[] = [
+  { id: "overview", label: "Overview" },
+  { id: "web", label: "Web server" },
+  { id: "supervisor", label: "Supervisor" },
+  { id: "cron", label: "Cron" },
+  { id: "env", label: ".env" },
+  { id: "files", label: "Files" },
+  { id: "logs", label: "Logs" },
+  { id: "queues", label: "Queues" },
+  { id: "settings", label: "Settings" },
+];
+
+type AppRef = { id: string; name: string; path: string; env: string };
+
+function appOptions(server: ServerRef, app: AppRef, section: AppSection): OpenOptions {
+  return {
+    kind: "app",
+    title: app.name,
     serverId: server.id,
     host: server.host,
-    prod: server.env === "prod",
-    section: "overview",
-    preview: true,
-    at: at < 0 ? undefined : at,
-    spawn: () => Promise.reject(new Error("server tabs have no terminal")),
-  });
+    appId: app.id,
+    prod: app.env === "prod",
+    appSection: section,
+    filesDir: app.path,
+    spawn: () => Promise.reject(new Error("app tabs have no terminal")),
+  };
+}
+
+/** The app's one tab, on `section`; opened like this it's a tab to keep. */
+export function openApp(server: ServerRef, app: AppRef, section: AppSection = "overview"): string {
+  const { tabs, activate, update } = useTabs.getState();
+  const same = tabs.find((t) => t.kind === "app" && t.serverId === server.id && t.appId === app.id);
+  if (same) {
+    update(same.id, { appSection: section, preview: false });
+    activate(same.id);
+    return same.id;
+  }
+  return useTabs.getState().open(appOptions(server, app, section));
+}
+
+/** A plain click on an app in the sidebar: its tab, else a preview tab. */
+export function previewApp(server: ServerRef, app: AppRef): string {
+  const s = useTabs.getState();
+  const same = s.tabs.find((t) => t.kind === "app" && t.serverId === server.id && t.appId === app.id);
+  if (same) {
+    s.activate(same.id);
+    return same.id;
+  }
+  return openPreview(appOptions(server, app, "overview"));
+}
+
+export function setAppSection(tabId: string, section: AppSection): void {
+  useTabs.setState((s) => ({ tabs: s.tabs.map((t) => (t.id === tabId && t.appSection !== section ? { ...t, appSection: section } : t)) }));
 }
 
 /** Keep a preview tab (you did something in it). */
@@ -971,7 +1039,7 @@ export function openSectionAlone(server: { id: string; name: string; host: strin
 
 /** Tabs that show a view of their own, not a terminal. */
 export const isViewTab = (kind: Tab["kind"]) =>
-  kind === "monitor" || kind === "files" || kind === "logs" || kind === "queues" || kind === "health" || kind === "tune" || kind === "setup" || kind === "dash" || kind === "server";
+  kind === "monitor" || kind === "files" || kind === "logs" || kind === "queues" || kind === "health" || kind === "tune" || kind === "setup" || kind === "dash" || kind === "server" || kind === "app";
 
 /** New `ssh <host>` tab, optionally starting in a remote directory. */
 export function openSsh(

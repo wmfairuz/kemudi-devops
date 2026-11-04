@@ -1,3 +1,4 @@
+import { AppTabView } from "@/components/manage/AppTab";
 import { ServerTabView } from "@/components/watch/ServerTab";
 import { useCallback, useRef, useState } from "react";
 
@@ -133,6 +134,8 @@ function LayoutView({
           <DashboardView tab={tab} visible={visible} />
         ) : tab.kind === "server" && tab.serverId ? (
           <ServerTabView tab={tab} visible={visible} />
+        ) : tab.kind === "app" && tab.serverId && tab.appId ? (
+          <AppTabView tab={tab} visible={visible} />
         ) : tab.kind === "tune" && tab.serverId ? (
           <TuneView tab={tab} visible={visible} />
         ) : (

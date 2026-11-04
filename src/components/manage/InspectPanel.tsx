@@ -181,6 +181,8 @@ export function InspectPanel({
   supervisorFiles,
   onVhostFiles,
   onSupervisorFiles,
+  only,
+  onGo,
 }: {
   serverId: string;
   /** The saved app (for Restart's tab and History); null while adding. */
@@ -200,7 +202,13 @@ export function InspectPanel({
   supervisorFiles: string[];
   onVhostFiles: (f: string[]) => void;
   onSupervisorFiles: (f: string[]) => void;
+  /** Just one part (an app tab's section); "overview": Code and a line for
+   *  each of the others. Default: all of them. */
+  only?: InspectPart;
+  /** The overview's lines open their section. */
+  onGo?: (part: Exclude<InspectPart, "overview">) => void;
 }) {
+  const show = (p: Exclude<InspectPart, "overview">) => !only || only === p || (only === "overview" && p === "code");
   const [cached, setCached] = useState<Cached | null>(() => getCached(serverId, path));
   const programMenu = useServiceMenu(serverId, appId);
   const ins = cached?.ins ?? null;
@@ -311,7 +319,8 @@ export function InspectPanel({
       )}
       {ins && (
         <>
-          <Section title="Code">
+          {only === "overview" && <Summary ins={ins} path={path} onGo={onGo} />}
+          {show("code") && <Section title="Code">
             <div className="flex flex-col gap-1 text-[12.5px]">
               <div className="flex items-center gap-2">
                 <span className="w-[72px] text-muted-foreground">Branch</span>
@@ -335,9 +344,9 @@ export function InspectPanel({
                 <span>{ins.laravel ?? "—"}</span>
               </div>
             </div>
-          </Section>
+          </Section>}
 
-          <Section
+          {show("web") && <Section
             title={`Web server${ins.vhosts.length ? ` · ${ins.vhosts.length}` : ""}`}
             right={
               <>
@@ -439,10 +448,10 @@ export function InspectPanel({
               </div>
             ))}
             <Pins files={vhostFiles} candidates={ins.vhostCandidates ?? []} missing={ins.missing ?? []} onChange={onVhostFiles} what="vhost" />
-          </Section>
+          </Section>}
 
           {programMenu.node}
-          <Section title={`Supervisor${ins.programs.length ? ` · ${ins.programs.length}` : ""}`}>
+          {show("supervisor") && <Section title={`Supervisor${ins.programs.length ? ` · ${ins.programs.length}` : ""}`}>
             {ins.programs.length === 0 && (
               <div className="text-[12px] text-subtle-foreground">No Supervisor program mentions {path}. Pin its file below if it uses another path.</div>
             )}
@@ -518,9 +527,9 @@ export function InspectPanel({
               onChange={onSupervisorFiles}
               what="Supervisor"
             />
-          </Section>
+          </Section>}
 
-          <Section
+          {show("cron") && <Section
             title={`Cron${ins.cron.length ? ` · ${ins.cron.length}` : ""}`}
             right={
               <>
@@ -550,9 +559,9 @@ export function InspectPanel({
                 {c}
               </div>
             ))}
-          </Section>
+          </Section>}
 
-          <EnvSection
+          {show("env") && <EnvSection
             env={ins.env}
             error={ins.envError}
             secretsError={secretsError}
@@ -572,10 +581,65 @@ export function InspectPanel({
             }
             prod={prod}
             path={path}
-          />
+          />}
         </>
       )}
     </div>
+  );
+}
+
+export type InspectPart = "overview" | "code" | "web" | "supervisor" | "cron" | "env";
+
+/** An app tab's Overview: one line for each part, opening its section. */
+function Summary({ ins, path, onGo }: { ins: Cached["ins"]; path: string; onGo?: (part: Exclude<InspectPart, "overview">) => void }) {
+  const states = ins.programs.flatMap((p) => p.status.map((st) => st.split(" ")[0] ?? ""));
+  const down = states.filter((st) => st !== "RUNNING").length;
+  const vars = ins.env?.length ?? 0;
+  const lines: { part: Exclude<InspectPart, "overview">; label: string; text: React.ReactNode }[] = [
+    {
+      part: "web",
+      label: "Web server",
+      text: ins.vhosts.length ? (
+        <span className="truncate font-mono">{[...new Set(ins.vhosts.flatMap((v) => v.serverNames))].join(" ") || ins.vhosts.map((v) => v.file).join(" ")}</span>
+      ) : (
+        <span className="text-env-staging-fg">no vhost mentions {path}</span>
+      ),
+    },
+    {
+      part: "supervisor",
+      label: "Supervisor",
+      text: ins.programs.length === 0 ? (
+        <span className="text-subtle-foreground">no worker</span>
+      ) : down ? (
+        <span className="text-env-prod-fg">{down} of {states.length} not running</span>
+      ) : (
+        <span className="text-status-up">{ins.programs.map((p) => p.name).join(", ")} running</span>
+      ),
+    },
+    { part: "cron", label: "Cron", text: <span className="text-subtle-foreground">{ins.cron.length ? `${ins.cron.length} line${ins.cron.length === 1 ? "" : "s"}` : "no cron line"}</span> },
+    {
+      part: "env",
+      label: ".env",
+      text: ins.envError ? <span className="text-env-prod-fg">{ins.envError}</span> : <span className="text-subtle-foreground">{ins.env ? `${vars} variables` : "none"}</span>,
+    },
+  ];
+  return (
+    <Section title="Summary">
+      <div className="flex flex-col text-[12.5px]">
+        {lines.map((l) => (
+          <button
+            key={l.part}
+            type="button"
+            onClick={() => onGo?.(l.part)}
+            className="-mx-2 flex min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-left hover:bg-hover"
+          >
+            <span className="w-[88px] flex-none text-muted-foreground">{l.label}</span>
+            <span className="flex min-w-0 flex-1 truncate">{l.text}</span>
+            <span className="text-[11.5px] text-primary">Open</span>
+          </button>
+        ))}
+      </div>
+    </Section>
   );
 }
 

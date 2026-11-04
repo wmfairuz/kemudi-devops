@@ -86,10 +86,9 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
 (marked STALE) and shows the error with its line number.
 
 - **Servers and apps in the sidebar** (Querious-style rows with initials):
-  **click** a server for its tab (below), an app for its page in the main
-  area (edit the fields, Save, **Open shell**, Delete…),
+  **click** a server or an app for its tab (below),
   **double-click** to ssh straight in (into the app's path for an app),
-  **right-click** for Details… / Add app… / Duplicate / Delete…. The arrows button next to **+** collapses or expands every server (so does ⌥-clicking a server's arrow). **Duplicate**
+  **right-click** for Settings… / Add app… / Duplicate / Delete…. The arrows button next to **+** collapses or expands every server (so does ⌥-clicking a server's arrow). **Duplicate**
   (also in the server's Settings) copies a server right after itself, with its
   connection, apps and actions, as "<name> copy" and opens it, so you change
   only what differs (say, the AWS profile for production). The **+** next to
@@ -110,7 +109,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   - **Needs attention**: what the background checks found on the team in
     front's servers, worst first (urgent, soon, info), each with when it was
     read and one button to look into it (Monitor, Health, Dashboard, Setup,
-    the app's page). The hourly system check also warns about a service
+    the app's tab). The hourly system check also warns about a service
     that keeps failing to start (urgent on production; e.g. Supervisor
     stopped by a worker whose folder is gone, which stops every worker),
     Supervisor not running, and workers not RUNNING (FATAL, BACKOFF,
@@ -188,11 +187,24 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   something in it (pick a section, click or type in it), double-click it,
   or right-click ▸ **Keep tab**; a server that already has a tab just
   switches to it.
-- **Git remote per app** (`repo:`): on the app's page, **Detect** reads
+- **An app's tab** (one per app; clicking the app in the sidebar opens it,
+  as a preview tab like a server's: servers and apps share the one
+  preview): **Overview** (its path and URL, what Inspect found as a line
+  each for the web server, Supervisor, cron and .env, each opening its
+  section, and its Code), **Web server**, **Supervisor**, **Cron**, **.env**
+  (each what Inspect found, at full width, with its *Inspect again*),
+  **Files**, **Logs**, **Queues** and **Settings** (the app's own: name,
+  path, URL, branch, git remote, PHP, environment, tab colour; Save,
+  Delete…). **Open shell** (in the app's folder) is at the right of the bar;
+  ⌘-click Files, Logs or Queues (or ↗) for a tab of its own. In a tab, what
+  Inspect sets (a pinned vhost or Supervisor file, *Use as branch*, *Use PHP
+  …*) is saved straight away; the Settings form keeps its own unsaved
+  changes while you switch sections.
+- **Git remote per app** (`repo:`): in the app's Settings, **Detect** reads
   `git remote get-url origin` in the app's path over ssh (read-only), **Open ↗**
   opens it in the browser; usable as `{{ app.repo }}`. Credentials in a clone
   URL (`https://user:token@…`) are stripped and never saved.
-- **Inspect** (app page ▸ On the server): a read-only look at the app's folder
+- **Inspect** (an app's tab ▸ Overview, Web server, Supervisor, Cron, .env): a read-only look at the app's folder
   on the server: git branch and last commit, Laravel version, the Nginx/Apache
   vhost(s) and Supervisor programs that mention the path (with status, whole
   config files to show or copy), cron lines, and the .env (secrets hidden until
@@ -229,7 +241,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   for that launch, keeps secrets in memory only, and the .env section offers
   **Try again**. (`KEMUDI_SECRET_CACHE=off` keeps secrets in memory only and
   never touches the Keychain, for a second test copy of the app.)
-- **Edit .env** (Inspect ▸ .env ▸ Edit): a **Table** (change values, rename or
+- **Edit .env** (an app tab ▸ .env ▸ Edit): a **Table** (change values, rename or
   remove keys, add new ones; a key that's already there turns Add into
   **Set**, which changes its value; secrets masked until you show them) or **Text**
   (CodeMirror). Edits change one line at a time, so comments, blank lines,
@@ -243,8 +255,8 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   History records which keys changed, never values. If Laravel's config is
   cached, Kemudi offers **Re-cache config** (`artisan config:cache`), since
   .env changes do nothing until then; queue workers need a restart too.
-- **Edit Supervisor and cron** (Inspect ▸ Supervisor ▸ a config's *Edit*;
-  Inspect ▸ Cron ▸ *Edit* / *Add*): CodeMirror, diff review, conflict check,
+- **Edit Supervisor and cron** (an app tab ▸ Supervisor ▸ a config's *Edit*;
+  an app tab ▸ Cron ▸ *Edit* / *Add*): CodeMirror, diff review, conflict check,
   backups and prod's type-the-name, as for .env.
   - *Supervisor*: only `/etc/supervisor/…`, `/etc/supervisord.d/…` or a file
     pinned on an app. After saving, Kemudi runs `supervisorctl reread` and
@@ -256,7 +268,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
     checked as you type (5 time fields + command; + user in `/etc/crontab` and
     cron.d). A crontab is installed with `crontab -`, which rejects a bad file
     whole; its backup goes to `~/.kemudi-backups` (mode 600) on the server.
-- **Edit a vhost** (Inspect ▸ Web server ▸ a vhost's *Edit*): nginx or Apache
+- **Edit a vhost** (an app tab ▸ Web server ▸ a vhost's *Edit*): nginx or Apache
   configs under `/etc/nginx`, `/etc/apache2`, `/etc/httpd` or pinned on an
   app. A symlink (sites-enabled → sites-available) is followed, so the link
   stays. Backups go to `~/.kemudi-backups` on the server, not next to the
@@ -267,7 +279,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   stays and you're told. On success, **Reload now** (test & reload, with
   the usual confirm) or **Restore the backup**. A wildcard vhost shows a
   note that it serves every matching app.
-- **Files** (a server tab ▸ *Files*, an app page ▸ *Files*, or right-click a server or app): a
+- **Files** (a server tab ▸ *Files*, an app tab ▸ *Files*, or right-click a server or app): a
   file explorer tab on the server, starting in the app's folder (or home).
   Folders that need root are listed with sudo (the saved sudo password
   works). Double-click a folder to open it, a file to open it in the editor
@@ -524,13 +536,13 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   comment (runs from before that: read back from the script's settings).
   When it ends with exit 0 the app is added to Kemudi with its path, branch,
   PHP, repo, URL, vhost and worker files. The run is in History.
-- **URL** (app page ▸ URL; *Detect*, and in Discover): where the app is on
+- **URL** (an app's Settings ▸ URL; *Detect*, and in Discover): where the app is on
   the web. APP_URL when its vhost serves that name, else the name its vhost
   serves (from a wildcard vhost too); https when that vhost has TLS. Other
   names it answers on are offered to pick. *Open ↗* opens it in the browser,
   as does right-click an app ▸ *Open site*; usable in actions as
   `{{ app.url }}`.
-- **PHP version** (app page ▸ PHP ▸ *Detect*, and in Discover): what the web
+- **PHP version** (an app's Settings ▸ PHP ▸ *Detect*, and in Discover): what the web
   server runs the app with: its vhost's PHP-FPM socket (`php8.4-fpm.sock`),
   or for `php$phpversion-fpm.sock` the `set $phpversion …` statements (in
   the vhost or a file it includes, with `if ($http_host = "…")` per site;
@@ -539,7 +551,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   cron's `php8.x … artisan`, else the lowest installed PHP composer.json
   allows. It warns when they disagree (workers on another PHP than the site)
   or when composer.json needs a newer PHP than it gets.
-- **Logs** (a server tab ▸ *Logs*, an app page ▸ *Logs*, right-click a server or app, or
+- **Logs** (a server tab ▸ *Logs*, an app tab ▸ *Logs*, right-click a server or app, or
   double-click a `.log` file in Files): a live log viewer. An app's tab lists
   its `storage/logs` (also under `current/` or `shared/` for release-style
   deploys) and the queue workers' logs from its Supervisor programs; a
@@ -561,7 +573,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   syslog are understood too. Filter by level (All / Info+ / Warn+ /
   Errors, with counts) or text (⌘F); *Load earlier* reads the part
   before; Pause, Clear (the view only), Download and *Open folder in Files*.
-- **Queues** (app page ▸ *Queues*, or right-click an app): queue health,
+- **Queues** (an app tab ▸ *Queues*, or right-click an app): queue health,
   refreshed every 15 s while shown. **Workers**: the Supervisor programs that
   run this app (state, pid, uptime; *Restart* = `supervisorctl restart
   prog:*`), or plain / systemd `queue:work` processes. **Waiting** jobs per
@@ -643,7 +655,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   Production needs the server's name typed. **Undo last tuning** restores
   every file, MySQL and sysctl value and removes a swap file it made, then
   tests and reloads (backups in /root/.kemudi-tune/). Recorded in History.
-- **New vhost** (Inspect ▸ Web server ▸ *New vhost*; the main button when
+- **New vhost** (an app tab ▸ Web server ▸ *New vhost*; the main button when
   no vhost serves the app): a Laravel nginx vhost (only `index.php` runs;
   any other `.php` gets a 404, so a planted file neither runs nor downloads) from a few choices:
   domains, file name, root (`<app>/public`), the PHP-FPM socket (found on the
@@ -853,7 +865,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   Kemudi's zsh and bash report their folder (OSC 7) at each prompt.
 - **Tab colours**: right-click a tab for a colour (Red, Crimson, Maroon, Coral,
   Orange, Amber, Gold, Yellow, Brown, Lime, Green, Teal, Cyan, Blue, Indigo,
-  Purple, Pink, Gray), rename, split or close. A server's or app's page has a
+  Purple, Pink, Gray), rename, split or close. A server's or app's Settings have a
   *Tab colour* that new tabs for it start with (an app's wins over its
   server's); saved as `color:`.
 - **SSH hosts tab** (View ▸ SSH Hosts ⇧⌘E, ⌘K, or Home ▸ SSH hosts ▸ All
@@ -970,7 +982,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
 - An app's `branch` and `php` are optional in the sample templates: without
   them Git pull runs `git pull` on the current branch and PHP is plain `php`.
 - **Environments** `prod | staging | qa | dev` (QA in teal). A server has
-  one, and each app can set its own (app page ▸ Environment; default: the
+  one, and each app can set its own (an app's Settings ▸ Environment; default: the
   server's), e.g. a staging app on a production server. An app's actions,
   .env, cron and shell tab follow the app's; what touches the whole server
   (its ssh tab, vhosts, Supervisor, server actions, nginx/Supervisor/certbot

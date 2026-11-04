@@ -3,7 +3,7 @@
 import { sessionLoad, sessionSave } from "@/lib/ipc";
 import { ptySpawner } from "@/lib/terminalSession";
 
-import { closedTabs, openFiles, openHealth, openLogs, openMonitor, openQueues, openServer, openSetup, openDashboard, openTune, useTabs, type OpenOptions, type ServerSection, type Tab } from "./tabs";
+import { closedTabs, openApp, openFiles, openHealth, openLogs, openMonitor, openQueues, openServer, openSetup, openDashboard, openTune, useTabs, type AppSection, type OpenOptions, type ServerSection, type Tab } from "./tabs";
 import { useToasts } from "./toasts";
 import { leaves, load as loadLayout, save as saveLayout, type SavedLayout } from "@/lib/layout";
 import { isTabColor } from "@/lib/tabColors";
@@ -20,6 +20,7 @@ interface SavedTab {
   local?: boolean;
   prod: boolean;
   section?: ServerSection;
+  appSection?: AppSection;
 }
 
 interface Saved {
@@ -47,6 +48,11 @@ function restoreTab(t: SavedTab, into?: OpenOptions["into"]): string {
   if (t.kind === "monitor" && t.serverId && t.host) {
     const name = t.title.replace(/ · monitor$/, "");
     return openMonitor({ id: t.serverId, name, host: t.host, env: t.prod ? "prod" : "dev" }, true);
+  }
+  if (t.kind === "app" && t.serverId && t.appId) {
+    const env = t.prod ? "prod" : "dev";
+    // `cwd`: the app's path (where its Files section was).
+    return openApp({ id: t.serverId, name: t.serverId, host: t.host ?? "", env }, { id: t.appId, name: t.title, path: t.cwd ?? "~", env }, t.appSection ?? "overview");
   }
   if (t.kind === "server" && t.serverId) {
     return openServer({ id: t.serverId, name: t.title, host: t.host ?? "", env: t.prod ? "prod" : "dev" }, t.section ?? "overview");
@@ -210,12 +216,13 @@ export async function initSession(): Promise<void> {
           renamed: t.renamed,
           host: t.host,
           instance: t.instance,
-          cwd: t.cwd,
+          cwd: t.kind === "app" ? t.filesDir : t.cwd,
           serverId: t.serverId,
           appId: t.appId ?? undefined,
           local: t.local,
           prod: t.prod,
           section: t.section,
+          appSection: t.appSection,
         })),
         active: Math.max(0, tabs.findIndex((t) => t.id === activeId)),
         groups: groups.map((g) => ({ layout: saveLayout(g.layout, index), focus: index(g.focus), color: g.color })),

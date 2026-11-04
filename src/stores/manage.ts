@@ -6,7 +6,7 @@ import { errorMessage, serverDuplicate, type App, type Server } from "@/lib/ipc"
 import { useConfig } from "@/stores/config";
 import { toastError, useToasts } from "@/stores/toasts";
 import { useSidebar } from "@/stores/sidebar";
-import { openServer, previewServer, useTabs } from "@/stores/tabs";
+import { openApp, openServer, previewApp, previewServer, useTabs } from "@/stores/tabs";
 
 /** What the details page shows; a null id means "new". */
 export type DetailsTarget =
@@ -46,8 +46,26 @@ export function openDetails(target: DetailsTarget): void {
     whenServer(target.serverId, (server) => openServer(server, "settings"));
     return;
   }
+  // An app's page is its tab.
+  if (target.kind === "app" && target.appId) {
+    const appId = target.appId;
+    useManage.setState({ menu: null });
+    whenServer(target.serverId, (server) => {
+      const app = server.apps.find((a) => a.id === appId);
+      if (app) openApp(server, app, "overview");
+    });
+    return;
+  }
   useManage.setState({ details: target, menu: null });
   useTabs.getState().openDetails();
+}
+
+/** A plain click on an app in the sidebar: its tab (a preview tab when it
+ *  has none). */
+export function showApp(server: Server, app: App): void {
+  useManage.setState({ menu: null });
+  useSidebar.getState().select(server.id, app.id);
+  previewApp(server, app);
 }
 
 /** A plain click on a server in the sidebar: its tab (a preview tab when it

@@ -15,7 +15,7 @@ import { toastError, useToasts } from "@/stores/toasts";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/manage/Badge";
 import { AttentionBadge } from "@/components/watch/AttentionBadge";
-import { openDetails, showServer, useManage } from "@/stores/manage";
+import { openDetails, showApp, showServer, useManage } from "@/stores/manage";
 import { useSidebar } from "@/stores/sidebar";
 import { useStatus } from "@/stores/status";
 import { useTabs } from "@/stores/tabs";
@@ -499,8 +499,8 @@ function AppItem({
       }}
       role="treeitem"
       aria-selected={selected}
-      title={`${app.name} · ${whereOf(server)}:${app.path}\nClick: details · double-click: ${server.asg ? "shells on all instances" : "ssh into it"} · right-click: more`}
-      onClick={() => openDetails({ kind: "app", serverId: server.id, appId: app.id })}
+      title={`${app.name} · ${whereOf(server)}:${app.path}\nClick: its tab · double-click: ${server.asg ? "shells on all instances" : "ssh into it"} · right-click: more`}
+      onClick={() => showApp(server, app)}
       onDoubleClick={() => openShell(server, app)}
       onContextMenu={(e) => {
         e.preventDefault();

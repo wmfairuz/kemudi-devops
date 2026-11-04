@@ -5,7 +5,7 @@ import { duplicateServer, openDetails, useManage } from "@/stores/manage";
 import { useNewApp } from "@/stores/newApp";
 import { useConfig } from "@/stores/config";
 import { DiscoverDialog } from "./DiscoverDialog";
-import { openFiles, openHealth, openLogs, openMonitor, openQueues, openSetup, openDashboard, openTune, useTabs, openServer } from "@/stores/tabs";
+import { openApp, openFiles, openHealth, openLogs, openMonitor, openQueues, openSetup, openDashboard, openTune, useTabs, openServer } from "@/stores/tabs";
 import { toastError, useToasts } from "@/stores/toasts";
 import { openAsgShells, whereOf } from "@/lib/fleet";
 import { useFleetUi } from "@/stores/fleetUi";
@@ -81,8 +81,8 @@ export function EntityMenu() {
           ...(app ? [] : [{ label: "Forward a database port…", hint: "RDS → 127.0.0.1", run: () => useFleetUi.getState().openForward(server) }]),
           ...(app?.url ? [{ label: "Open site", hint: app.url.replace(/^https?:\/\//, ""), run: () => void openUrl(app.url!).catch((e) => toastError(errorMessage(e))) }] : []),
           app
-            ? { label: "Details…", run: () => openDetails({ kind: "app", serverId: server.id, appId: app.id }) }
-            : { label: "Details…", run: () => openDetails({ kind: "server", serverId: server.id }) },
+            ? { label: "Settings…", run: () => void openApp(server, app, "settings") }
+            : { label: "Settings…", run: () => openDetails({ kind: "server", serverId: server.id }) },
           ...(app
             ? []
             : [
@@ -109,7 +109,7 @@ export function EntityMenu() {
           { label: "Logs", hint: "laravel.log, live", run: () => void openLogs(server, { appId: app.id, env: app.env, title: `${app.id} · logs` }) },
           { label: "Queues", hint: "workers, failed jobs", run: () => void openQueues(server, app) },
           ...(app.url ? [{ label: "Open site", hint: app.url.replace(/^https?:\/\//, ""), run: () => void openUrl(app.url!).catch((e) => toastError(errorMessage(e))) }] : []),
-          { label: "Details…", run: () => openDetails({ kind: "app", serverId: server.id, appId: app.id }) },
+          { label: "Settings…", run: () => void openApp(server, app, "settings") },
         ],
         [{ label: "Delete app…", run: () => removeApp(server, app) }],
       ]
@@ -124,7 +124,7 @@ export function EntityMenu() {
           { label: "Security check", hint: "malware, web shells, weak spots", run: () => void openServer(server, "security") },
           { label: "Fine-tune", hint: "PHP-FPM, OPcache, MySQL, nginx", run: () => void openTune(server) },
           { label: "Setup", hint: "check against its profile, fix", run: () => void openSetup(server) },
-          { label: "Details…", run: () => openDetails({ kind: "server", serverId: server.id }) },
+          { label: "Settings…", run: () => openDetails({ kind: "server", serverId: server.id }) },
           { label: "Add app…", run: () => openDetails({ kind: "app", serverId: server.id, appId: null }) },
           { label: "Discover apps…", hint: "find Laravel apps on it", run: () => useManage.getState().setDiscover(server.id) },
           {

@@ -45,7 +45,7 @@ import { useTeam } from "@/stores/team";
 
 const NO_TEAMS: import("@/lib/ipc").Team[] = [];
 import { useStatus } from "@/stores/status";
-import { openFiles, openLogs, openQueues, useTabs, openServer } from "@/stores/tabs";
+import { openApp, openFiles, openLogs, openQueues, useTabs, openServer, type AppSection } from "@/stores/tabs";
 import { toastError, useToasts } from "@/stores/toasts";
 import { useUi } from "@/stores/ui";
 import { useVault } from "@/stores/vault";
@@ -54,7 +54,7 @@ import type { TabColor } from "@/lib/tabColors";
 
 import { Badge } from "./Badge";
 import { ColorPicker } from "./ColorPicker";
-import { InspectPanel } from "./InspectPanel";
+import { InspectPanel, type InspectPart } from "./InspectPanel";
 import { Segmented, TextInput, VALID_ID } from "./fields";
 
 const NO_SERVERS: Server[] = [];
@@ -978,7 +978,17 @@ export function AppsList({ server, status, aside }: { server: Server; status?: (
 
 // --------------------------------------------------------------------- app
 
-function AppDetails({ server, app }: { server: Server; app: App | null }) {
+/** An app tab's sections (but Files, Logs and Queues): Overview, Web
+ *  server, Supervisor, Cron and .env (what Inspect found) and Settings (its
+ *  form). Kept mounted while the tab is open, so a half-filled form and an
+ *  Inspect still running survive switching sections. */
+export function AppParts({ server, app, section, onGo }: { server: Server; app: App; section: AppSection; onGo: (s: AppSection) => void }) {
+  return <AppDetails key={`${server.id}/${app.id}`} server={server} app={app} section={section} onGo={onGo} />;
+}
+
+const INSPECT_PART: Partial<Record<AppSection, InspectPart>> = { overview: "overview", web: "web", supervisor: "supervisor", cron: "cron", env: "env" };
+
+function AppDetails({ server, app, section, onGo }: { server: Server; app: App | null; section?: AppSection; onGo?: (s: AppSection) => void }) {
   const [name, setName] = useState(app?.name ?? "");
   // Kemudi's own key for it, from the name when it's added; never changed.
   const id = app ? app.id : freeId(name, server.apps.map((a) => a.id), "app");
@@ -1033,8 +1043,49 @@ function AppDetails({ server, app }: { server: Server; app: App | null }) {
     if (!valid || busy) return;
     if (await run(() => appSave(server.id, app?.id ?? null, form))) {
       done(app ? `Saved ${form.name ?? form.id}` : `Added ${form.name ?? form.id} to ${server.name}`);
-      openDetails({ kind: "app", serverId: server.id, appId: form.id });
+      // A new one: off the details page, to its own tab.
+      if (!app) {
+        useTabs.getState().closeDetails();
+        openApp(server, { id: form.id, name: form.name ?? form.id, path: form.path, env: form.env ?? server.env });
+      }
     }
+  };
+  // In a tab, what Inspect sets (a pinned file, the branch or PHP it found)
+  // is saved straight away (onto what's saved, not the Settings form's
+  // unsaved changes): Save is in another section.
+  const saveNow = async (patch: Partial<typeof form>, what: string) => {
+    if (!app) return;
+    const saved = {
+      id: app.id,
+      name: app.name !== app.id ? app.name : null,
+      path: app.path,
+      branch: app.branch,
+      php: app.php,
+      color: app.color,
+      env: app.envSet ? app.env : null,
+      repo: app.repo,
+      url: app.url ?? null,
+      vhostFiles: app.vhostFiles,
+      supervisorFiles: app.supervisorFiles,
+    };
+    if (await run(() => appSave(server.id, app.id, { ...saved, ...patch }))) done(`Saved ${app.name}: ${what}`);
+  };
+  const tabbed = !!section && !!app;
+  const useBranch = (b: string) => {
+    setBranch(b);
+    if (tabbed) void saveNow({ branch: b }, `branch ${b}`);
+  };
+  const usePhp = (v: string) => {
+    setPhp(v);
+    if (tabbed) void saveNow({ php: v }, `PHP ${v}`);
+  };
+  const pinVhosts = (f: string[]) => {
+    setVhostFiles(f);
+    if (tabbed) void saveNow({ vhostFiles: f }, "pinned vhost files");
+  };
+  const pinSupervisor = (f: string[]) => {
+    setSupervisorFiles(f);
+    if (tabbed) void saveNow({ supervisorFiles: f }, "pinned Supervisor files");
   };
   const remove = async () => {
     if (!app) return;
@@ -1044,12 +1095,35 @@ function AppDetails({ server, app }: { server: Server; app: App | null }) {
     );
     if (ok && (await run(() => appDelete(server.id, app.id)))) {
       done(`Deleted ${app.name}`);
-      openDetails({ kind: "server", serverId: server.id });
+      const tabs = useTabs.getState();
+      for (const t of tabs.tabs.filter((x) => x.kind === "app" && x.serverId === server.id && x.appId === app.id)) tabs.close(t.id);
+      if (!section) openServer(server, "overview");
     }
   };
 
   const title = app ? app.name : name.trim() || "New app";
-  return (
+  const inspect = (only?: InspectPart) => (
+    <InspectPanel
+      serverId={server.id}
+      appId={app?.id ?? null}
+      path={path}
+      prod={(app?.env ?? server.env) === "prod"}
+      env={app?.env ?? server.env}
+      serverEnv={server.env}
+      appName={app?.name ?? (name || "app")}
+      branch={branch}
+      php={php}
+      onUseBranch={useBranch}
+      onUsePhp={usePhp}
+      vhostFiles={vhostFiles}
+      supervisorFiles={supervisorFiles}
+      onVhostFiles={pinVhosts}
+      onSupervisorFiles={pinSupervisor}
+      only={only}
+      onGo={onGo ? (p) => p !== "code" && onGo(p) : undefined}
+    />
+  );
+  const page = (
     <form
       onSubmit={(e) => {
         e.preventDefault();
@@ -1081,7 +1155,11 @@ function AppDetails({ server, app }: { server: Server; app: App | null }) {
               </Btn>
             )}
             <span className="flex-1" />
-            {app ? (
+            {app && section ? (
+              <Btn type="submit" variant="primary" className="px-4" disabled={!dirty || !valid || busy}>
+                Save
+              </Btn>
+            ) : app ? (
               <>
                 <Btn type="submit" variant="outline" disabled={!dirty || !valid || busy}>
                   Save
@@ -1110,33 +1188,13 @@ function AppDetails({ server, app }: { server: Server; app: App | null }) {
           </>
         }
         after={
-          app && (
+          app && !section && (
             <div className="text-center text-[11.5px] text-subtle-foreground">
               This app's actions are in the panel on the right (⌘J).
             </div>
           )
         }
-        side={
-          <>
-            <InspectPanel
-              serverId={server.id}
-              appId={app?.id ?? null}
-              path={path}
-              prod={(app?.env ?? server.env) === "prod"}
-              env={app?.env ?? server.env}
-              serverEnv={server.env}
-              appName={app?.name ?? (name || "app")}
-              branch={branch}
-              php={php}
-              onUseBranch={setBranch}
-              onUsePhp={setPhp}
-              vhostFiles={vhostFiles}
-              supervisorFiles={supervisorFiles}
-              onVhostFiles={setVhostFiles}
-              onSupervisorFiles={setSupervisorFiles}
-            />
-          </>
-        }
+        side={section ? undefined : inspect()}
       >
         <Row label="Name">
           <TextInput
@@ -1316,5 +1374,48 @@ function AppDetails({ server, app }: { server: Server; app: App | null }) {
         </Row>
       </Page>
     </form>
+  );
+  if (!section || !app) return page;
+  const part = INSPECT_PART[section];
+  return (
+    <>
+      <div className="light-ui absolute inset-0 overflow-y-auto bg-background text-foreground" hidden={!part}>
+        <div className="mx-auto flex w-full max-w-[980px] flex-col gap-4 px-6 py-5">
+          {section === "overview" && (
+            <div className="flex items-center gap-3">
+              <Badge id={`${server.id}/${app.id}`} name={app.name} size={36} />
+              <div className="flex min-w-0 flex-1 flex-col">
+                <div className="flex items-center gap-2 truncate text-[16px] font-semibold">
+                  <span className="truncate">{app.name}</span>
+                  <EnvTag env={app.env} />
+                </div>
+                <div className="flex min-w-0 items-center gap-1.5 text-[12px] text-subtle-foreground">
+                  <button type="button" className="cursor-pointer hover:text-foreground" onClick={() => openServer(server, "overview")}>
+                    on {server.name}
+                  </button>
+                  <span>·</span>
+                  <span className="selectable truncate font-mono">{app.path}</span>
+                  {app.url && (
+                    <>
+                      <span>·</span>
+                      <button type="button" className="cursor-pointer truncate text-primary hover:underline" onClick={() => void openUrl(app.url!).catch((e) => toastError(errorMessage(e)))}>
+                        {app.url.replace(/^https?:\/\//, "")} ↗
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+          {inspect(part ?? "overview")}
+          {section === "overview" && (
+            <div className="text-[11.5px] text-subtle-foreground">This app's actions are in the panel on the right (⌘J).</div>
+          )}
+        </div>
+      </div>
+      <div className="light-ui absolute inset-0 overflow-y-auto bg-background text-foreground" hidden={section !== "settings"}>
+        {page}
+      </div>
+    </>
   );
 }
