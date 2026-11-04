@@ -1380,7 +1380,7 @@ function AppDetails({ server, app, section, onGo }: { server: Server; app: App |
   return (
     <>
       <div className="light-ui absolute inset-0 overflow-y-auto bg-background text-foreground" hidden={!part}>
-        <div className="mx-auto flex w-full max-w-[980px] flex-col gap-4 px-6 py-5">
+        <div className="flex w-full flex-col gap-4 px-6 py-5">
           {section === "overview" && (
             <div className="flex items-center gap-3">
               <Badge id={`${server.id}/${app.id}`} name={app.name} size={36} />
