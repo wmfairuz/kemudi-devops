@@ -457,6 +457,11 @@ pub struct Plan {
     /// The site's main name (`{{ app.domain }}` in hooks).
     #[serde(default)]
     pub domain: Option<String>,
+    /// The form it came from (base64 of its JSON; no secrets in it), a
+    /// comment at the top of the script, so History's Re-run can open the
+    /// form again as it was.
+    #[serde(default)]
+    pub form: Option<String>,
 }
 
 fn plain(s: &str, extra: &str, max: usize) -> bool {
@@ -561,6 +566,11 @@ fn check(plan: &Plan) -> AppResult<()> {
     if let Some(d) = &plan.domain {
         if !valid_domain(d) || d.contains('*') {
             return bad("The domain isn't a domain name.");
+        }
+    }
+    if let Some(f) = &plan.form {
+        if f.len() > 16_384 || !f.chars().all(|c| c.is_ascii_alphanumeric() || "+/=".contains(c)) {
+            return bad("The form to keep isn't base64.");
         }
     }
     Ok(())
@@ -727,6 +737,7 @@ pub fn check_hook(source: &str, server: &Server) -> Result<(), String> {
         certbot: vec![],
         schedule: true,
         domain: Some("example.com".into()),
+        form: None,
     };
     render_hook(source, server, &hook_app(&sample, server)).map(|_| ())
 }
@@ -1086,6 +1097,9 @@ else warn "certbot didn't finish; the app works over http. When its DNS points h
         }
     };
     let mut out = String::from("# Kemudi: set up a new Laravel app\n");
+    if let Some(f) = plan.form.as_deref().filter(|f| !f.is_empty()) {
+        out.push_str(&format!("# form: {f}\n"));
+    }
     out.push_str(&vars(&[
         ("N", &steps.len().to_string()),
         ("ID", &plan.id),
@@ -1242,6 +1256,7 @@ mod tests {
             certbot: vec!["akaun.staging.example.com".into()],
             schedule: true,
             domain: Some("akaun.staging.example.com".into()),
+            form: Some("eyJuYW1lIjoiQWthdW4ifQ==".into()),
         }
     }
 
@@ -1277,6 +1292,10 @@ mod tests {
         assert!(s.contains("--branch \"$BRANCH\""));
         assert!(!s.contains("--no-dev"), "staging keeps dev packages");
         assert!(s.contains("NAME='Akaun Staging'"));
+        assert!(s.starts_with("# Kemudi: set up a new Laravel app\n# form: eyJuYW1lIjoiQWthdW4ifQ==\n"));
+        let mut bad = plan();
+        bad.form = Some("x\nrm -rf /".into());
+        assert!(check(&bad).is_err(), "only base64 goes in the comment");
     }
 
     /// `KEMUDI_NEWAPP_OUT=<file> cargo test dump_newapp -- --ignored`: the

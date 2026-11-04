@@ -1453,6 +1453,9 @@ export interface NewAppPlan {
   schedule: boolean;
   /** The site's main name (`{{ app.domain }}` in hooks). */
   domain: string | null;
+  /** The form (base64 JSON, no secrets): a comment in the script, so
+   *  History's Re-run opens it again. */
+  form?: string | null;
 }
 
 export const newappProbe = (serverId: string): Promise<NewAppProbe> => invoke("newapp_probe", { serverId });

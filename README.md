@@ -506,7 +506,9 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   after fixing a failure, *Open the form* (from the toast, or the server's
   *New app…*, which says *continue <name>*) and run it again: the form is
   kept on disk, through a restart too, until the app is set up or *Start
-  over* clears it (it holds no secrets).
+  over* clears it (it holds no secrets). History's **Re-run** on a New app
+  opens its form again as it was: the script carries it as a `# form:`
+  comment (runs from before that: read back from the script's settings).
   When it ends with exit 0 the app is added to Kemudi with its path, branch,
   PHP, repo, URL, vhost and worker files. The run is in History.
 - **URL** (app page ▸ URL; *Detect*, and in Discover): where the app is on

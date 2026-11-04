@@ -36,7 +36,7 @@ import { cn } from "@/lib/utils";
 import { findServer, useConfig } from "@/stores/config";
 import { askConfirm } from "@/stores/confirm";
 import { freeId, openDetails } from "@/stores/manage";
-import { useNewApp, type NewAppDraft } from "@/stores/newApp";
+import { encodeForm, useNewApp, type NewAppDraft } from "@/stores/newApp";
 import { useTabs } from "@/stores/tabs";
 import { toastError, useToasts } from "@/stores/toasts";
 
@@ -246,6 +246,7 @@ function NewApp({ server }: { server: Server }) {
       certbot: https === "certbot" ? domains : [],
       schedule: d.schedule,
       domain: domains[0] ?? null,
+      form: encodeForm(d),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [JSON.stringify(d), id, path, db, dbUser, url, socket, probe, workerFile, web],

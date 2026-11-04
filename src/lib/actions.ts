@@ -23,6 +23,7 @@ import { instanceLabel, isAsg, runOnAsg } from "@/lib/fleet";
 import { toastError, useToasts } from "@/stores/toasts";
 import { escapeCommand } from "@/lib/blocks";
 import { localHms } from "@/lib/time";
+import { useNewApp } from "@/stores/newApp";
 
 export type Decision = "run" | FlowDialog;
 
@@ -152,11 +153,13 @@ export function workflowOf(actionId: string): string | null {
   return actionId.startsWith("workflow:") ? actionId.slice("workflow:".length) : null;
 }
 
-/** Whether a History row can run again: a workflow or an action that still
- *  exists. (History also records things done from Kemudi's own screens:
- *  certificates, New app, queues, file permissions…; those don't re-run.) */
+/** Whether a History row can run again: a workflow, an action that still
+ *  exists, or New app (its form opens again). (History also records other
+ *  things done from Kemudi's own screens: certificates, queues, file
+ *  permissions…; those don't re-run.) */
 export function canRunAgain(r: { serverId: string; appId: string | null; actionId: string }): boolean {
   const config = useConfig.getState().snapshot?.config;
+  if (r.actionId === "newapp") return !!config?.servers.some((s) => s.id === r.serverId);
   const wf = workflowOf(r.actionId);
   if (wf !== null) return !!config?.workflows.some((w) => w.id === wf);
   const server = config?.servers.find((s) => s.id === r.serverId);
@@ -168,6 +171,11 @@ export function canRunAgain(r: { serverId: string; appId: string | null; actionI
  *  dialog (with its own confirmation); an action asks like a click, starting
  *  from the command that ran. */
 export function runAgain(r: { serverId: string; appId: string | null; actionId: string; command: string }): void {
+  if (r.actionId === "newapp") {
+    // The form it came from, to change or run as it was.
+    if (!useNewApp.getState().reopen(r.serverId, r.command)) toastError("Couldn't read that run's settings");
+    return;
+  }
   const wf = workflowOf(r.actionId);
   if (wf !== null) {
     if (useConfig.getState().snapshot?.config?.workflows.some((w) => w.id === wf)) useWorkflows.getState().run(wf);
