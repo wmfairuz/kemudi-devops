@@ -1,10 +1,10 @@
 import { AppTabView } from "@/components/manage/AppTab";
 import { ServerTabView } from "@/components/watch/ServerTab";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Layout } from "@/lib/layout";
 import { cn } from "@/lib/utils";
-import { groupOf, isViewTab, terminalPanes, useTabs, WORKFLOWS_ID, type Group, type Tab } from "@/stores/tabs";
+import { groupOf, isViewTab, openServer, terminalPanes, useTabs, WORKFLOWS_ID, type Group, type Tab } from "@/stores/tabs";
 import { useWorkflows } from "@/stores/workflows";
 import { useUi } from "@/stores/ui";
 
@@ -19,7 +19,6 @@ import { MonitorView } from "@/components/monitor/MonitorView";
 
 import { PasswordChip } from "./PasswordChip";
 import { ServerSetupView } from "@/components/setup/SetupView";
-import { DashboardView } from "@/components/dashboard/DashboardView";
 import { WorkflowStepsView, setWorkflowView } from "@/components/workflows/WorkflowStepsView";
 import { TerminalView } from "./TerminalView";
 
@@ -131,7 +130,7 @@ function LayoutView({
         ) : tab.kind === "setup" && tab.serverId ? (
           <ServerSetupView tab={tab} visible={visible} />
         ) : tab.kind === "dash" && tab.serverId ? (
-          <DashboardView tab={tab} visible={visible} />
+          <DashMoved tab={tab} />
         ) : tab.kind === "server" && tab.serverId ? (
           <ServerTabView tab={tab} visible={visible} />
         ) : tab.kind === "app" && tab.serverId && tab.appId ? (
@@ -224,4 +223,14 @@ function Divider({ groupId, splitId, dir }: { groupId: string; splitId: string; 
       }}
     />
   );
+}
+
+/** A Dashboard tab from before it was folded into Apps: opens the server's
+ *  Apps section instead and closes itself. */
+function DashMoved({ tab }: { tab: Tab }) {
+  useEffect(() => {
+    openServer({ id: tab.serverId ?? "", name: tab.title.replace(/ · dashboard$/, ""), host: tab.host ?? "", env: tab.prod ? "prod" : "dev" }, "apps");
+    useTabs.getState().close(tab.id);
+  }, [tab]);
+  return null;
 }

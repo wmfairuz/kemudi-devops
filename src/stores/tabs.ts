@@ -838,24 +838,10 @@ export function openSetup(server: { id: string; name: string; host: string; env:
   });
 }
 
-/** A server's dashboard: each app's maintenance mode and basic auth. */
-export function openDashboard(server: { id: string; name: string; host: string; env: string }, own = false): string {
-  if (!own) return openServer(server, "dash");
-  const { tabs, activate } = useTabs.getState();
-  const same = tabs.find((t) => t.kind === "dash" && t.serverId === server.id);
-  if (same) {
-    activate(same.id);
-    return same.id;
-  }
-  return useTabs.getState().open({
-    kind: "dash",
-    title: `${server.name} · dashboard`,
-    serverId: server.id,
-    host: server.host,
-    prod: server.env === "prod",
-    // Never attached as a terminal, so this never runs.
-    spawn: () => Promise.reject(new Error("dashboard tabs have no terminal")),
-  });
+/** What the Dashboard was (each app's maintenance mode and basic auth) is
+ *  on the Apps section's cards and each app's Overview now. */
+export function openDashboard(server: { id: string; name: string; host: string; env: string }): string {
+  return openServer(server, "apps");
 }
 
 /** A server's tab, the server's home: Overview (what the background checks
@@ -867,7 +853,6 @@ export type ServerSection = "overview" | "apps" | "dash" | "files" | "logs" | "m
 export const SERVER_SECTIONS: { id: ServerSection; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "apps", label: "Apps" },
-  { id: "dash", label: "Dashboard" },
   { id: "files", label: "Files" },
   { id: "logs", label: "Logs" },
   { id: "monitor", label: "Monitor" },
@@ -1023,8 +1008,6 @@ export function openSectionAlone(server: { id: string; name: string; host: strin
       return openFiles(server, { dir: from?.filesDir });
     case "logs":
       return openLogs(server, { path: from?.logsPath });
-    case "dash":
-      return openDashboard(server, true);
     case "monitor":
       return openMonitor(server, true);
     case "health":

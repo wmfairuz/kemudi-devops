@@ -13,6 +13,8 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/manage/Badge";
 import { AppsList } from "@/components/manage/DetailsView";
 import { Group, Tool, ToolSwitch } from "@/components/kit/Toolbar";
+import { AppSwitchesCompact, ServerNotes } from "@/components/dashboard/AppSwitches";
+import { ensureDash } from "@/stores/dash";
 import { useFleetUi } from "@/stores/fleetUi";
 import { openDetails, useManage } from "@/stores/manage";
 import { useStatus } from "@/stores/status";
@@ -101,7 +103,7 @@ export function actionOf(item: WatchItem, server: Server): { label: string; run:
     case "renew":
       return go("health", "Health");
     case "down":
-      return go("dash", "Dashboard");
+      return go("apps", "Apps");
     case "setup":
       return go("setup", "Setup");
     case "secops":
@@ -363,6 +365,8 @@ export function ServerApps({ server }: { server: Server }) {
   const now = useClock();
   const [view, setView] = useState<AppsView>(savedView);
   const urls = server.apps.map((a) => `${a.id}=${a.url ?? ""}`).join(" ");
+  // Maintenance mode and basic auth on the cards (read-only to read).
+  useEffect(() => ensureDash(server.id), [server.id]);
   useEffect(() => {
     if (view === "pictures") void loadShots(server.id, server.apps);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -391,6 +395,7 @@ export function ServerApps({ server }: { server: Server }) {
     <div className="light-ui absolute inset-0 overflow-y-auto bg-background text-foreground">
       <div className="flex w-full flex-col gap-4 px-5 py-5">
         <AppsStats server={server} now={now} />
+        <ServerNotes server={server} />
         <AppsList
           server={server}
           aside={
@@ -407,6 +412,7 @@ export function ServerApps({ server }: { server: Server }) {
           }
           lead={<ToolSwitch<AppsView> label="Show apps as" value={view} options={[{ value: "pictures", label: "Pictures" }, { value: "list", label: "List" }]} onChange={pick} />}
           status={status}
+          extra={(a) => <AppSwitchesCompact server={server} app={a} />}
           grid={view === "pictures" ? <AppsGrid server={server} status={status} /> : undefined}
         />
       </div>
@@ -573,6 +579,9 @@ function AppsGrid({ server, status }: { server: Server; status: (a: App) => Reac
                   <span className="truncate font-mono text-[10.5px] text-subtle-foreground">{a.path}</span>
                 )}
                 <span className="flex flex-wrap items-center gap-x-2 text-[11px]">{status(a)}</span>
+                <div className="pt-1.5">
+                  <AppSwitchesCompact server={server} app={a} />
+                </div>
               </div>
               <Btn size="sm" variant="outline" onClick={open}>
                 Open

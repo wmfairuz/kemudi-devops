@@ -35,7 +35,7 @@ const NO_WORKFLOWS: Workflow[] = [];
 /** Wide pages with nothing to run actions in: a server's setup or
  *  dashboard (as a tab, or its server tab's section) and its Overview. */
 const wide = (t: Tab | undefined) =>
-  !!t && (t.kind === "setup" || t.kind === "dash" || (t.kind === "server" && ["overview", "dash", "setup"].includes(t.section ?? "overview")));
+  !!t && (t.kind === "setup" || t.kind === "dash" || (t.kind === "server" && ["overview", "apps", "setup"].includes(t.section ?? "overview")));
 
 /** Right-hand panel (⌘J): the buttons for the app or server selected on the
  *  left, grouped by where they're defined, each group with "+ Add action". */

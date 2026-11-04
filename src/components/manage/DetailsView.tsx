@@ -56,6 +56,7 @@ import type { TabColor } from "@/lib/tabColors";
 import { Badge } from "./Badge";
 import { ColorPicker } from "./ColorPicker";
 import { InspectPanel, type InspectPart } from "./InspectPanel";
+import { AppSwitchesFull } from "@/components/dashboard/AppSwitches";
 import { Segmented, TextInput, VALID_ID } from "./fields";
 
 const NO_SERVERS: Server[] = [];
@@ -943,12 +944,15 @@ function SudoPassword({ serverId }: { serverId: string }) {
 export function AppsList({
   server,
   status,
+  extra,
   aside,
   lead,
   grid,
 }: {
   server: Server;
   status?: (app: App) => React.ReactNode;
+  /** Under each row's path (e.g. its switches). */
+  extra?: (app: App) => React.ReactNode;
   aside?: React.ReactNode;
   /** Right after the title (e.g. a view switch). */
   lead?: React.ReactNode;
@@ -968,18 +972,27 @@ export function AppsList({
       {grid ?? (
         <div className="flex flex-col overflow-hidden rounded-xl border border-divider">
           {server.apps.map((a) => (
-            <button
+            <div
               key={a.id}
+              role="button"
+              tabIndex={0}
               onClick={() => openDetails({ kind: "app", serverId: server.id, appId: a.id })}
-              className="flex cursor-pointer items-center gap-2.5 border-b border-divider px-3 py-2 text-left last:border-b-0 hover:bg-hover"
+              onKeyDown={(e) => {
+                if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+                  e.preventDefault();
+                  openDetails({ kind: "app", serverId: server.id, appId: a.id });
+                }
+              }}
+              className="flex cursor-pointer items-center gap-2.5 border-b border-divider px-3 py-2 text-left outline-none last:border-b-0 hover:bg-hover focus-visible:bg-hover"
             >
               <Badge id={`${server.id}/${a.id}`} name={a.name} size={24} />
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate text-[12.5px] text-foreground">{a.name}</span>
                 <span className="truncate font-mono text-[10.5px] text-subtle-foreground">{a.path}</span>
               </span>
+              {extra && <span className="flex-none">{extra(a)}</span>}
               {status && <span className="flex flex-none items-center gap-2 text-[12px]">{status(a)}</span>}
-            </button>
+            </div>
           ))}
           {server.apps.length === 0 && <div className="px-3 py-2 text-[12px] text-subtle-foreground">No apps yet.</div>}
         </div>
@@ -1444,6 +1457,7 @@ function AppDetails({ server, app, section, onGo }: { server: Server; app: App |
               </div>
             </div>
           )}
+          {section === "overview" && <AppSwitchesFull server={server} app={app} />}
           {inspect(part ?? "overview")}
           {section === "overview" && (
             <div className="text-[11.5px] text-subtle-foreground">This app's actions are in the panel on the right (⌘J).</div>

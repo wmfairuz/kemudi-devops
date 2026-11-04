@@ -1,18 +1,16 @@
-import { Copy, ExternalLink, Eye, EyeOff, KeyRound, RotateCw, Wand2 } from "lucide-react";
+import { Copy, Eye, EyeOff, KeyRound, RotateCw, Wand2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Btn } from "@/components/kit/Btn";
-import { EnvTag } from "@/components/kit/EnvTag";
 import { Hint } from "@/components/kit/Kbd";
 import { Modal, ModalFooter, ModalHeader } from "@/components/kit/Modal";
 import { Field, TextInput } from "@/components/manage/fields";
 import { Spinner } from "@/components/kit/Spinner";
-import { dashboardAuth, dashboardMaintenance, dashboardRuns, dashboardStatus, dashboardWorkers, errorMessage, openUrl, type App, type AppSwitches, type BasicLogin, type Dashboard, type LoginFile, type Runs, type Server } from "@/lib/ipc";
+import { dashboardRuns, errorMessage, type App, type AppSwitches, type BasicLogin, type LoginFile, type Runs, type Server } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { useConfig } from "@/stores/config";
-import { askChoice } from "@/stores/confirm";
-import type { Tab } from "@/stores/tabs";
-import { toastError, useToasts } from "@/stores/toasts";
+import { authOn, bypassUrl, changeLogin, dashBusy, ensureDash, goDown, loadDash, stoppedOf, toggleAuth, toggleLive, useDash } from "@/stores/dash";
+import { useToasts } from "@/stores/toasts";
 import { useUi } from "@/stores/ui";
 import { useVault } from "@/stores/vault";
 
@@ -28,30 +26,6 @@ const OWN_DIR = "/etc/nginx/kemudi-auth/";
 /** "team" or "team, qa" for a login file. */
 const usersOf = (logins: LoginFile[], path: string | null) => (path ? (logins.find((l) => l.path === path)?.users ?? []).join(", ") : "");
 
-/** The workers Kemudi stopped when it put an app down, to start again when
- *  it goes back up (on this Mac). */
-const STOPPED_KEY = "kemudi.stoppedWorkers";
-function stoppedAll(): Record<string, string[]> {
-  try {
-    return JSON.parse(localStorage.getItem(STOPPED_KEY) ?? "{}") as Record<string, string[]>;
-  } catch {
-    return {};
-  }
-}
-export const stoppedOf = (serverId: string, appId: string): string[] => stoppedAll()[`${serverId}/${appId}`] ?? [];
-function setStopped(serverId: string, appId: string, programs: string[]) {
-  const all = stoppedAll();
-  if (programs.length) all[`${serverId}/${appId}`] = programs;
-  else delete all[`${serverId}/${appId}`];
-  try {
-    localStorage.setItem(STOPPED_KEY, JSON.stringify(all));
-  } catch {
-    // Not kept: going up won't start them; the dashboard still says so.
-  }
-}
-
-const bypassUrl = (app: App, secret: string) => `${(app.url ?? "").replace(/\/+$/, "")}/${secret}`;
-
 /** On/off, like a settings switch. */
 function Switch({ on, busy, disabled, onClick, label }: { on: boolean; busy?: boolean; disabled?: boolean; onClick: () => void; label: string }) {
   return (
@@ -60,8 +34,12 @@ function Switch({ on, busy, disabled, onClick, label }: { on: boolean; busy?: bo
       role="switch"
       aria-checked={on}
       aria-label={label}
+      title={label}
       disabled={disabled || busy}
-      onClick={onClick}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
       className={cn(
         "relative h-5 w-9 flex-none cursor-pointer rounded-full transition-colors disabled:cursor-default disabled:opacity-50",
         on ? "bg-primary" : "bg-control-border",
@@ -73,350 +51,288 @@ function Switch({ on, busy, disabled, onClick, label }: { on: boolean; busy?: bo
   );
 }
 
-type Busy = Record<string, "laravel" | "auth" | undefined>;
+/** What the switches need for one app (null: not read yet, or not there). */
+function useSwitches(server: Server, app: App) {
+  const entry = useDash((s) => s.servers[server.id]);
+  const busy = useDash((s) => dashBusy(s, server.id, app.id));
+  const s = entry?.data?.apps.find((a) => a.appId === app.id) ?? null;
+  return { entry, busy, s, data: entry?.data ?? null };
+}
 
-/** A server's dashboard tab: each app's maintenance mode and basic auth. */
-export function DashboardView({ tab, visible }: { tab: Tab; visible: boolean }) {
-  const serverId = tab.serverId ?? "";
-  const server = useConfig((s) => s.snapshot?.config?.servers.find((x) => x.id === serverId));
-  const [data, setData] = useState<Dashboard | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [busy, setBusy] = useState<Busy>({});
-  const [downFor, setDownFor] = useState<App | null>(null);
-  const [authFor, setAuthFor] = useState<App | null>(null);
-  const [editDefault, setEditDefault] = useState(false);
+const authOnOf = (s: AppSwitches) => s.auth.state === "on" || s.auth.state === "partial";
+/** The basic auth switch can't be used: why (null: it can). */
+function authFixed(s: AppSwitches, nginx: boolean, app: App): string | null {
+  const a = s.auth;
+  if (!nginx) return "No nginx on this server";
+  if (a.state === "novhost") return `No nginx server block with its root at ${app.path.replace(/\/+$/, "")}/public`;
+  if (a.state === "manual" || a.state === "nourl") return a.notes[0] ?? "Set in its vhost by hand";
+  return null;
+}
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      setData(await dashboardStatus(serverId));
-      setError(null);
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setLoading(false);
-    }
-  };
-  useEffect(() => {
-    if (visible && !data && !loading) void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, serverId]);
-
-  if (!server) return <div className="light-ui absolute inset-0 bg-background p-4 text-[13px] text-subtle-foreground">{serverId} isn't in Kemudi any more.</div>;
-
-  /** Run a change for an app, then read everything again. */
-  const change = async (app: App, what: "laravel" | "auth", run: () => Promise<string>) => {
-    setBusy((b) => ({ ...b, [app.id]: what }));
-    try {
-      useToasts.getState().push(await run(), "info");
-    } catch (e) {
-      toastError(`${app.name}: ${errorMessage(e)}`);
-    } finally {
-      setBusy((b) => ({ ...b, [app.id]: undefined }));
-      // nginx swaps its workers a moment after a reload.
-      setTimeout(() => void load(), what === "auth" ? 800 : 0);
-    }
-  };
-
-  const goUp = async (app: App) => {
-    const stopped = stoppedOf(server.id, app.id);
-    const workers = stopped.length ? `; then supervisorctl start ${stopped.join(", ")} (the workers Kemudi stopped)` : "";
-    if (app.env === "prod" && !(await askChoice(`Bring ${app.name} back up?`, `artisan up on ${server.name} (production)${workers}.`, "Bring it up", "Cancel"))) return;
-    void change(app, "laravel", async () => {
-      await dashboardMaintenance(server.id, app.id, false, false);
-      if (!stopped.length) return `${app.name} is live again`;
-      try {
-        await dashboardWorkers(server.id, app.id, true, stopped);
-      } catch (e) {
-        throw new Error(`it's live again, but its workers (${stopped.join(", ")}) didn't start: ${errorMessage(e)}`);
-      }
-      setStopped(server.id, app.id, []);
-      return `${app.name} is live again; its workers (${stopped.join(", ")}) are started`;
-    });
-  };
-  const authOff = async (app: App) => {
-    if (app.env === "prod" && !(await askChoice(`Turn basic auth off for ${app.name}?`, `Anyone can open it again (${server.name}, production).`, "Turn it off", "Cancel"))) return;
-    void change(app, "auth", async () => {
-      await dashboardAuth(server.id, app.id, false, null);
-      return `Basic auth off for ${app.name}`;
-    });
-  };
-
-  const needsRoot = data && !["root", "ok"].includes(data.sudo);
+/** On an app card (Apps section): Live / Maintenance and Basic auth, each a
+ *  switch with a word; the details are in the app's Overview. */
+export function AppSwitchesCompact({ server, app }: { server: Server; app: App }) {
+  const { entry, busy, s, data } = useSwitches(server, app);
+  if (!s || !data) return <span className="text-[11.5px] text-faint-foreground">{entry?.loading ? "Reading…" : entry?.error ? "Couldn't read" : "–"}</span>;
+  const fixed = authFixed(s, data.nginx, app);
+  const on = authOnOf(s);
+  const stopped = s.down ? stoppedOf(server.id, app.id) : [];
   return (
-    <div className="light-ui absolute inset-0 flex flex-col bg-background text-foreground">
-      <div className="flex h-11 flex-none items-center gap-2 border-b border-divider px-5">
-        <span className="text-[13px] font-semibold">Dashboard</span>
-        <span className="text-[12.5px] text-subtle-foreground">{server.name}</span>
-        <EnvTag env={server.env} />
-        <span className="flex-1" />
-        <button
-          className="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-[12px] text-muted-foreground hover:bg-hover-strong hover:text-foreground"
-          onClick={() => setEditDefault(true)}
-          title="The login Turn on uses unless you give one (kept in Passwords)"
-        >
-          <KeyRound className="size-3.5" />
-          {data?.defaultUser ? (
-            <>
-              Default login: <span className="font-mono text-foreground">{data.defaultUser}</span>
-            </>
-          ) : (
-            "Set a default login…"
-          )}
-        </button>
-        <Btn size="sm" variant="outline" disabled={loading} onClick={() => void load()}>
-          <RotateCw className={cn("size-3.5", loading && "animate-spin")} /> Refresh
-        </Btn>
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-        {error && <div className="mb-3 text-[12.5px] text-env-prod-fg">{error}</div>}
-        {needsRoot && (
-          <div className="mb-3 flex items-center gap-3 rounded-lg border border-env-staging/40 bg-env-staging-tint px-3 py-2 text-[12px]">
-            <span className="flex-1">
-              {data.sudo === "none"
-                ? "This ssh user can't use sudo here, so basic auth can't be changed (nginx is root's)."
-                : data.sudo === "badpw"
-                  ? "sudo refused the saved password for this server."
-                  : "Basic auth changes nginx, which needs root: save this server's sudo password in Passwords."}
-            </span>
-            {data.sudo !== "none" && (
-              <Btn size="sm" variant="outline" onClick={() => useUi.getState().setOverlay("passwords")}>
-                Passwords…
-              </Btn>
-            )}
-          </div>
-        )}
-        {data && data.notes.length > 0 && (
-          <div className="mb-3 flex flex-col gap-1 rounded-lg border border-env-staging/40 bg-env-staging-tint px-3 py-2 text-[12px] leading-5">
-            {data.notes.map((n) => (
-              <span key={n}>{n}</span>
-            ))}
-          </div>
-        )}
-        {server.apps.length === 0 && <div className="text-[13px] text-subtle-foreground">{server.name} has no apps in Kemudi yet (Discover apps… or Add app… in its menu).</div>}
-        {!data && loading && server.apps.length > 0 && <div className="text-[13px] text-subtle-foreground">Reading {server.name} (read-only)…</div>}
-        {data && server.apps.length > 0 && (
-          <div className="overflow-hidden rounded-xl border border-divider">
-            <div className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.2fr)] gap-4 border-b border-divider bg-panel px-4 py-2 text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">
-              <span>App</span>
-              <span>Laravel</span>
-              <span>Basic auth</span>
-            </div>
-            {server.apps.map((app) => {
-              const s = data.apps.find((a) => a.appId === app.id);
-              return s ? (
-                <AppRow
-                  key={app.id}
-                  server={server}
-                  app={app}
-                  s={s}
-                  nginx={data.nginx}
-                  logins={data.logins}
-                  busy={busy[app.id]}
-                  onDown={() => setDownFor(app)}
-                  onUp={() => void goUp(app)}
-                  onAuthOn={() => setAuthFor(app)}
-                  onAuthOff={() => void authOff(app)}
-                />
-              ) : null;
-            })}
-          </div>
-        )}
-        {data && data.denied.length > 0 && (
-          <div className="mt-3 text-[11.5px] text-subtle-foreground">Couldn't read (root only, no sudo): {data.denied.join(", ")}</div>
-        )}
-        <div className="mt-4 max-w-[760px] text-[11.5px] leading-5 text-subtle-foreground">
-          Maintenance mode is <span className="font-mono">artisan down</span> / <span className="font-mono">up</span>, run as the owner of the app's storage folder. Basic auth
-          goes where the vhost keeps it: a vhost with <span className="font-mono">map $host</span> lines gets the app's host added or taken out (in the map nginx uses);
-          one without any gets Kemudi's lines in the app's server block (marked <span className="font-mono"># kemudi:auth</span>, per app on a shared vhost). Every change
-          is checked with <span className="font-mono">nginx -t</span> and put back if that fails. New logins go in <span className="font-mono">/etc/nginx/kemudi-auth</span>;
-          passwords are hashed on this Mac and never sent to the server.
-        </div>
-      </div>
-      {downFor && (
-        <DownDialog
-          server={server}
-          app={downFor}
-          onClose={() => setDownFor(null)}
-          onConfirm={(withSecret, stop) => {
-            const app = downFor;
-            setDownFor(null);
-            void change(app, "laravel", async () => {
-              const r = await dashboardMaintenance(server.id, app.id, true, withSecret);
-              if (r.secret && app.url) void navigator.clipboard.writeText(bypassUrl(app, r.secret)).catch(() => {});
-              let msg = r.secret && app.url ? `${app.name} is in maintenance mode; the bypass link is copied` : `${app.name} is in maintenance mode`;
-              if (stop.length) {
-                try {
-                  await dashboardWorkers(server.id, app.id, false, stop);
-                } catch (e) {
-                  throw new Error(`it's in maintenance mode, but its workers weren't stopped: ${errorMessage(e)}`);
-                }
-                // With any it stopped before (and hasn't started since).
-                setStopped(server.id, app.id, [...new Set([...stoppedOf(server.id, app.id), ...stop])]);
-                msg += `; its workers (${stop.join(", ")}) are stopped`;
-              }
-              return msg;
-            });
-          }}
-        />
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px]" onClick={(e) => e.stopPropagation()}>
+      {s.laravel ? (
+        <span className="flex items-center gap-2" title={s.down && stopped.length ? `Workers stopped: ${stopped.join(", ")}` : undefined}>
+          <Switch on={!s.down} busy={busy === "laravel"} label={s.down ? `${app.name}: bring it back up` : `${app.name}: put it in maintenance mode`} onClick={() => toggleLive(server, app, s.down)} />
+          <span className={s.down ? "text-[#8a5a12]" : "text-[#17702a]"}>{busy === "laravel" ? "…" : s.down ? "Maintenance" : "Live"}</span>
+        </span>
+      ) : (
+        <span className="text-subtle-foreground" title={`No artisan in ${app.path}`}>
+          Not Laravel
+        </span>
       )}
-      {authFor && data && (
-        <AuthDialog
-          server={server}
-          app={authFor}
-          s={data.apps.find((a) => a.appId === authFor.id)!}
-          defaultUser={data.defaultUser}
-          logins={data.logins}
-          onSetDefault={() => setEditDefault(true)}
-          onClose={() => setAuthFor(null)}
-          onConfirm={(login) => {
-            const app = authFor;
-            setAuthFor(null);
-            void change(app, "auth", async () => {
-              const r = await dashboardAuth(server.id, app.id, true, login);
-              return `Basic auth on for ${app.name}${r.user ? ` (user ${r.user})` : ""}`;
-            });
-          }}
-        />
-      )}
-      {editDefault && (
-        <DefaultLoginDialog
-          onClose={(saved) => {
-            setEditDefault(false);
-            if (saved) void load();
-          }}
-        />
+      {fixed ? (
+        <span className="truncate text-subtle-foreground" title={fixed}>
+          Basic auth: by hand
+        </span>
+      ) : (
+        <span className="flex min-w-0 items-center gap-2" title={[s.auth.via, ...s.auth.notes].filter(Boolean).join("\n") || undefined}>
+          <Switch on={on} busy={busy === "auth"} label={on ? `${app.name}: turn basic auth off` : `${app.name}: turn basic auth on`} onClick={() => toggleAuth(server, app, on)} />
+          <span className={cn("truncate", s.auth.state === "partial" ? "text-[#8a5a12]" : on ? "text-foreground" : "text-subtle-foreground")}>
+            {busy === "auth" ? "…" : s.auth.state === "partial" ? "Auth: some blocks" : on ? `Auth${usersOf(data.logins, s.auth.file) ? `: ${usersOf(data.logins, s.auth.file)}` : " on"}` : "Auth off"}
+          </span>
+        </span>
       )}
     </div>
   );
 }
 
-function AppRow({
-  server,
-  app,
-  s,
-  nginx,
-  logins,
-  busy,
-  onDown,
-  onUp,
-  onAuthOn,
-  onAuthOff,
-}: {
-  server: Server;
-  app: App;
-  s: AppSwitches;
-  nginx: boolean;
-  logins: LoginFile[];
-  busy: "laravel" | "auth" | undefined;
-  onDown: () => void;
-  onUp: () => void;
-  onAuthOn: () => void;
-  onAuthOff: () => void;
-}) {
-  const a = s.auth;
-  const authOn = a.state === "on" || a.state === "partial";
+/** An app's Overview: maintenance mode and basic auth with their details
+ *  (bypass link, stopped workers, which vhost, notes). */
+export function AppSwitchesFull({ server, app }: { server: Server; app: App }) {
+  const { entry, busy, s, data } = useSwitches(server, app);
+  useEffect(() => ensureDash(server.id), [server.id]);
   return (
-    <div className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.2fr)] items-start gap-4 border-b border-divider px-4 py-3 last:border-b-0">
-      <div className="flex min-w-0 flex-col gap-0.5">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-[13px] font-semibold">{app.name}</span>
-          {app.env !== server.env && <EnvTag env={app.env} />}
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-3">
+        <span className="flex-1 text-[11.5px] font-semibold tracking-wide text-subtle-foreground uppercase">Maintenance and basic auth</span>
+        {entry?.at && <span className="text-[11.5px] text-subtle-foreground">read {new Date(entry.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
+        <Btn size="sm" variant="outline" disabled={entry?.loading} onClick={() => void loadDash(server.id)} title={`Read ${server.name} again (read-only)`}>
+          <RotateCw className={cn("size-3.5", entry?.loading && "animate-spin")} /> Read again
+        </Btn>
+      </div>
+      {entry?.error && <div className="text-[12.5px] text-env-prod-fg">{entry.error}</div>}
+      {!s && entry?.loading && <div className="text-[12.5px] text-subtle-foreground">Reading {server.name} (read-only)…</div>}
+      {s && data && (
+        <div className="grid grid-cols-2 gap-4 rounded-xl border border-divider bg-panel px-4 py-3">
+          <LiveBlock server={server} app={app} s={s} busy={busy} />
+          <AuthBlock server={server} app={app} s={s} nginx={data.nginx} logins={data.logins} busy={busy} />
         </div>
-        {app.url && (
-          <button
-            className="flex w-fit max-w-full cursor-pointer items-center gap-1 truncate text-[12px] text-primary hover:underline"
-            onClick={() => void openUrl(app.url!).catch((e) => toastError(errorMessage(e)))}
-          >
-            <span className="truncate">{app.url.replace(/^https?:\/\//, "")}</span>
-            <ExternalLink className="size-3 flex-none" />
-          </button>
-        )}
-        <span className="truncate font-mono text-[11px] text-subtle-foreground">{app.path}</span>
-      </div>
+      )}
+      {data && <ServerNotes server={server} compact />}
+    </div>
+  );
+}
 
-      <div className="flex min-w-0 flex-col gap-1.5">
-        {s.laravel ? (
-          <>
-            <div className="flex items-center gap-2.5">
-              <Switch on={!s.down} busy={busy === "laravel"} label={`${app.name} live`} onClick={s.down ? onUp : onDown} />
-              <span className={cn("text-[12.5px]", s.down ? "text-[#8a5a12]" : "text-[#17702a]")}>{busy === "laravel" ? "…" : s.down ? "Maintenance mode" : "Live"}</span>
-            </div>
-            {s.down && stoppedOf(server.id, app.id).length > 0 && (
-              <span className="text-[11.5px] text-subtle-foreground">
-                Workers stopped: {stoppedOf(server.id, app.id).join(", ")} (they start again when it goes live)
-              </span>
-            )}
-            {s.down && s.secret && (
-              <div className="flex items-center gap-1.5 text-[11.5px] text-subtle-foreground">
-                <span className="truncate">Bypass: /{s.secret}</span>
-                {app.url && (
-                  <button
-                    className="cursor-pointer rounded p-0.5 hover:bg-hover-strong hover:text-foreground"
-                    title="Copy the bypass link (opening it lets you past maintenance mode, in that browser)"
-                    onClick={() => void navigator.clipboard.writeText(bypassUrl(app, s.secret!)).then(() => useToasts.getState().push("Bypass link copied", "info"))}
-                  >
-                    <Copy className="size-3" />
-                  </button>
-                )}
-              </div>
-            )}
-          </>
-        ) : (
-          <span className="text-[12px] text-subtle-foreground">Not Laravel (no artisan in {app.path})</span>
-        )}
-      </div>
-
-      <div className="flex min-w-0 flex-col gap-1.5">
-        {!nginx ? (
-          <span className="text-[12px] text-subtle-foreground">No nginx on this server</span>
-        ) : a.state === "novhost" ? (
-          <span className="text-[12px] text-subtle-foreground">No nginx server block with its root at {app.path.replace(/\/+$/, "")}/public</span>
-        ) : a.state === "manual" || a.state === "nourl" ? (
-          <span className="text-[12px] text-subtle-foreground">{a.notes[0] ?? "Set in its vhost by hand"}</span>
-        ) : (
-          <>
-            <div className="flex items-center gap-2.5">
-              <Switch on={authOn} busy={busy === "auth"} label={`${app.name} basic auth`} onClick={authOn ? onAuthOff : onAuthOn} />
-              <span className="min-w-0 truncate text-[12.5px]" title={authOn && a.file ? a.file : undefined}>
-                {busy === "auth" ? (
-                  "…"
-                ) : a.state === "on" ? (
-                  <>
-                    On
-                    {a.file && (
-                      <span className="text-subtle-foreground">
-                        {" "}
-                        · {usersOf(logins, a.file) ? <span className="font-mono text-foreground">{usersOf(logins, a.file)}</span> : <span className="font-mono">{a.file}</span>}
-                      </span>
-                    )}
-                  </>
-                ) : a.state === "partial" ? (
-                  <span className="text-[#8a5a12]">On for some of its server blocks</span>
-                ) : (
-                  <span className="text-subtle-foreground">Off</span>
-                )}
-              </span>
-              {authOn && busy !== "auth" && !a.fixedFile && (
-                <button className="flex-none cursor-pointer text-[11.5px] text-primary hover:underline" onClick={onAuthOn}>
-                  Change login…
+function LiveBlock({ server, app, s, busy }: { server: Server; app: App; s: AppSwitches; busy: "laravel" | "auth" | undefined }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <span className="text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">Laravel</span>
+      {s.laravel ? (
+        <>
+          <div className="flex items-center gap-2.5">
+            <Switch on={!s.down} busy={busy === "laravel"} label={`${app.name} live`} onClick={() => toggleLive(server, app, s.down)} />
+            <span className={cn("text-[12.5px]", s.down ? "text-[#8a5a12]" : "text-[#17702a]")}>{busy === "laravel" ? "…" : s.down ? "Maintenance mode" : "Live"}</span>
+          </div>
+          {s.down && stoppedOf(server.id, app.id).length > 0 && (
+            <span className="text-[11.5px] text-subtle-foreground">Workers stopped: {stoppedOf(server.id, app.id).join(", ")} (they start again when it goes live)</span>
+          )}
+          {s.down && s.secret && (
+            <div className="flex items-center gap-1.5 text-[11.5px] text-subtle-foreground">
+              <span className="truncate">Bypass: /{s.secret}</span>
+              {app.url && (
+                <button
+                  className="cursor-pointer rounded p-0.5 hover:bg-hover-strong hover:text-foreground"
+                  title="Copy the bypass link (opening it lets you past maintenance mode, in that browser)"
+                  onClick={() => void navigator.clipboard.writeText(bypassUrl(app, s.secret!)).then(() => useToasts.getState().push("Bypass link copied", "info"))}
+                >
+                  <Copy className="size-3" />
                 </button>
               )}
             </div>
-            <span className="truncate text-[11px] text-subtle-foreground" title={a.files.join("\n")}>
-              {a.via ?? a.files.map((f) => f.split("/").pop()).join(", ")}
-              {a.mode === "kemudi" && a.shared && " · shared vhost, per app"}
-            </span>
-            {a.notes.map((n) => (
-              <span key={n} className="text-[11px] leading-4 text-[#8a5a12]">
-                {n}
-              </span>
-            ))}
-          </>
-        )}
-      </div>
+          )}
+          <span className="text-[11px] leading-4 text-subtle-foreground">
+            <span className="font-mono">artisan down</span> / <span className="font-mono">up</span>, as the owner of its storage folder; down shows what keeps running first.
+          </span>
+        </>
+      ) : (
+        <span className="text-[12px] text-subtle-foreground">Not Laravel (no artisan in {app.path})</span>
+      )}
     </div>
+  );
+}
+
+function AuthBlock({ server, app, s, nginx, logins, busy }: { server: Server; app: App; s: AppSwitches; nginx: boolean; logins: LoginFile[]; busy: "laravel" | "auth" | undefined }) {
+  const a = s.auth;
+  const on = authOnOf(s);
+  const fixed = authFixed(s, nginx, app);
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <span className="text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">Basic auth</span>
+      {fixed ? (
+        <span className="text-[12px] text-subtle-foreground">{fixed}</span>
+      ) : (
+        <>
+          <div className="flex items-center gap-2.5">
+            <Switch on={on} busy={busy === "auth"} label={`${app.name} basic auth`} onClick={() => toggleAuth(server, app, on)} />
+            <span className="min-w-0 truncate text-[12.5px]" title={on && a.file ? a.file : undefined}>
+              {busy === "auth" ? (
+                "…"
+              ) : a.state === "on" ? (
+                <>
+                  On
+                  {a.file && (
+                    <span className="text-subtle-foreground">
+                      {" "}
+                      · {usersOf(logins, a.file) ? <span className="font-mono text-foreground">{usersOf(logins, a.file)}</span> : <span className="font-mono">{a.file}</span>}
+                    </span>
+                  )}
+                </>
+              ) : a.state === "partial" ? (
+                <span className="text-[#8a5a12]">On for some of its server blocks</span>
+              ) : (
+                <span className="text-subtle-foreground">Off</span>
+              )}
+            </span>
+            {on && busy !== "auth" && !a.fixedFile && (
+              <button className="flex-none cursor-pointer text-[11.5px] text-primary hover:underline" onClick={() => changeLogin(server, app)}>
+                Change login…
+              </button>
+            )}
+          </div>
+          <span className="truncate text-[11px] text-subtle-foreground" title={a.files.join("\n")}>
+            {a.via ?? a.files.map((f) => f.split("/").pop()).join(", ")}
+            {a.mode === "kemudi" && a.shared && " · shared vhost, per app"}
+          </span>
+          {a.notes.map((n) => (
+            <span key={n} className="text-[11px] leading-4 text-[#8a5a12]">
+              {n}
+            </span>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** What applies to the whole server: when it was read, the default login,
+ *  sudo for nginx, notes about its vhosts (e.g. a map in two files). The
+ *  Apps section reads it when it opens. */
+export function ServerNotes({ server, compact }: { server: Server; compact?: boolean }) {
+  const entry = useDash((s) => s.servers[server.id]);
+  const data = entry?.data;
+  const needsRoot = data && !["root", "ok"].includes(data.sudo);
+  return (
+    <div className="flex flex-col gap-2">
+      {!compact && (
+        <div className="flex flex-wrap items-center gap-2 text-[11.5px] text-subtle-foreground">
+          <span>
+            Maintenance mode and basic auth:{" "}
+            {entry?.loading ? (
+              <span className="inline-flex items-center gap-1.5">
+                <Spinner size={10} /> reading (read-only)…
+              </span>
+            ) : entry?.at ? (
+              `read ${new Date(entry.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+            ) : (
+              "not read yet"
+            )}
+          </span>
+          <button className="cursor-pointer rounded-full px-1.5 text-primary hover:bg-primary/10 disabled:opacity-50" disabled={entry?.loading} onClick={() => void loadDash(server.id)}>
+            Read again
+          </button>
+          <span className="flex-1" />
+          <button
+            className="flex cursor-pointer items-center gap-1.5 rounded-full px-2 py-0.5 text-muted-foreground hover:bg-hover-strong hover:text-foreground"
+            onClick={() => useDash.setState({ editDefault: server.id })}
+            title="The login basic auth's Turn on uses unless you give one (kept in Passwords)"
+          >
+            <KeyRound className="size-3.5" />
+            {data?.defaultUser ? (
+              <>
+                Default login: <span className="font-mono text-foreground">{data.defaultUser}</span>
+              </>
+            ) : (
+              "Set a default login…"
+            )}
+          </button>
+        </div>
+      )}
+      {!compact && entry?.error && <div className="text-[12px] text-env-prod-fg">Couldn't read maintenance mode and basic auth: {entry.error}</div>}
+      {needsRoot && (
+        <div className="flex items-center gap-3 rounded-lg border border-env-staging/40 bg-env-staging-tint px-3 py-2 text-[12px]">
+          <span className="flex-1">
+            {data.sudo === "none"
+              ? "This ssh user can't use sudo here, so basic auth can't be changed (nginx is root's)."
+              : data.sudo === "badpw"
+                ? "sudo refused the saved password for this server."
+                : "Basic auth changes nginx, which needs root: save this server's sudo password in Passwords."}
+          </span>
+          {data.sudo !== "none" && (
+            <Btn size="sm" variant="outline" onClick={() => useUi.getState().setOverlay("passwords")}>
+              Passwords…
+            </Btn>
+          )}
+        </div>
+      )}
+      {data && data.notes.length > 0 && (
+        <div className="flex flex-col gap-1 rounded-lg border border-env-staging/40 bg-env-staging-tint px-3 py-2 text-[12px] leading-5">
+          {data.notes.map((n) => (
+            <span key={n}>{n}</span>
+          ))}
+        </div>
+      )}
+      {!compact && data && data.denied.length > 0 && <div className="text-[11.5px] text-subtle-foreground">Couldn't read (root only, no sudo): {data.denied.join(", ")}</div>}
+    </div>
+  );
+}
+
+/** The down, basic auth and default login dialogs (one host, in App). */
+export function DashDialogs() {
+  const { down, auth, editDefault, servers } = useDash();
+  const all = useConfig((s) => s.snapshot?.config?.servers);
+  const find = (r: { serverId: string; appId: string } | null) => {
+    const server = r ? all?.find((x) => x.id === r.serverId) : undefined;
+    const app = server && r ? server.apps.find((a) => a.id === r.appId) : undefined;
+    return server && app ? { server, app } : null;
+  };
+  const d = find(down);
+  const a = find(auth);
+  const aData = a ? servers[a.server.id]?.data : null;
+  const aS = a && aData ? aData.apps.find((x) => x.appId === a.app.id) : undefined;
+  return (
+    <>
+      {d && <DownDialog server={d.server} app={d.app} onClose={() => useDash.setState({ down: null })} onConfirm={(withSecret, stop) => goDown(d.server, d.app, withSecret, stop)} />}
+      {a && aData && aS && (
+        <AuthDialog
+          server={a.server}
+          app={a.app}
+          s={aS}
+          defaultUser={aData.defaultUser}
+          logins={aData.logins}
+          onSetDefault={() => useDash.setState({ editDefault: a.server.id })}
+          onClose={() => useDash.setState({ auth: null })}
+          onConfirm={(login) => authOn(a.server, a.app, login)}
+        />
+      )}
+      {editDefault && (
+        <DefaultLoginDialog
+          onClose={(saved) => {
+            const id = editDefault;
+            useDash.setState({ editDefault: null });
+            if (saved) void loadDash(id);
+          }}
+        />
+      )}
+    </>
   );
 }
 

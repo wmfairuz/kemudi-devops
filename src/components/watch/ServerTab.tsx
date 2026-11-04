@@ -1,7 +1,6 @@
 import { ExternalLink, SquareTerminal } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { DashboardView } from "@/components/dashboard/DashboardView";
 import { FilesView } from "@/components/files/FilesView";
 import { Group, Tool } from "@/components/kit/Toolbar";
 import { LogsView } from "@/components/logs/LogsView";
@@ -25,7 +24,8 @@ import { ServerApps, ServerOverview } from "./Watch";
  *  preview tab (a plain click in the sidebar) is kept once you do something
  *  in it: pick a section, click or type in it. */
 export function ServerTabView({ tab, visible }: { tab: Tab; visible: boolean }) {
-  const section = tab.section ?? "overview";
+  // The Dashboard was folded into Apps: a tab saved on it shows Apps.
+  const section = tab.section === "dash" ? "apps" : (tab.section ?? "overview");
   const server = useConfig((s) => s.snapshot?.config?.servers.find((x) => x.id === tab.serverId));
   const [seen, setSeen] = useState<ServerSection[]>([section]);
   const items = useServerItems(tab.serverId ?? "").filter((i) => i.severity !== "info");
@@ -39,8 +39,6 @@ export function ServerTabView({ tab, visible }: { tab: Tab; visible: boolean }) 
         return <ServerOverview server={server} />;
       case "apps":
         return <ServerApps server={server} />;
-      case "dash":
-        return <DashboardView tab={tab} visible={shown} />;
       case "files":
         return <FilesView tab={tab} visible={shown} field="filesDir" />;
       case "logs":

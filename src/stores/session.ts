@@ -81,7 +81,7 @@ function restoreTab(t: SavedTab, into?: OpenOptions["into"]): string {
     return openSetup({ id: t.serverId, name: t.title.replace(/ · setup$/, ""), host: t.host ?? "", env: t.prod ? "prod" : "dev" }, true);
   }
   if (t.kind === "dash" && t.serverId) {
-    return openDashboard({ id: t.serverId, name: t.title.replace(/ · dashboard$/, ""), host: t.host ?? "", env: t.prod ? "prod" : "dev" }, true);
+    return openDashboard({ id: t.serverId, name: t.title.replace(/ · dashboard$/, ""), host: t.host ?? "", env: t.prod ? "prod" : "dev" });
   }
   if (t.kind === "tune" && t.serverId && t.host) {
     return openTune({ id: t.serverId, name: t.title.replace(/ · tune$/, ""), host: t.host, env: t.prod ? "prod" : "dev" }, true);

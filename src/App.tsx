@@ -1,4 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
+import { DashDialogs } from "@/components/dashboard/AppSwitches";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useRef } from "react";
 
@@ -160,6 +161,7 @@ export default function App() {
       <FileEditorDialog />
       <VhostGeneratorDialog />
       <NewAppDialog />
+      <DashDialogs />
       <WorkflowRunDialog />
       <UpdateDialog />
       <FleetDialogs />
