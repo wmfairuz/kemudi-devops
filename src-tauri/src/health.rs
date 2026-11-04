@@ -84,10 +84,12 @@ echo @@failed
 systemctl list-units --state=failed --no-legend --plain 2>/dev/null | awk '{print $1}'
 "#;
 
-/// Disk usage, as Monitor reads it (a snapshot).
+/// Services stuck restarting, Supervisor's programs and disk usage, as
+/// Monitor reads it (a snapshot).
 fn system_script() -> String {
     format!(
-        "{SYSTEM}{}",
+        "{SYSTEM}{}{}",
+        crate::watch::PROCS_SCRIPT,
         crate::monitor::DISKS_SCRIPT.trim_start_matches("export LC_ALL=C\n")
     )
 }
@@ -203,6 +205,8 @@ pub struct Health {
     pub reboot_pkgs: Vec<String>,
     pub services: Vec<Service>,
     pub failed_units: Vec<String>,
+    /// Services stuck restarting, Supervisor's programs.
+    pub procs: crate::watch::Procs,
     /// Disk usage when checked.
     pub disks: Vec<crate::monitor::Disk>,
     pub apps: Vec<AppHealth>,
@@ -217,7 +221,7 @@ fn sections(out: &str) -> BTreeMap<String, Vec<String>> {
         if let Some(n) = l.strip_prefix("@@") {
             let n = n.split(' ').next().unwrap_or("");
             if [
-                "os", "updates", "reboot", "services", "failed", "df", "apps", "renew", "renewerr",
+                "os", "updates", "reboot", "services", "failed", "restarting", "workers", "df", "apps", "renew", "renewerr",
             ]
             .contains(&n)
             {
@@ -515,6 +519,10 @@ fn parse_system(out: &str, h: &mut Health) {
         .map(|l| l.trim().to_string())
         .filter(|l| !l.is_empty() && l != "●")
         .collect();
+    h.procs = crate::watch::parse_procs(
+        sec.get("restarting").into_iter().flatten().map(String::as_str),
+        sec.get("workers").into_iter().flatten().map(String::as_str),
+    );
     let mut cur: Option<AppHealth> = None;
     for l in sec.remove("apps").unwrap_or_default() {
         if let Some(id) = l.strip_prefix("@app ") {

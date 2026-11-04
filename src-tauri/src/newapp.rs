@@ -1003,7 +1003,19 @@ else
   ok "wrote $wf"
 fi
 rm -f "$new"
-$S supervisorctl reread >/dev/null && $S supervisorctl update || die "supervisorctl update failed"
+# supervisorctl's own words when it fails; when supervisord isn't running,
+# why (its log), since every worker on the server is down with it.
+o=$($S supervisorctl reread 2>&1); r=$?
+case "$o" in
+  *"no such file"*|*refused*|*SHUTDOWN*|*"not running"*)
+    printf '  %s\n' "$o"
+    echo "  Supervisor isn't running (service: $(systemctl is-active supervisor 2>/dev/null)). Its log says:"
+    $S journalctl -u supervisor -n 50 --no-pager 2>/dev/null | grep -E 'supervisord\[[0-9]+\]: Error' | tail -n 1 | sed 's/^.*supervisord\[[0-9]*\]: /    /'
+    die "start Supervisor first (fix what its log says; no worker on this server runs meanwhile), then run New app again" ;;
+esac
+[ "$r" = 0 ] || {{ printf '  %s\n' "$o"; die "supervisorctl reread failed"; }}
+o=$($S supervisorctl update 2>&1) || {{ printf '  %s\n' "$o"; die "supervisorctl update failed"; }}
+[ -n "$o" ] && printf '  %s\n' "$o"
 sleep 2; $S supervisorctl status "$ID-worker:*" || warn "the worker isn't running yet: see storage/logs/worker.log"
 "#,
                 file = shell_quote(&w.file),
@@ -1030,6 +1042,15 @@ KEMUDI_B64
   else $S install -m 644 "$new" "$cf" || {{ rm -f "$new"; die "couldn't write $cf"; }}; ok "$cf: schedule:run every minute as $OWN_USER"; fi
   rm -f "$new"
 fi
+# `crontab -e -u $OWN_USER` doesn't show cron.d: a note at its top says
+# where these are (once; a crontab that can't be read is left alone).
+ct=$($S crontab -l -u "$OWN_USER" 2>&1); r=$?
+if [ "$r" != 0 ]; then case "$ct" in *"no crontab"*) ct="";; *) ct="?";; esac; fi
+case "$ct" in
+  "?"|*/etc/cron.d/laravel-*) ;;
+  *) if {{ echo '# Laravel schedulers (schedule:run) added by Kemudi are in /etc/cron.d/laravel-*, not here.'; if [ -n "$ct" ]; then printf '%s\n' "$ct"; fi; }} | $S crontab -u "$OWN_USER" -
+     then ok "noted in $OWN_USER's crontab that the schedulers are in /etc/cron.d"; else warn "couldn't add the note to $OWN_USER's crontab"; fi ;;
+esac
 "#,
                 file = shell_quote(&cron_file(plan)),
                 body = base64_body(&cron_conf(plan)),

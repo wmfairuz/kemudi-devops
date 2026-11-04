@@ -211,6 +211,65 @@ pub struct System {
     pub swap_total_kb: u64,
     pub swap_free_kb: u64,
     pub failed_units: Vec<String>,
+    pub procs: Procs,
+}
+
+/// Services systemd keeps restarting, and Supervisor's programs.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Procs {
+    /// (service, restarts so far): it fails to start, systemd tries again
+    /// and it never shows as failed.
+    pub restarting: Vec<(String, u32)>,
+    /// supervisorctl couldn't reach supervisord: what it said.
+    pub supervisor_down: Option<String>,
+    /// (program, state), e.g. ("shop-worker:shop-worker_00", "FATAL").
+    pub workers: Vec<(String, String)>,
+}
+
+/// Feeds `parse_procs`: `@@restarting` (`unit NRestarts`) and `@@workers`
+/// (`supervisorctl status`, through sudo when its socket is root's).
+pub(crate) const PROCS_SCRIPT: &str = r#"echo @@restarting
+systemctl list-units --type=service --all --no-legend --plain 2>/dev/null | awk '$4=="auto-restart"{print $1}' | while read -r u; do echo "$u $(systemctl show -p NRestarts --value "$u" 2>/dev/null)"; done
+echo @@workers
+if command -v supervisorctl >/dev/null 2>&1; then
+  st=$(supervisorctl status 2>&1)
+  case "$st" in *ermission*) if [ -n "$SU" ]; then st=$($SU supervisorctl status 2>&1); else st="?noaccess"; fi;; esac
+  printf '%s\n' "$st" | head -n 300
+fi
+"#;
+
+const WORKER_STATES: [&str; 8] = ["STOPPED", "STARTING", "RUNNING", "BACKOFF", "STOPPING", "EXITED", "FATAL", "UNKNOWN"];
+
+pub(crate) fn parse_procs<'a>(restarting: impl IntoIterator<Item = &'a str>, workers: impl IntoIterator<Item = &'a str>) -> Procs {
+    let mut p = Procs {
+        restarting: restarting
+            .into_iter()
+            .filter_map(|l| {
+                let mut it = l.split_whitespace();
+                let unit = it.next()?.trim_end_matches(".service").to_string();
+                Some((unit, it.next().and_then(|n| n.parse().ok()).unwrap_or(0)))
+            })
+            .collect(),
+        ..Procs::default()
+    };
+    let mut other = None;
+    for l in workers {
+        let mut it = l.split_whitespace();
+        match (it.next(), it.next()) {
+            (Some(name), Some(state)) if WORKER_STATES.contains(&state) => p.workers.push((name.to_string(), state.to_string())),
+            // "?noaccess": no sudo to ask with; says nothing.
+            _ if l.trim().is_empty() || l.starts_with('?') => {}
+            _ => {
+                other.get_or_insert_with(|| l.trim().to_string());
+            }
+        }
+    }
+    // "unix:///var/run/supervisor.sock no such file", "refused connection"…
+    if p.workers.is_empty() {
+        p.supervisor_down = other;
+    }
+    p
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -328,8 +387,9 @@ pub struct Item {
     pub key: String,
     pub server_id: String,
     pub severity: Severity,
-    /// disk, inodes, memory, swap, load, failed, updates, security, reboot,
-    /// debug, down, cert, renew, setup, unreachable, error.
+    /// disk, inodes, memory, swap, load, failed, restarting, supervisor,
+    /// workers, updates, security, reboot, debug, down, cert, renew, setup,
+    /// unreachable, error.
     pub kind: &'static str,
     pub text: String,
     pub detail: Option<String>,
@@ -629,6 +689,31 @@ pub fn items(
                     sys.at,
                 );
             }
+            let p = &v.procs;
+            let bad = if server.env == Env::Prod { Severity::Urgent } else { Severity::Warn };
+            let supervisor = |u: &str| u.starts_with("supervisor");
+            // A few tries is a restart going through; thousands, a config error.
+            for (unit, n) in p.restarting.iter().filter(|(_, n)| *n >= 3) {
+                let detail = if supervisor(unit) { "No queue worker runs meanwhile. Health ▸ Services ▸ its Status says why" } else { "Health ▸ Services ▸ its Status says why" };
+                push(bad, "restarting", unit, format!("{unit} keeps failing to start ({n} tries)"), Some(detail.into()), None, sys.at);
+            }
+            if let Some(why) = &p.supervisor_down {
+                let told = p.restarting.iter().any(|(u, n)| *n >= 3 && supervisor(u)) || v.failed_units.iter().any(|u| supervisor(u));
+                if !told {
+                    push(bad, "supervisor", "", "Supervisor isn't running: no queue worker runs".into(), Some(why.clone()), None, sys.at);
+                }
+            }
+            let stopped: Vec<String> = p
+                .workers
+                .iter()
+                .filter(|(_, st)| !matches!(st.as_str(), "RUNNING" | "STARTING"))
+                .map(|(name, st)| format!("{name} ({st})"))
+                .collect();
+            if !stopped.is_empty() {
+                // Snoozed until another one stops.
+                let subject = stopped.join(",");
+                push(Severity::Warn, "workers", &subject, format!("{} not running", plural(stopped.len(), "worker")), Some(stopped.join(", ")), None, sys.at);
+            }
         }
         if let Some(up) = &w.updates {
             let v = &up.value;
@@ -924,6 +1009,7 @@ fn parse_system(sec: &BTreeMap<&str, Vec<&str>>) -> Result<System, String> {
         .map(|l| l.trim().trim_end_matches(".service").to_string())
         .filter(|l| !l.is_empty() && l != "●")
         .collect();
+    s.procs = parse_procs(sec.get("restarting").into_iter().flatten().copied(), sec.get("workers").into_iter().flatten().copied());
     Ok(s)
 }
 
@@ -1039,13 +1125,15 @@ async fn check_server(app: &AppHandle, server: &Server, checks: &[Check]) {
     let upd = checks.contains(&Check::Updates);
     if sys || upd {
         let mut script = String::from("export LC_ALL=C\n");
-        if upd && !server.apps.is_empty() {
+        // sudo: apps' .env files, supervisorctl when its socket is root's.
+        if sys || (upd && !server.apps.is_empty()) {
             let password = crate::remote_files::saved_sudo(id).await;
             script.push_str(&crate::remote_files::sudo_prelude(password.as_deref()));
         }
         script.push_str("echo @@now\n");
         if sys {
             script.push_str(SYSTEM_SCRIPT);
+            script.push_str(PROCS_SCRIPT);
         }
         if upd {
             script.push_str(UPDATES_SCRIPT);
@@ -1312,6 +1400,46 @@ servers:
         assert_eq!((u.updates, u.security, u.reboot_required), (Some(12), Some(3), true));
         assert_eq!(u.apps[0].down_since, Some(1_700_000_100));
         assert_eq!(u.apps[0].app_debug, Some(true));
+    }
+
+    #[test]
+    fn supervisor_down_restarting_and_stopped_workers() {
+        let down = parse_procs(
+            ["supervisor.service 6243", "php8.3-fpm.service 1"],
+            ["unix:///var/run/supervisor.sock no such file"],
+        );
+        assert_eq!(down.restarting, vec![("supervisor".to_string(), 6243), ("php8.3-fpm".to_string(), 1)]);
+        assert_eq!(down.supervisor_down.as_deref(), Some("unix:///var/run/supervisor.sock no such file"));
+        let up = parse_procs(
+            [],
+            [
+                "shop-worker:shop-worker_00      RUNNING   pid 12, uptime 1:00:00",
+                "mail-worker:mail-worker_00      FATAL     Exited too quickly (process log may have details)",
+                "?noaccess",
+            ],
+        );
+        assert_eq!(up.supervisor_down, None);
+        assert_eq!(up.workers.len(), 2);
+        assert_eq!(parse_procs([], ["?noaccess"]), Procs::default());
+
+        let c = config();
+        let now = 1_700_100_000;
+        let mut servers = BTreeMap::new();
+        let sys = |procs: Procs| ServerWatch {
+            system: Some(Stamped { at: now, value: System { procs, ..System::default() } }),
+            ..ServerWatch::default()
+        };
+        servers.insert("web-1".to_string(), sys(down));
+        servers.insert("stg".to_string(), sys(up));
+        let got = items(&c, &servers, &BTreeMap::new(), &HashSet::new(), &Settings::default(), now);
+        let kinds: Vec<_> = got.iter().map(|i| (i.server_id.as_str(), i.kind, i.severity)).collect();
+        // Supervisor restarting on prod is urgent and said once; 1 restart isn't news.
+        assert!(kinds.contains(&("web-1", "restarting", Severity::Urgent)));
+        assert!(!kinds.iter().any(|k| k.1 == "supervisor"));
+        assert_eq!(got.iter().filter(|i| i.kind == "restarting").count(), 1);
+        let w = got.iter().find(|i| i.kind == "workers").expect("workers item");
+        assert_eq!((w.server_id.as_str(), w.text.as_str()), ("stg", "1 worker not running"));
+        assert_eq!(w.detail.as_deref(), Some("mail-worker:mail-worker_00 (FATAL)"));
     }
 
     #[test]

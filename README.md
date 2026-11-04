@@ -110,7 +110,11 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   - **Needs attention**: what the background checks found on the team in
     front's servers, worst first (urgent, soon, info), each with when it was
     read and one button to look into it (Monitor, Health, Dashboard, Setup,
-    the app's page). **Snooze** hides one for a day, 7 or 30 days. **Check
+    the app's page). The hourly system check also warns about a service
+    that keeps failing to start (urgent on production; e.g. Supervisor
+    stopped by a worker whose folder is gone, which stops every worker),
+    Supervisor not running, and workers not RUNNING (FATAL, BACKOFF,
+    STOPPED…). **Snooze** hides one for a day, 7 or 30 days. **Check
     all** checks every server now; **Checks…** opens Settings ▸ Checks.
   - **Servers**: a grid of each server's last results (fullest disk,
     memory, updates and ↻ restart needed, days to the first certificate
@@ -471,7 +475,9 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   - a Supervisor **queue worker** (`queue:work`, N processes, as the owner);
   - migrations (+ seed), the **scheduler** (`/etc/cron.d/laravel-<id>`:
     `schedule:run` every minute as the owner; skipped if a cron entry for
-    the folder already runs it), and `npm ci && npm run build` when npm is
+    the folder already runs it; a comment at the top of the owner's
+    crontab says the schedulers are in `/etc/cron.d`, since `crontab -e -u
+    www-data` doesn't show them), and `npm ci && npm run build` when npm is
     there;
   - **hooks**: your own shell for every new app on a server or a team
     (`new_app_before:` / `new_app_after:` in the config, edited from the
@@ -494,7 +500,8 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   production) → chown/permissions (and git `safe.directory` when the login
   user isn't the owner) → key:generate, storage:link, migrate as the owner →
   vhost + `nginx -t` (removed again if it fails) + reload → worker +
-  `supervisorctl update` → scheduler → certbot → after hooks (before hooks
+  `supervisorctl update` (when it fails, supervisorctl's own words; when
+  Supervisor isn't running at all, the error from its log) → scheduler → certbot → after hooks (before hooks
   run right after the checks). Each step skips what's already done, so
   after fixing a failure, *Open the form* (from the toast) and run it again.
   When it ends with exit 0 the app is added to Kemudi with its path, branch,
@@ -566,8 +573,11 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   server; *Check again* afterwards). If certbot's last run failed it says so, with
   the reason from its log (e.g. `--manual` DNS-challenge certificates,
   which can't renew unattended). **System**: OS, kernel, uptime, pending
-  updates (and security ones), reboot needed, the usual services and any
-  failed unit; click a service for **Status / Start / Stop / Restart**
+  updates (and security ones), reboot needed, the usual services (one that
+  keeps failing to start, which systemd retries so it never shows as
+  failed, in red with its number of tries) and any failed unit, and the
+  **Workers**: each Supervisor program's state, or that Supervisor isn't
+  running; click a service for **Status / Start / Stop / Restart**
   (`systemctl`, run as an action in a tab: production asks first, Stop and
   Restart count as danger, all in History). Inspect ▸ Supervisor does the
   same for each program (click its name). Root comes as for every built-in

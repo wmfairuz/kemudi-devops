@@ -1217,6 +1217,7 @@ export interface Health {
   rebootPkgs: string[];
   services: { name: string; active: string; sub: string }[];
   failedUnits: string[];
+  procs: Procs;
   /** Disk usage when checked. */
   disks: MonitorDisk[];
   apps: { id: string; missing: boolean; php: string | null; laravel: string | null; appEnv: string | null; appDebug: boolean | null; noEnv: boolean }[];
@@ -1679,6 +1680,17 @@ export interface WatchSystem {
   swapTotalKb: number;
   swapFreeKb: number;
   failedUnits: string[];
+  procs: Procs;
+}
+
+/** Services systemd keeps restarting, and Supervisor's programs. */
+export interface Procs {
+  /** [service, restarts so far]. */
+  restarting: [string, number][];
+  /** supervisorctl couldn't reach supervisord: what it said. */
+  supervisorDown: string | null;
+  /** [program, state], e.g. ["shop-worker:shop-worker_00", "FATAL"]. */
+  workers: [string, string][];
 }
 
 export interface WatchUpdates {

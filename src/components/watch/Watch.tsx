@@ -64,6 +64,9 @@ function KindIcon({ kind, className }: { kind: string; className?: string }) {
     case "unreachable":
       return <Unplug className={c} />;
     case "failed":
+    case "restarting":
+    case "supervisor":
+    case "workers":
       return <Database className={c} />;
     default:
       return <AlertTriangle className={c} />;
@@ -83,6 +86,9 @@ export function actionOf(item: WatchItem, server: Server): { label: string; run:
     case "load":
       return go("monitor", "Monitor");
     case "failed":
+    case "restarting":
+    case "supervisor":
+    case "workers":
     case "security":
     case "updates":
     case "reboot":

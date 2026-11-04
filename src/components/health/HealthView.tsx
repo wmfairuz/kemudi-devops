@@ -188,22 +188,44 @@ export function HealthView({ tab, visible }: { tab: Tab; visible: boolean }) {
                   <span className="text-subtle-foreground">Services</span>
                   <span className="flex flex-wrap gap-1.5">
                     {h.services.length === 0 && <span className="text-subtle-foreground">—</span>}
-                    {h.services.map((s) => (
-                      <button
-                        key={s.name}
-                        type="button"
-                        className="cursor-pointer rounded hover:ring-1 hover:ring-control-border"
-                        title={`${s.active} (${s.sub}) · click for Status / Start / Stop / Restart`}
-                        onClick={(e) => serviceMenu.open(e, "service", s.name)}
-                      >
-                        <Pill tone={s.active === "active" ? "ok" : s.active === "failed" ? "bad" : "dim"}>
-                          {s.name}
-                          {s.active !== "active" ? ` · ${s.active}` : ""}
-                        </Pill>
-                      </button>
-                    ))}
+                    {h.services.map((s) => {
+                      // Fails to start and systemd tries again: never "failed".
+                      const tries = s.sub === "auto-restart" ? h.procs.restarting.find(([u]) => u === s.name)?.[1] : undefined;
+                      return (
+                        <button
+                          key={s.name}
+                          type="button"
+                          className="cursor-pointer rounded hover:ring-1 hover:ring-control-border"
+                          title={`${s.active} (${s.sub}) · click for Status / Start / Stop / Restart`}
+                          onClick={(e) => serviceMenu.open(e, "service", s.name)}
+                        >
+                          <Pill tone={s.active === "active" ? "ok" : s.active === "failed" || s.sub === "auto-restart" ? "bad" : "dim"}>
+                            {s.name}
+                            {s.sub === "auto-restart" ? ` · keeps failing to start${tries ? ` (${tries} tries)` : ""}` : s.active !== "active" ? ` · ${s.active}` : ""}
+                          </Pill>
+                        </button>
+                      );
+                    })}
                     {serviceMenu.node}
                   </span>
+                  {(h.procs.supervisorDown || h.procs.workers.length > 0) && (
+                    <>
+                      <span className="text-subtle-foreground">Workers</span>
+                      <span className="flex flex-wrap gap-1.5">
+                        {h.procs.supervisorDown && (
+                          <span className="text-env-prod-fg" title={h.procs.supervisorDown}>
+                            Supervisor isn't running, so no worker runs: its Status (Services) says why
+                          </span>
+                        )}
+                        {h.procs.workers.map(([name, state]) => (
+                          <Pill key={name} tone={state === "RUNNING" ? "ok" : state === "STARTING" ? "dim" : "bad"} title={state}>
+                            {name.split(":").pop()}
+                            {state !== "RUNNING" ? ` · ${state.toLowerCase()}` : ""}
+                          </Pill>
+                        ))}
+                      </span>
+                    </>
+                  )}
                   {h.failedUnits.length > 0 && (
                     <>
                       <span className="text-env-prod-fg">Failed units</span>
