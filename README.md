@@ -179,7 +179,10 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   it found, and apps added / removed in the last 30 days, from a small log
   on this Mac, `apps-log.json` in the data folder, of what Discover, New app
   and the app form did; an app added by editing servers.yaml isn't in it;
-  click an environment or Need a look to show just those; then a search
+  each tile filters the list: Apps shows them all again, "60 with a URL",
+  an environment, Need a look (or one of its parts: folder missing,
+  APP_DEBUG on, in maintenance), Last discover (the apps Discover added)
+  and Added · 30 days; the tile that's on is outlined; then a search
   box (name, URL, folder; words all match) and chips for each environment,
   Live / Maintenance, Auth on / off and Need a look, each with its count,
   clicked again to clear; the title says "12 of 67")

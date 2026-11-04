@@ -399,7 +399,7 @@ export function ServerApps({ server }: { server: Server }) {
   return (
     <div className="light-ui absolute inset-0 overflow-y-auto bg-background text-foreground">
       <div className="flex w-full flex-col gap-4 px-5 py-5">
-        <AppsStats server={server} now={now} onFilter={(g) => setF({ ...NO_FILTER, ...g })} />
+        <AppsStats server={server} now={now} f={f} onFilter={(g) => setF({ ...NO_FILTER, ...g })} />
         <ServerNotes server={server} />
         {server.apps.length > 0 && <AppsFilterBar apps={server.apps} facts={facts} f={f} setF={setF} />}
         <AppsList
@@ -437,17 +437,30 @@ export function ServerApps({ server }: { server: Server }) {
 
 // ------------------------------------------------------------ filter
 
-type AppFilter = { q: string; env: Env | null; live: "live" | "down" | null; auth: "on" | "off" | null; look: boolean };
-const NO_FILTER: AppFilter = { q: "", env: null, live: null, auth: null, look: false };
+type AppFilter = {
+  q: string;
+  env: Env | null;
+  live: "live" | "down" | null;
+  auth: "on" | "off" | null;
+  look: boolean;
+  /** One thing the checks flag (the Need a look tile's parts). */
+  flag: "debug" | "missing" | null;
+  url: boolean;
+  /** Apps picked from the log (added in 30 days, by Discover). */
+  ids: { label: string; set: string[] } | null;
+};
+const NO_FILTER: AppFilter = { q: "", env: null, live: null, auth: null, look: false, flag: null, url: false, ids: null };
+const FLAG_LABEL = { debug: "APP_DEBUG on", missing: "Folder missing" } as const;
+const filtering = (f: AppFilter) => f.q !== "" || !!f.env || !!f.live || !!f.auth || f.look || !!f.flag || f.url || !!f.ids;
 
 /** What an app's filters look at: the background checks (its .env) and
  *  the switches (maintenance mode, basic auth) as last read. */
-type Facts = { down: boolean | null; auth: boolean | null; look: boolean };
+type Facts = { down: boolean | null; auth: boolean | null; look: boolean; debug: boolean; missing: boolean };
 type ServerWatchApp = WatchUpdates["apps"][number];
 function appFacts(st: ServerWatchApp | undefined, sw: AppSwitches | undefined): Facts {
   const down = sw?.laravel ? sw.down : st ? !!st.downSince : null;
   const auth = sw ? (sw.auth.state === "on" || sw.auth.state === "partial" ? true : sw.auth.state === "off" ? false : null) : null;
-  return { down, auth, look: !!st && (st.missing || !!st.appDebug || !!st.downSince) };
+  return { down, auth, look: !!st && (st.missing || !!st.appDebug || !!st.downSince), debug: !!st?.appDebug, missing: !!st?.missing };
 }
 
 function matches(a: App, x: Facts, f: AppFilter): boolean {
@@ -455,6 +468,9 @@ function matches(a: App, x: Facts, f: AppFilter): boolean {
   if (f.live && x.down !== (f.live === "down")) return false;
   if (f.auth && x.auth !== (f.auth === "on")) return false;
   if (f.look && !x.look) return false;
+  if (f.flag && !x[f.flag]) return false;
+  if (f.url && !a.url) return false;
+  if (f.ids && !f.ids.set.includes(a.id)) return false;
   const hay = `${a.name} ${a.id} ${a.url ?? ""} ${a.path}`.toLowerCase();
   return f.q
     .toLowerCase()
@@ -470,7 +486,16 @@ function AppsFilterBar({ apps, facts, f, setF }: { apps: App[]; facts: (a: App) 
   const all = apps.map((a) => [a, facts(a)] as const);
   const count = (g: Partial<AppFilter>) => all.filter(([a, x]) => matches(a, x, { ...NO_FILTER, ...g })).length;
   const envs = (["prod", "staging", "qa", "dev"] as Env[]).filter((e) => apps.some((a) => a.env === e));
-  const any = f.q !== "" || f.env || f.live || f.auth || f.look;
+  const any = filtering(f);
+  // Set from the numbers above: a chip that only takes it away.
+  const picked = (label: string, clear: Partial<AppFilter>) => (
+    <span key={label} className="flex h-[26px] flex-none items-center gap-1 rounded-full bg-primary pr-1 pl-2.5 text-[12px] font-medium text-primary-foreground">
+      {label}
+      <button className="cursor-pointer rounded-full p-0.5 hover:bg-white/20" aria-label={`Stop showing only: ${label}`} onClick={() => setF({ ...f, ...clear })}>
+        <X className="size-3" />
+      </button>
+    </span>
+  );
   const chip = (label: string, on: boolean, n: number, flip: () => void, title?: string) => (
     <button
       key={label}
@@ -516,6 +541,9 @@ function AppsFilterBar({ apps, facts, f, setF }: { apps: App[]; facts: (a: App) 
         chip("Auth off", f.auth === "off", count({ auth: "off" }), () => setF({ ...f, auth: f.auth === "off" ? null : "off" }), "Basic auth off (ones set by hand in the vhost aren't counted)"),
       ])}
       {group(chip("Need a look", f.look, count({ look: true }), () => setF({ ...f, look: !f.look }), "Folder missing, APP_DEBUG on or in maintenance (the background checks)"))}
+      {f.flag && picked(FLAG_LABEL[f.flag], { flag: null })}
+      {f.url && picked("With a URL", { url: false })}
+      {f.ids && picked(f.ids.label, { ids: null })}
       {any && (
         <button className="cursor-pointer rounded-full px-2 py-1 text-[12px] text-primary hover:bg-primary/10" onClick={() => setF(NO_FILTER)}>
           Clear
@@ -527,10 +555,31 @@ function AppsFilterBar({ apps, facts, f, setF }: { apps: App[]; facts: (a: App) 
 
 const DAY_S = 86400;
 
-function Stat({ label, value, sub, tone, onClick, title }: { label: string; value: React.ReactNode; sub?: React.ReactNode; tone?: "warn" | "bad"; onClick?: () => void; title?: string }) {
+function Stat({
+  label,
+  value,
+  sub,
+  tone,
+  onClick,
+  title,
+  active,
+}: {
+  label: string;
+  value: React.ReactNode;
+  sub?: React.ReactNode;
+  tone?: "warn" | "bad";
+  onClick?: () => void;
+  title?: string;
+  /** Its filter is the one on. */
+  active?: boolean;
+}) {
   return (
     <div
-      className={cn("flex min-w-0 flex-col gap-0.5 rounded-xl border border-divider bg-panel px-3.5 py-2.5", onClick && "cursor-pointer transition-colors hover:border-primary/40 hover:bg-hover")}
+      className={cn(
+        "flex min-w-0 flex-col gap-0.5 rounded-xl border bg-panel px-3.5 py-2.5",
+        active ? "border-primary/60 bg-primary/[0.06] ring-1 ring-primary/30" : "border-divider",
+        onClick && "cursor-pointer transition-colors hover:border-primary/40 hover:bg-hover",
+      )}
       onClick={onClick}
       title={title}
       role={onClick ? "button" : undefined}
@@ -547,7 +596,7 @@ const ENV_LABEL: Record<Env, string> = { prod: "prod", staging: "staging", qa: "
 /** The Apps section's numbers: how many, by environment, what the checks
  *  flagged, when Discover last looked and what was added or removed
  *  through Kemudi (its log on this Mac). */
-function AppsStats({ server, now, onFilter }: { server: Server; now: number; onFilter: (f: Partial<AppFilter>) => void }) {
+function AppsStats({ server, now, f, onFilter }: { server: Server; now: number; f: AppFilter; onFilter: (f: Partial<AppFilter>) => void }) {
   const up = useWatch((s) => s.snapshot?.servers[server.id]?.updates);
   const discovering = useManage((s) => s.discover === server.id);
   const shots = useShots((s) => s.map);
@@ -577,7 +626,6 @@ function AppsStats({ server, now, onFilter }: { server: Server; now: number; onF
   const down = st.filter((x) => x.downSince).length;
   const missing = st.filter((x) => x.missing).length;
   const flagged = new Set(st.filter((x) => x.appDebug || x.downSince || x.missing).map((x) => x.id)).size;
-  const flags = [missing && `${missing} folder missing`, debug && `${debug} APP_DEBUG on`, down && `${down} in maintenance`].filter(Boolean).join(" · ");
 
   const lastDiscover = log?.discovers.at(-1);
   const events = log?.events ?? [];
@@ -586,10 +634,44 @@ function AppsStats({ server, now, onFilter }: { server: Server; now: number; onF
   const removed = month.filter((e) => e.kind === "removed").length;
   const lastAdd = [...events].reverse().find((e) => e.kind === "added");
   const nameOf = (id: string) => apps.find((a) => a.id === id)?.name ?? id;
+  const here = (list: { appId: string }[]) => [...new Set(list.map((e) => e.appId))].filter((id) => apps.some((a) => a.id === id));
+  const addedIds = here(added);
+  const discoveredIds = here(events.filter((e) => e.kind === "added" && e.via === "discover"));
+  /** A part of a tile that filters on its own (the tile's click is the whole). */
+  const part = (label: React.ReactNode, title: string, g: Partial<AppFilter>, on: boolean) => (
+    <button
+      className={cn("cursor-pointer rounded hover:text-primary hover:underline", on && "font-semibold text-primary")}
+      title={title}
+      onClick={(e) => {
+        e.stopPropagation();
+        onFilter(on ? {} : g);
+      }}
+    >
+      {label}
+    </button>
+  );
+  const only = (g: Partial<AppFilter>) => {
+    const want = { ...NO_FILTER, ...g };
+    return (Object.keys(want) as (keyof AppFilter)[]).every((k) => JSON.stringify(want[k]) === JSON.stringify(f[k]));
+  };
 
   return (
     <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-3">
-      <Stat label="Apps" value={apps.length} sub={apps.length ? `${withUrl} with a URL · ${pictured} pictured` : "none yet"} />
+      <Stat
+        label="Apps"
+        value={apps.length}
+        onClick={filtering(f) ? () => onFilter({}) : undefined}
+        title={filtering(f) ? "Show them all" : undefined}
+        sub={
+          apps.length ? (
+            <>
+              {withUrl < apps.length ? part(`${withUrl} with a URL`, "Show the ones with a URL", { url: true }, only({ url: true })) : `${withUrl} with a URL`} · {pictured} pictured
+            </>
+          ) : (
+            "none yet"
+          )
+        }
+      />
       <Stat
         label="Environments"
         value={
@@ -597,9 +679,7 @@ function AppsStats({ server, now, onFilter }: { server: Server; now: number; onF
             ? envs.map(([e, n], i) => (
                 <span key={e}>
                   {i > 0 && " · "}
-                  <button className="cursor-pointer rounded hover:text-primary hover:underline" title={`Show the ${ENV_LABEL[e]} apps`} onClick={() => onFilter({ env: e })}>
-                    {n} {ENV_LABEL[e]}
-                  </button>
+                  {part(`${n} ${ENV_LABEL[e]}`, `Show the ${ENV_LABEL[e]} apps`, { env: e }, only({ env: e }))}
                 </span>
               ))
             : "–"
@@ -607,14 +687,39 @@ function AppsStats({ server, now, onFilter }: { server: Server; now: number; onF
       />
       <Stat
         label="Need a look"
-        onClick={up && flagged ? () => onFilter({ look: true }) : undefined}
+        onClick={up && flagged ? () => onFilter(only({ look: true }) ? {} : { look: true }) : undefined}
         title={up && flagged ? "Show them" : undefined}
+        active={only({ look: true }) || only({ flag: "debug" }) || only({ flag: "missing" }) || only({ live: "down" })}
         value={!up ? "–" : flagged}
         tone={missing || down ? "bad" : debug ? "warn" : undefined}
-        sub={!up ? "not checked yet" : flagged ? flags : `all fine · checked ${agoS(up.at, now)}`}
+        sub={
+          !up ? (
+            "not checked yet"
+          ) : flagged ? (
+            <>
+              {[
+                missing > 0 && part(`${missing} folder missing`, "Show the ones whose folder is missing", { flag: "missing" }, only({ flag: "missing" })),
+                debug > 0 && part(`${debug} APP_DEBUG on`, "Show the ones with APP_DEBUG on", { flag: "debug" }, only({ flag: "debug" })),
+                down > 0 && part(`${down} in maintenance`, "Show the ones in maintenance mode", { live: "down" }, only({ live: "down" })),
+              ]
+                .filter(Boolean)
+                .map((x, i) => (
+                  <span key={i}>
+                    {i > 0 && " · "}
+                    {x}
+                  </span>
+                ))}
+            </>
+          ) : (
+            `all fine · checked ${agoS(up.at, now)}`
+          )
+        }
       />
       <Stat
         label="Last discover"
+        onClick={discoveredIds.length ? () => onFilter(f.ids?.label === "Added by Discover" ? {} : { ids: { label: "Added by Discover", set: discoveredIds } }) : undefined}
+        title={discoveredIds.length ? `Show the ${discoveredIds.length} added by Discover` : undefined}
+        active={f.ids?.label === "Added by Discover"}
         value={lastDiscover ? agoS(lastDiscover.at, now) : "never"}
         sub={
           lastDiscover ? (
@@ -628,6 +733,9 @@ function AppsStats({ server, now, onFilter }: { server: Server; now: number; onF
       />
       <Stat
         label="Added · 30 days"
+        onClick={addedIds.length ? () => onFilter(f.ids?.label === "Added in 30 days" ? {} : { ids: { label: "Added in 30 days", set: addedIds } }) : undefined}
+        title={addedIds.length ? `Show the ${addedIds.length} added in the last 30 days` : undefined}
+        active={f.ids?.label === "Added in 30 days"}
         value={log?.since ? `${added.length}${removed ? ` · ${removed} removed` : ""}` : "–"}
         sub={
           lastAdd ? (
