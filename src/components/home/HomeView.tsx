@@ -1,13 +1,15 @@
 import { History, KeyRound, Plus, RefreshCw, Settings, SquareTerminal, TerminalSquare } from "lucide-react";
 import { useEffect, useState } from "react";
+import { create } from "zustand";
 
 import { Btn } from "@/components/kit/Btn";
+import { ChipGroup, ClearFilters, FilterChip, FilterSearch, wordsMatch } from "@/components/kit/Filters";
 import { Hint } from "@/components/kit/Kbd";
 import { LogoMark } from "@/components/kit/Logo";
 import { ColorDot, openTabConfig, useTabConfigs } from "@/components/tabconfigs/TabConfigs";
 import { AttentionList, FleetGrid } from "@/components/watch/Watch";
 import { canRunAgain, runAgain } from "@/lib/actions";
-import { auditList, errorMessage, sshConfigOpen, tabConfigsList, type AuditRun, type Server, type TabConfigEntry } from "@/lib/ipc";
+import { auditList, errorMessage, sshConfigOpen, tabConfigsList, type AuditRun, type Env, type Server, type TabConfigEntry } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { openDetails } from "@/stores/manage";
 import { useCurrentTeam, useTeamServers } from "@/stores/team";
@@ -15,6 +17,7 @@ import { openLocalShell, useTabs } from "@/stores/tabs";
 import { toastError } from "@/stores/toasts";
 import { useUi } from "@/stores/ui";
 import { useConfig } from "@/stores/config";
+import { useStatus } from "@/stores/status";
 import { useWatch } from "@/stores/watch";
 import { useWorkflows } from "@/stores/workflows";
 import type { Workflow } from "@/lib/ipc";
@@ -163,11 +166,65 @@ export function HomeView() {
   );
 }
 
+// ------------------------------------------------------------ filter
+
+type HomeFilter = { q: string; env: Env | null; attention: "urgent" | "any" | null; down: boolean };
+const NO_FILTER: HomeFilter = { q: "", env: null, attention: null, down: false };
+const ENV_LABEL: Record<Env, string> = { prod: "Prod", staging: "Staging", qa: "QA", dev: "Dev" };
+/** Kept while the app runs (Home comes and goes with tabs). */
+const useHomeFilter = create<HomeFilter>(() => NO_FILTER);
+
+/** Find a server (its name, host, group, or an app on it) and filter by
+ *  environment, what needs attention and what doesn't answer. */
+function HomeFilterBar({ servers, test }: { servers: Server[]; test: (s: Server, f: HomeFilter) => boolean }) {
+  const f = useHomeFilter();
+  const set = (g: Partial<HomeFilter>) => useHomeFilter.setState(g);
+  const count = (g: Partial<HomeFilter>) => servers.filter((s) => test(s, { ...NO_FILTER, ...g })).length;
+  const envs = (["prod", "staging", "qa", "dev"] as Env[]).filter((e) => servers.some((s) => s.env === e));
+  const any = f.q !== "" || !!f.env || !!f.attention || f.down;
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <FilterSearch value={f.q} onChange={(q) => set({ q })} placeholder="Find a server or app" />
+      {envs.length > 1 && (
+        <ChipGroup>
+          {envs.map((e) => (
+            <FilterChip key={e} label={ENV_LABEL[e]} on={f.env === e} n={count({ env: e })} onClick={() => set({ env: f.env === e ? null : e })} />
+          ))}
+        </ChipGroup>
+      )}
+      <ChipGroup>
+        <FilterChip label="Urgent" on={f.attention === "urgent"} n={count({ attention: "urgent" })} onClick={() => set({ attention: f.attention === "urgent" ? null : "urgent" })} title="Servers with something urgent in Needs attention" />
+        <FilterChip label="Needs attention" on={f.attention === "any"} n={count({ attention: "any" })} onClick={() => set({ attention: f.attention === "any" ? null : "any" })} title="Servers with anything urgent or soon (not snoozed)" />
+      </ChipGroup>
+      <ChipGroup>
+        <FilterChip label="Unreachable" on={f.down} n={count({ down: true })} onClick={() => set({ down: !f.down })} title="Servers that don't answer the reachability probe (VPN off?)" />
+      </ChipGroup>
+      {any && <ClearFilters onClick={() => set(NO_FILTER)} />}
+      {any && (
+        <span className="text-[12px] text-subtle-foreground">
+          {servers.filter((s) => test(s, f)).length} of {servers.length} servers
+        </span>
+      )}
+    </div>
+  );
+}
+
 /** Needs attention and the fleet grid, for the team in front. */
-function Workspace({ servers, teamName }: { servers: Server[]; teamName: string | null }) {
+function Workspace({ servers: team, teamName }: { servers: Server[]; teamName: string | null }) {
   const snap = useWatch((x) => x.snapshot);
   const settings = useWatch((x) => x.settings);
+  const status = useStatus((x) => x.byServer);
+  const f = useHomeFilter();
   const [busy, setBusy] = useState(false);
+  const live = (snap?.items ?? []).filter((i) => !i.snoozedUntil && i.severity !== "info");
+  const test = (s: Server, g: HomeFilter) => {
+    if (g.env && s.env !== g.env) return false;
+    if (g.down && status[s.id]?.state !== "down") return false;
+    if (g.attention && !live.some((i) => i.serverId === s.id && (g.attention === "any" || i.severity === "urgent"))) return false;
+    return wordsMatch(g.q, [s.name, s.id, s.host, s.group ?? "", ...s.apps.flatMap((a) => [a.name, a.id, a.url ?? ""])].join(" "));
+  };
+  const servers = team.filter((s) => test(s, f));
+  const filtered = servers.length !== team.length;
   const ids = new Set(servers.map((s) => s.id));
   const items = (snap?.items ?? []).filter((i) => ids.has(i.serverId) && !i.snoozedUntil);
   const urgent = items.filter((i) => i.severity === "urgent").length;
@@ -186,6 +243,7 @@ function Workspace({ servers, teamName }: { servers: Server[]; teamName: string 
   const checks = () => useTabs.getState().openSettings("checks");
   return (
     <>
+      {team.length > 1 && <HomeFilterBar servers={team} test={test} />}
       <section className="flex flex-col overflow-hidden rounded-xl border border-divider bg-panel">
         <div className="flex h-11 flex-none items-center gap-2 border-b border-divider px-4">
           <span className="text-[12px] font-semibold tracking-wide text-subtle-foreground uppercase">Needs attention</span>
@@ -200,7 +258,7 @@ function Workspace({ servers, teamName }: { servers: Server[]; teamName: string 
           <button
             onClick={() => void checkAll()}
             disabled={busy || servers.length === 0}
-            title="Every check on every server now (read-only)"
+            title={filtered ? `Every check on the ${servers.length} servers shown now (read-only)` : "Every check on every server now (read-only)"}
             className="flex h-7 cursor-pointer items-center gap-1 rounded-md px-2 text-[12px] text-primary hover:bg-primary/10 disabled:cursor-default disabled:opacity-50"
           >
             <RefreshCw className={cn("size-3.5", busy && "animate-spin")} /> Check all
@@ -220,7 +278,10 @@ function Workspace({ servers, teamName }: { servers: Server[]; teamName: string 
 
       <section className="flex flex-col overflow-hidden rounded-xl border border-divider bg-panel">
         <div className="flex h-11 flex-none items-center gap-2 border-b border-divider px-4">
-          <span className="flex-1 text-[12px] font-semibold tracking-wide text-subtle-foreground uppercase">Servers{teamName ? ` · ${teamName}` : ""}</span>
+          <span className="flex-1 text-[12px] font-semibold tracking-wide text-subtle-foreground uppercase">
+            Servers{teamName ? ` · ${teamName}` : ""}
+            {filtered && ` · ${servers.length} of ${team.length}`}
+          </span>
           <button
             onClick={() => openDetails({ kind: "server", serverId: null })}
             className="flex h-7 cursor-pointer items-center gap-1 rounded-md px-2 text-[12px] text-primary hover:bg-primary/10"
@@ -228,7 +289,14 @@ function Workspace({ servers, teamName }: { servers: Server[]; teamName: string 
             <Plus className="size-3.5" /> Add
           </button>
         </div>
-        {servers.length === 0 ? (
+        {servers.length === 0 && filtered ? (
+          <Empty>
+            No servers match.{" "}
+            <button className="cursor-pointer text-primary hover:underline" onClick={() => useHomeFilter.setState(NO_FILTER)}>
+              Clear the filter
+            </button>
+          </Empty>
+        ) : servers.length === 0 ? (
           <Empty>{teamName ? `No servers in ${teamName} yet: add one, or pick ${teamName} as the team on a server's page.` : "Add your first server: its SSH host, environment and apps."}</Empty>
         ) : (
           <FleetGrid servers={servers} />

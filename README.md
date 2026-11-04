@@ -106,6 +106,11 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   server; a closed server whose app is in front is highlighted instead.
 - **Home tab** (pinned first; the start screen), the workspace: New
   terminal, SSH to host, Add server; then
+  - **Find and filter** (with more than one server): a search box (a
+    server's name, host or group, or any app on it) and chips with counts
+    for each environment, Urgent / Needs attention and Unreachable; they
+    narrow both Needs attention and Servers (and Check all checks just the
+    ones shown);
   - **Needs attention**: what the background checks found on the team in
     front's servers, worst first (urgent, soon, info), each with when it was
     read and one button to look into it (Monitor, Health, Apps, Setup,
@@ -194,7 +199,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   switch next to the title gives a **List**): taken
   by Chrome, Edge, Chromium or Brave running headless on this Mac, in a
   profile of its own, so an app behind a login shows that page; kept in
-  `shots/` in the data folder and taken again when a day old, or with
+  `shots/` in the data folder and taken again when a week old, or with
   *Retake pictures* / ↻ on a picture. This is the one thing besides ssh
   that opens a connection, and only in Pictures view; each card, and each
   row in List, has the app's **Live / Maintenance** and **Basic auth**

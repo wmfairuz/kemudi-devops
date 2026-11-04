@@ -7,7 +7,8 @@ import { appShot, appShotTake, errorMessage, type Shot } from "@/lib/ipc";
 
 export type ShotEntry = { shot?: Shot; busy?: boolean; error?: string };
 
-const DAY = 24 * 60 * 60;
+/** A picture is taken again when it's older than this (or its URL changed). */
+const KEEP = 7 * 24 * 60 * 60;
 
 export const useShots = create<{ map: Record<string, ShotEntry> }>(() => ({ map: {} }));
 
@@ -33,7 +34,7 @@ export function takeShot(serverId: string, appId: string) {
 }
 
 /** Loads the kept pictures of a server's apps, then takes the ones missing,
- *  older than a day or of another URL (all of them with `again`). One that
+ *  older than a week or of another URL (all of them with `again`). One that
  *  failed isn't tried again until asked. */
 export async function loadShots(serverId: string, apps: { id: string; url?: string | null }[], again = false) {
   const withUrl = apps.filter((a) => a.url);
@@ -55,6 +56,6 @@ export async function loadShots(serverId: string, apps: { id: string; url?: stri
     const e = useShots.getState().map[shotKey(serverId, a.id)];
     if (e?.busy) continue;
     if (!again && e?.error) continue;
-    if (again || !e?.shot || e.shot.url !== a.url || now - e.shot.at > DAY) takeShot(serverId, a.id);
+    if (again || !e?.shot || e.shot.url !== a.url || now - e.shot.at > KEEP) takeShot(serverId, a.id);
   }
 }

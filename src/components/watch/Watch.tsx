@@ -1,6 +1,6 @@
 // The background checks' results, shown: Needs attention (Home and a
 // server's Overview), the fleet grid (Home) and a server's Overview.
-import { AlertTriangle, BellOff, ExternalLink, Bug, Cpu, Database, HardDrive, Lock, MemoryStick, RefreshCw, RotateCw, Search, ShieldAlert, Unplug, Wrench, X } from "lucide-react";
+import { AlertTriangle, BellOff, ExternalLink, Bug, Cpu, Database, HardDrive, Lock, MemoryStick, RefreshCw, RotateCw, ShieldAlert, Unplug, Wrench } from "lucide-react";
 import { useEffect, useState } from "react";
 import { create } from "zustand";
 
@@ -16,7 +16,7 @@ import { AppsList } from "@/components/manage/DetailsView";
 import { Group, Tool, ToolSwitch } from "@/components/kit/Toolbar";
 import { AppSwitchesCompact, ServerNotes } from "@/components/dashboard/AppSwitches";
 import { ensureDash, useDash } from "@/stores/dash";
-import { CAPSULE } from "@/components/kit/capsule";
+import { ChipGroup, ClearFilters, FilterChip, FilterSearch, PickedChip, wordsMatch } from "@/components/kit/Filters";
 import { useFleetUi } from "@/stores/fleetUi";
 import { openDetails, useManage } from "@/stores/manage";
 import { useStatus } from "@/stores/status";
@@ -481,12 +481,7 @@ function matches(a: App, x: Facts, f: AppFilter): boolean {
   if (f.flag && !x[f.flag]) return false;
   if (f.url && !a.url) return false;
   if (f.ids && !f.ids.set.includes(a.id)) return false;
-  const hay = `${a.name} ${a.id} ${a.url ?? ""} ${a.path}`.toLowerCase();
-  return f.q
-    .toLowerCase()
-    .split(/\s+/)
-    .filter(Boolean)
-    .every((w) => hay.includes(w));
+  return wordsMatch(f.q, `${a.name} ${a.id} ${a.url ?? ""} ${a.path}`);
 }
 
 /** Find an app (name, URL, folder) and filter by environment, live or
@@ -496,69 +491,26 @@ function AppsFilterBar({ apps, facts, f, setF }: { apps: App[]; facts: (a: App) 
   const all = apps.map((a) => [a, facts(a)] as const);
   const count = (g: Partial<AppFilter>) => all.filter(([a, x]) => matches(a, x, { ...NO_FILTER, ...g })).length;
   const envs = (["prod", "staging", "qa", "dev"] as Env[]).filter((e) => apps.some((a) => a.env === e));
-  const any = filtering(f);
-  // Set from the numbers above: a chip that only takes it away.
-  const picked = (label: string, clear: Partial<AppFilter>) => (
-    <span key={label} className="flex h-[26px] flex-none items-center gap-1 rounded-full bg-primary pr-1 pl-2.5 text-[12px] font-medium text-primary-foreground">
-      {label}
-      <button className="cursor-pointer rounded-full p-0.5 hover:bg-white/20" aria-label={`Stop showing only: ${label}`} onClick={() => setF({ ...f, ...clear })}>
-        <X className="size-3" />
-      </button>
-    </span>
+  const chip = (label: string, on: boolean, g: Partial<AppFilter>, off: Partial<AppFilter>, title?: string) => (
+    <FilterChip key={label} label={label} on={on} n={count(g)} onClick={() => setF({ ...f, ...(on ? off : g) })} title={title} />
   );
-  const chip = (label: string, on: boolean, n: number, flip: () => void, title?: string) => (
-    <button
-      key={label}
-      type="button"
-      title={title}
-      onClick={flip}
-      disabled={!on && n === 0}
-      className={cn(
-        "flex h-[26px] flex-none cursor-pointer items-center gap-1.5 rounded-full px-2.5 text-[12px] whitespace-nowrap transition-colors active:scale-[0.97] disabled:cursor-default disabled:opacity-40",
-        on ? "bg-primary font-medium text-primary-foreground" : "text-foreground/80 enabled:hover:bg-hover-strong enabled:hover:text-foreground",
-      )}
-    >
-      {label}
-      <span className={cn("font-mono text-[10.5px]", on ? "text-primary-foreground/80" : "text-faint-foreground")}>{n}</span>
-    </button>
-  );
-  const group = (children: React.ReactNode) => <div className={cn("flex h-[32px] flex-none items-center gap-0.5 px-[3px]", CAPSULE)}>{children}</div>;
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <label className={cn("flex h-[32px] w-[260px] min-w-[180px] items-center gap-2 px-3", CAPSULE)}>
-        <Search className="size-[15px] flex-none text-subtle-foreground" strokeWidth={1.6} />
-        <input
-          value={f.q}
-          onChange={(e) => setF({ ...f, q: e.target.value })}
-          onKeyDown={(e) => e.key === "Escape" && setF({ ...f, q: "" })}
-          placeholder="Find an app (name, URL, folder)"
-          spellCheck={false}
-          className="min-w-0 flex-1 bg-transparent text-[12.5px] outline-none placeholder:text-faint-foreground"
-        />
-        {f.q && (
-          <button className="cursor-pointer text-subtle-foreground hover:text-foreground" onClick={() => setF({ ...f, q: "" })} aria-label="Clear the search">
-            <X className="size-3.5" />
-          </button>
-        )}
-      </label>
-      {envs.length > 1 && group(envs.map((e) => chip(ENV_LABEL[e], f.env === e, count({ env: e }), () => setF({ ...f, env: f.env === e ? null : e }))))}
-      {group([
-        chip("Live", f.live === "live", count({ live: "live" }), () => setF({ ...f, live: f.live === "live" ? null : "live" })),
-        chip("Maintenance", f.live === "down", count({ live: "down" }), () => setF({ ...f, live: f.live === "down" ? null : "down" })),
-      ])}
-      {group([
-        chip("Auth on", f.auth === "on", count({ auth: "on" }), () => setF({ ...f, auth: f.auth === "on" ? null : "on" }), "Basic auth on (for all or some of its server blocks)"),
-        chip("Auth off", f.auth === "off", count({ auth: "off" }), () => setF({ ...f, auth: f.auth === "off" ? null : "off" }), "Basic auth off (ones set by hand in the vhost aren't counted)"),
-      ])}
-      {group(chip("Need a look", f.look, count({ look: true }), () => setF({ ...f, look: !f.look }), "Folder missing, APP_DEBUG on or in maintenance (the background checks)"))}
-      {f.flag && picked(FLAG_LABEL[f.flag], { flag: null })}
-      {f.url && picked("With a URL", { url: false })}
-      {f.ids && picked(f.ids.label, { ids: null })}
-      {any && (
-        <button className="cursor-pointer rounded-full px-2 py-1 text-[12px] text-primary hover:bg-primary/10" onClick={() => setF(NO_FILTER)}>
-          Clear
-        </button>
-      )}
+      <FilterSearch value={f.q} onChange={(q) => setF({ ...f, q })} placeholder="Find an app (name, URL, folder)" />
+      {envs.length > 1 && <ChipGroup>{envs.map((e) => chip(ENV_LABEL[e], f.env === e, { env: e }, { env: null }))}</ChipGroup>}
+      <ChipGroup>
+        {chip("Live", f.live === "live", { live: "live" }, { live: null })}
+        {chip("Maintenance", f.live === "down", { live: "down" }, { live: null })}
+      </ChipGroup>
+      <ChipGroup>
+        {chip("Auth on", f.auth === "on", { auth: "on" }, { auth: null }, "Basic auth on (for all or some of its server blocks)")}
+        {chip("Auth off", f.auth === "off", { auth: "off" }, { auth: null }, "Basic auth off (ones set by hand in the vhost aren't counted)")}
+      </ChipGroup>
+      <ChipGroup>{chip("Need a look", f.look, { look: true }, { look: false }, "Folder missing, APP_DEBUG on or in maintenance (the background checks)")}</ChipGroup>
+      {f.flag && <PickedChip label={FLAG_LABEL[f.flag]} onClear={() => setF({ ...f, flag: null })} />}
+      {f.url && <PickedChip label="With a URL" onClear={() => setF({ ...f, url: false })} />}
+      {f.ids && <PickedChip label={f.ids.label} onClear={() => setF({ ...f, ids: null })} />}
+      {filtering(f) && <ClearFilters onClick={() => setF(NO_FILTER)} />}
     </div>
   );
 }
