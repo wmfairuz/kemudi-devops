@@ -376,7 +376,23 @@ export function ServerOverview({ server }: { server: Server }) {
           <AttentionList servers={[server]} showServer={false} empty={w ? "Nothing: all checks are fine." : "Not checked yet. Check now reads it (read-only)."} />
         </section>
 
-        <AppsList server={server} />
+        {/* Each app with what the background checks found (its .env). */}
+        <AppsList
+          server={server}
+          aside={<span className="text-[11px] text-subtle-foreground">{up ? `checked ${agoS(up.at, now)}` : "not checked yet"}</span>}
+          status={(a) => {
+            const st = up?.value.apps.find((x) => x.id === a.id);
+            if (!st) return <Dim>–</Dim>;
+            if (st.missing) return <span className="text-env-prod-fg">folder missing</span>;
+            return (
+              <>
+                {st.downSince && <span className="text-[#8a5a12]">maintenance since {agoS(st.downSince, now)}</span>}
+                {st.appDebug && <span className={a.env === "prod" || st.appEnv === "production" ? "text-env-prod-fg" : "text-subtle-foreground"}>APP_DEBUG on</span>}
+                <Dim>{st.appEnv ?? "no .env"}</Dim>
+              </>
+            );
+          }}
+        />
         {server.asg && (
           <div className="flex flex-wrap gap-2">
             <Btn size="sm" variant="outline" onClick={() => useFleetUi.getState().openPick(server)}>
@@ -468,28 +484,6 @@ export function ServerOverview({ server }: { server: Server }) {
               );
             })}
             {certs && certs.value.certs.length > 0 && <Dim>{certs.value.renew.length ? `Renewed by ${certs.value.renew.join(", ")}` : "Nothing seems to renew them"}</Dim>}
-          </Card>
-          <Card title="Apps" at={up?.at ?? null} section="dash" server={server}>
-            {server.apps.length === 0 && <Dim>No apps</Dim>}
-            {server.apps.map((a) => {
-              const st = up?.value.apps.find((x) => x.id === a.id);
-              return (
-                <div key={a.id} className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate">{a.name}</span>
-                  {!st ? (
-                    <Dim>–</Dim>
-                  ) : st.missing ? (
-                    <span className="text-env-prod-fg">folder missing</span>
-                  ) : (
-                    <>
-                      {st.downSince && <span className="text-[#8a5a12]">maintenance since {agoS(st.downSince, now)}</span>}
-                      {st.appDebug && <span className={a.env === "prod" || st.appEnv === "production" ? "text-env-prod-fg" : "text-subtle-foreground"}>APP_DEBUG on</span>}
-                      <Dim>{st.appEnv ?? "no .env"}</Dim>
-                    </>
-                  )}
-                </div>
-              );
-            })}
           </Card>
           <Card title="Setup" at={setup?.at ?? null} section="setup" server={server}>
             {!setup && <Dim>No profile, or not checked yet</Dim>}

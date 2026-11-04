@@ -931,10 +931,13 @@ function SudoPassword({ serverId }: { serverId: string }) {
 
 /** The server's apps (its Overview): each opens its page; add, discover
  *  or set up a new one. */
-export function AppsList({ server }: { server: Server }) {
+export function AppsList({ server, status, aside }: { server: Server; status?: (app: App) => React.ReactNode; aside?: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">Apps on {server.name}</div>
+      <div className="flex items-baseline gap-2">
+        <span className="flex-1 text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">Apps on {server.name}</span>
+        {aside}
+      </div>
       <div className="flex flex-col overflow-hidden rounded-xl border border-divider">
         {server.apps.map((a) => (
           <button
@@ -943,10 +946,11 @@ export function AppsList({ server }: { server: Server }) {
             className="flex cursor-pointer items-center gap-2.5 border-b border-divider px-3 py-2 text-left last:border-b-0 hover:bg-hover"
           >
             <Badge id={`${server.id}/${a.id}`} name={a.name} size={24} />
-            <span className="flex min-w-0 flex-col">
+            <span className="flex min-w-0 flex-1 flex-col">
               <span className="truncate text-[12.5px] text-foreground">{a.name}</span>
               <span className="truncate font-mono text-[10.5px] text-subtle-foreground">{a.path}</span>
             </span>
+            {status && <span className="flex flex-none items-center gap-2 text-[12px]">{status(a)}</span>}
           </button>
         ))}
         <div className="flex items-center gap-2 px-3 py-2">

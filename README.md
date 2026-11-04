@@ -169,8 +169,10 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   its `scripts/`). Not on AWS groups yet.
 - **A server's tab** (one per server, its home; clicking the server in the
   sidebar opens it): **Overview** (its Needs attention, its apps with
-  + Add app / Discover apps… / New app…, and what the background checks
-  last found: disks, load and memory, updates, certificates, apps, setup;
+  + Add app / Discover apps… / New app… and what the checks found in each
+  (APP_ENV, APP_DEBUG on, maintenance, folder missing), and what the
+  background checks last found: disks, load and memory, updates,
+  certificates, setup;
   nothing is read from the server to show it; *Check now*), **Dashboard**,
   **Files**, **Logs**, **Monitor**, **Health**, **Security**, **Tune**,
   **Setup** and **Settings** (the server's own: name, SSH host, team,
