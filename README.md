@@ -170,7 +170,9 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   sidebar opens it): **Overview** (its Needs attention and what the
   background checks last found: disks, load and memory, updates,
   certificates, apps (how many, and which have APP_DEBUG on, maintenance or
-  a missing folder; Open goes to Apps), setup;
+  a missing folder; each count, e.g. "10 prod" or "5 in maintenance", opens
+  Apps showing just those, an app's name opens its tab, and a long list
+  ends in "+14 more"), setup;
   nothing is read from the server to show it; *Check now*), **Apps** (its
   apps, with + Add app / Discover apps… / New app… at the top right, in a
   capsule like the title bar's, so they stay in reach with many apps; above

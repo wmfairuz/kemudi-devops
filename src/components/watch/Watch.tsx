@@ -2,6 +2,7 @@
 // server's Overview), the fleet grid (Home) and a server's Overview.
 import { AlertTriangle, BellOff, ExternalLink, Bug, Cpu, Database, HardDrive, Lock, MemoryStick, RefreshCw, RotateCw, Search, ShieldAlert, Unplug, Wrench, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { create } from "zustand";
 
 import { Btn } from "@/components/kit/Btn";
 import { EnvTag } from "@/components/kit/EnvTag";
@@ -380,7 +381,8 @@ export function ServerApps({ server }: { server: Server }) {
       // Just for now, then.
     }
   };
-  const [f, setF] = useState<AppFilter>(NO_FILTER);
+  const f = useAppsFilter((s) => s[server.id]) ?? NO_FILTER;
+  const setF = (g: AppFilter) => useAppsFilter.setState({ [server.id]: g });
   const dash = useDash((s) => s.servers[server.id]?.data);
   const facts = (a: App) => appFacts(up?.value.apps.find((x) => x.id === a.id), dash?.apps.find((x) => x.appId === a.id));
   const shown = server.apps.filter((a) => matches(a, facts(a), f));
@@ -450,6 +452,14 @@ type AppFilter = {
   ids: { label: string; set: string[] } | null;
 };
 const NO_FILTER: AppFilter = { q: "", env: null, live: null, auth: null, look: false, flag: null, url: false, ids: null };
+/** Each server's Apps filter (kept while the app runs; the Overview's
+ *  Apps card sets it too). */
+const useAppsFilter = create<Record<string, AppFilter>>(() => ({}));
+/** The server's Apps section showing just `g`. */
+function showApps(server: Server, g: Partial<AppFilter>) {
+  useAppsFilter.setState({ [server.id]: { ...NO_FILTER, ...g } });
+  openServer(server, "apps");
+}
 const FLAG_LABEL = { debug: "APP_DEBUG on", missing: "Folder missing" } as const;
 const filtering = (f: AppFilter) => f.q !== "" || !!f.env || !!f.live || !!f.auth || f.look || !!f.flag || f.url || !!f.ids;
 
@@ -964,18 +974,56 @@ export function ServerOverview({ server }: { server: Server }) {
                 const what = !st ? [] : st.missing ? ["folder missing"] : [...(st.downSince ? ["maintenance"] : []), ...(st.appDebug ? ["APP_DEBUG on"] : [])];
                 return what.length ? [{ a, what: what.join(", "), bad: !!st?.missing || (!!st?.appDebug && (a.env === "prod" || st.appEnv === "production")) }] : [];
               });
+              const st = up?.value.apps ?? [];
+              const n = { debug: st.filter((x) => x.appDebug).length, down: st.filter((x) => x.downSince).length, missing: st.filter((x) => x.missing).length };
+              const envs = (["prod", "staging", "qa", "dev"] as Env[]).map((e) => [e, server.apps.filter((a) => a.env === e).length] as const).filter(([, c]) => c > 0);
+              const link = (label: string, g: Partial<AppFilter>, title: string, tone?: string) => (
+                <button key={label} className={cn("cursor-pointer rounded hover:text-primary hover:underline", tone)} title={title} onClick={() => showApps(server, g)}>
+                  {label}
+                </button>
+              );
+              const dot = (items: React.ReactNode[]) =>
+                items.map((x, i) => (
+                  <span key={i}>
+                    {i > 0 && <Dim> · </Dim>}
+                    {x}
+                  </span>
+                ));
+              const MAX = 6;
               return (
                 <>
                   <span>
-                    {server.apps.length} app{server.apps.length === 1 ? "" : "s"}
-                    {up && <Dim>{flagged.length ? ` · ${flagged.length} to look at` : " · nothing to look at"}</Dim>}
+                    {link(`${server.apps.length} app${server.apps.length === 1 ? "" : "s"}`, {}, "Show them all")}
+                    {envs.length > 1 && (
+                      <>
+                        <Dim>: </Dim>
+                        {dot(envs.map(([e, c]) => link(`${c} ${ENV_LABEL[e]}`, { env: e }, `Show the ${ENV_LABEL[e]} apps`)))}
+                      </>
+                    )}
                   </span>
-                  {flagged.map(({ a, what, bad }) => (
+                  {up && (
+                    <span>
+                      {flagged.length ? (
+                        dot([
+                          link(`${flagged.length} to look at`, { look: true }, "Show them"),
+                          ...(n.missing ? [link(`${n.missing} folder missing`, { flag: "missing" }, "Show the ones whose folder is missing", "text-env-prod-fg")] : []),
+                          ...(n.debug ? [link(`${n.debug} APP_DEBUG on`, { flag: "debug" }, "Show the ones with APP_DEBUG on", "text-[#8a5a12]")] : []),
+                          ...(n.down ? [link(`${n.down} in maintenance`, { live: "down" }, "Show the ones in maintenance mode", "text-[#8a5a12]")] : []),
+                        ])
+                      ) : (
+                        <Dim>nothing to look at</Dim>
+                      )}
+                    </span>
+                  )}
+                  {flagged.slice(0, MAX).map(({ a, what, bad }) => (
                     <div key={a.id} className="flex items-center gap-2">
-                      <span className="w-[160px] truncate">{a.name}</span>
+                      <button className="w-[160px] cursor-pointer truncate text-left hover:text-primary hover:underline" title={`Open ${a.name}'s tab`} onClick={() => openDetails({ kind: "app", serverId: server.id, appId: a.id })}>
+                        {a.name}
+                      </button>
                       <span className={bad ? "text-env-prod-fg" : "text-subtle-foreground"}>{what}</span>
                     </div>
                   ))}
+                  {flagged.length > MAX && <span>{link(`+${flagged.length - MAX} more`, { look: true }, "Show them all in Apps", "text-primary")}</span>}
                 </>
               );
             })()}
