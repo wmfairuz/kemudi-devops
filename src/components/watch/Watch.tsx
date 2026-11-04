@@ -12,6 +12,7 @@ import { errorMessage, openUrl, type App, type Server, type ServerWatch, type Wa
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/manage/Badge";
 import { AppsList } from "@/components/manage/DetailsView";
+import { Group, Tool } from "@/components/kit/Toolbar";
 import { Segmented } from "@/components/manage/fields";
 import { useFleetUi } from "@/stores/fleetUi";
 import { openDetails } from "@/stores/manage";
@@ -396,9 +397,11 @@ export function ServerApps({ server }: { server: Server }) {
             <>
               <span className="text-[11px] text-subtle-foreground">{up ? `checked ${agoS(up.at, now)}` : "not checked yet"}</span>
               {view === "pictures" && server.apps.some((a) => a.url) && (
-                <Btn size="sm" variant="ghost" onClick={() => void loadShots(server.id, server.apps, true)} title="Take every app's picture again (headless Chrome on this Mac opens each URL)">
-                  <RefreshCw className="size-3.5" /> Retake pictures
-                </Btn>
+                <Group>
+                  <Tool label="Retake pictures" onClick={() => void loadShots(server.id, server.apps, true)} title="Take every app's picture again (headless Chrome on this Mac opens each URL)">
+                    <RefreshCw className="size-[16px]" strokeWidth={1.6} />
+                  </Tool>
+                </Group>
               )}
             </>
           }

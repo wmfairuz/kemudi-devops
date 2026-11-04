@@ -2,6 +2,7 @@ import { KeyRound, Network, PanelRight, Plus, RefreshCw, Search, Server, Setting
 
 import { CAPSULE } from "@/components/kit/capsule";
 import { LogoMark } from "@/components/kit/Logo";
+import { Group, Tool, TOOL_ICON } from "@/components/kit/Toolbar";
 import { errorMessage } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { openDetails } from "@/stores/manage";
@@ -11,29 +12,7 @@ import { toastError } from "@/stores/toasts";
 import { useUi } from "@/stores/ui";
 import { useWatch } from "@/stores/watch";
 
-/** One icon button in a toolbar capsule. */
-function Tool({ title, onClick, active, children }: { title: string; onClick: () => void; active?: boolean; children: React.ReactNode }) {
-  return (
-    <button
-      title={title}
-      aria-label={title}
-      onClick={onClick}
-      className={cn(
-        "flex size-[30px] cursor-pointer items-center justify-center rounded-full text-foreground/80 transition-colors hover:bg-hover-strong hover:text-foreground active:scale-95",
-        active && "bg-hover-strong text-foreground",
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
-/** Buttons that belong together, in one capsule. */
-function Group({ children }: { children: React.ReactNode }) {
-  return <div className={cn("flex h-[38px] flex-none items-center gap-0.5 px-[3px]", CAPSULE)}>{children}</div>;
-}
-
-const icon = "size-[18px]";
+const icon = TOOL_ICON;
 
 /** 52px title bar drawn under the native traffic lights (overlay style,
  *  trafficLightPosition y 28 in tauri.conf.json centres them):

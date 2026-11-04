@@ -1,9 +1,10 @@
-import { FolderOpen, ListChecks, PackagePlus, ScanSearch, ScrollText } from "lucide-react";
+import { FolderOpen, ListChecks, PackagePlus, Plus, ScanSearch, ScrollText } from "lucide-react";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 
 import { Btn } from "@/components/kit/Btn";
 import { EnvTag } from "@/components/kit/EnvTag";
 import { StatusDot } from "@/components/kit/StatusDot";
+import { Group, Tool } from "@/components/kit/Toolbar";
 import {
   appDelete,
   appDetectPhp,
@@ -955,15 +956,13 @@ export function AppsList({
   grid?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-center gap-2">
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2.5">
         <span className="text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">Apps on {server.name}</span>
         {lead}
         <span className="flex-1" />
         {aside}
-      </div>
-      {/* At the top: with many apps, a row at the bottom gets buried. */}
-      <div className="flex flex-wrap items-center gap-2 pb-1.5">
+        {/* At the top: with many apps, a row at the bottom gets buried. */}
         <AppsAdd server={server} />
       </div>
       {grid ?? (
@@ -989,27 +988,28 @@ export function AppsList({
   );
 }
 
-/** + Add app, Discover apps… and New app… for a server. */
+/** + Add app, Discover apps… and New app… for a server: a capsule like
+ *  the title bar's. */
 function AppsAdd({ server }: { server: Server }) {
+  const ic = "size-[16px]";
   return (
-    <>
-      <Btn size="sm" variant="outline" onClick={() => openDetails({ kind: "app", serverId: server.id, appId: null })}>
-        + Add app
-      </Btn>
-      <Btn
-        size="sm"
-        variant="primary"
-        onClick={() => useManage.getState().setDiscover(server.id)}
+    <Group>
+      <Tool label="Add app" title="Add an app that's already on the server (its folder, URL…)" onClick={() => openDetails({ kind: "app", serverId: server.id, appId: null })}>
+        <Plus className={ic} strokeWidth={1.6} />
+      </Tool>
+      <Tool
+        label="Discover apps…"
         title={server.asg ? "Look for Laravel apps on one of its instances (they're alike) and add the ones you pick" : "Look around the server for Laravel apps and add the ones you pick"}
+        onClick={() => useManage.getState().setDiscover(server.id)}
       >
-        <ScanSearch className="size-3.5" /> Discover apps…
-      </Btn>
+        <ScanSearch className={ic} strokeWidth={1.6} />
+      </Tool>
       {!server.asg && (
-        <Btn size="sm" variant="outline" onClick={() => useNewApp.getState().open(server.id)} title="Set up a new Laravel app on this server: clone, .env, database, nginx, queue worker, HTTPS">
-          <PackagePlus className="size-3.5" /> New app…
-        </Btn>
+        <Tool label="New app…" title="Set up a new Laravel app on this server: clone, .env, database, nginx, queue worker, HTTPS" onClick={() => useNewApp.getState().open(server.id)}>
+          <PackagePlus className={ic} strokeWidth={1.6} />
+        </Tool>
       )}
-    </>
+    </Group>
   );
 }
 
