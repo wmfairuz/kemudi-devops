@@ -1097,7 +1097,7 @@ function AppDetails({ server, app, section, onGo }: { server: Server; app: App |
       done(`Deleted ${app.name}`);
       const tabs = useTabs.getState();
       for (const t of tabs.tabs.filter((x) => x.kind === "app" && x.serverId === server.id && x.appId === app.id)) tabs.close(t.id);
-      if (!section) openServer(server, "overview");
+      if (!section) openServer(server, "apps");
     }
   };
 
@@ -1390,7 +1390,7 @@ function AppDetails({ server, app, section, onGo }: { server: Server; app: App |
                   <EnvTag env={app.env} />
                 </div>
                 <div className="flex min-w-0 items-center gap-1.5 text-[12px] text-subtle-foreground">
-                  <button type="button" className="cursor-pointer hover:text-foreground" onClick={() => openServer(server, "overview")}>
+                  <button type="button" className="cursor-pointer hover:text-foreground" onClick={() => openServer(server, "apps")}>
                     on {server.name}
                   </button>
                   <span>·</span>

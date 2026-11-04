@@ -17,7 +17,7 @@ import { useConfig } from "@/stores/config";
 import { keepTab, openSectionAlone, SERVER_SECTIONS, setSection, type ServerSection, type Tab } from "@/stores/tabs";
 import { useServerItems } from "@/stores/watch";
 
-import { ServerOverview } from "./Watch";
+import { ServerApps, ServerOverview } from "./Watch";
 
 /** A server's one tab, its home: a bar of sections (⌘-click, or ↗, opens one
  *  as a tab of its own) and Open shell. Sections you've looked at stay
@@ -37,6 +37,8 @@ export function ServerTabView({ tab, visible }: { tab: Tab; visible: boolean }) 
     switch (sec) {
       case "overview":
         return <ServerOverview server={server} />;
+      case "apps":
+        return <ServerApps server={server} />;
       case "dash":
         return <DashboardView tab={tab} visible={shown} />;
       case "files":
@@ -78,6 +80,7 @@ export function ServerTabView({ tab, visible }: { tab: Tab; visible: boolean }) 
             )}
           >
             {x.label}
+            {x.id === "apps" && server.apps.length > 0 && <span className="font-mono text-[10.5px] text-faint-foreground">{server.apps.length}</span>}
             {x.id === "overview" && items.length > 0 && (
               <span className={cn("rounded-[4px] px-1 font-mono text-[10px] font-semibold text-white", items.some((i) => i.severity === "urgent") ? "bg-env-prod" : "bg-env-staging")}>
                 {items.length}
@@ -111,4 +114,4 @@ export function ServerTabView({ tab, visible }: { tab: Tab; visible: boolean }) 
 }
 
 /** Sections that can be a tab of their own (↗). */
-const alone = (s: ServerSection) => s !== "overview" && s !== "security" && s !== "settings";
+const alone = (s: ServerSection) => s !== "overview" && s !== "apps" && s !== "security" && s !== "settings";

@@ -342,6 +342,35 @@ function Bar({ value, warn, urgent }: { value: number; warn: number; urgent: num
   );
 }
 
+/** A server's Apps section: each app with what the background checks last
+ *  found in it (its .env), + Add app / Discover apps… / New app…. */
+export function ServerApps({ server }: { server: Server }) {
+  const up = useWatch((s) => s.snapshot?.servers[server.id]?.updates);
+  const now = useClock();
+  return (
+    <div className="light-ui absolute inset-0 overflow-y-auto bg-background text-foreground">
+      <div className="flex w-full flex-col gap-4 px-6 py-5">
+        <AppsList
+          server={server}
+          aside={<span className="text-[11px] text-subtle-foreground">{up ? `checked ${agoS(up.at, now)}` : "not checked yet"}</span>}
+          status={(a) => {
+            const st = up?.value.apps.find((x) => x.id === a.id);
+            if (!st) return <Dim>–</Dim>;
+            if (st.missing) return <span className="text-env-prod-fg">folder missing</span>;
+            return (
+              <>
+                {st.downSince && <span className="text-[#8a5a12]">maintenance since {agoS(st.downSince, now)}</span>}
+                {st.appDebug && <span className={a.env === "prod" || st.appEnv === "production" ? "text-env-prod-fg" : "text-subtle-foreground"}>APP_DEBUG on</span>}
+                <Dim>{st.appEnv ?? "no .env"}</Dim>
+              </>
+            );
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 /** A server's Overview: what the background checks last found, with what
  *  needs attention first. Nothing is read from the server to show it. */
 export function ServerOverview({ server }: { server: Server }) {
@@ -376,23 +405,6 @@ export function ServerOverview({ server }: { server: Server }) {
           <AttentionList servers={[server]} showServer={false} empty={w ? "Nothing: all checks are fine." : "Not checked yet. Check now reads it (read-only)."} />
         </section>
 
-        {/* Each app with what the background checks found (its .env). */}
-        <AppsList
-          server={server}
-          aside={<span className="text-[11px] text-subtle-foreground">{up ? `checked ${agoS(up.at, now)}` : "not checked yet"}</span>}
-          status={(a) => {
-            const st = up?.value.apps.find((x) => x.id === a.id);
-            if (!st) return <Dim>–</Dim>;
-            if (st.missing) return <span className="text-env-prod-fg">folder missing</span>;
-            return (
-              <>
-                {st.downSince && <span className="text-[#8a5a12]">maintenance since {agoS(st.downSince, now)}</span>}
-                {st.appDebug && <span className={a.env === "prod" || st.appEnv === "production" ? "text-env-prod-fg" : "text-subtle-foreground"}>APP_DEBUG on</span>}
-                <Dim>{st.appEnv ?? "no .env"}</Dim>
-              </>
-            );
-          }}
-        />
         {server.asg && (
           <div className="flex flex-wrap gap-2">
             <Btn size="sm" variant="outline" onClick={() => useFleetUi.getState().openPick(server)}>

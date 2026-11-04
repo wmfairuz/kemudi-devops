@@ -862,10 +862,11 @@ export function openDashboard(server: { id: string; name: string; host: string; 
  *  found, its apps), Dashboard (each app's maintenance mode and basic auth),
  *  Files, Logs, Monitor, Health, Security, Tune, Setup and Settings (the
  *  server's own: connection, team, environment…). */
-export type ServerSection = "overview" | "dash" | "files" | "logs" | "monitor" | "health" | "security" | "tune" | "setup" | "settings";
+export type ServerSection = "overview" | "apps" | "dash" | "files" | "logs" | "monitor" | "health" | "security" | "tune" | "setup" | "settings";
 
 export const SERVER_SECTIONS: { id: ServerSection; label: string }[] = [
   { id: "overview", label: "Overview" },
+  { id: "apps", label: "Apps" },
   { id: "dash", label: "Dashboard" },
   { id: "files", label: "Files" },
   { id: "logs", label: "Logs" },

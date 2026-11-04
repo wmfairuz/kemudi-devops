@@ -167,12 +167,12 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   set the secops folder (default `~/.claude/skills/secops`, the script in
   its `scripts/`). Not on AWS groups yet.
 - **A server's tab** (one per server, its home; clicking the server in the
-  sidebar opens it): **Overview** (its Needs attention, its apps with
-  + Add app / Discover apps… / New app… and what the checks found in each
-  (APP_ENV, APP_DEBUG on, maintenance, folder missing), and what the
+  sidebar opens it): **Overview** (its Needs attention and what the
   background checks last found: disks, load and memory, updates,
   certificates, setup;
-  nothing is read from the server to show it; *Check now*), **Dashboard**,
+  nothing is read from the server to show it; *Check now*), **Apps** (its
+  apps, with + Add app / Discover apps… / New app… and what the checks found
+  in each: APP_ENV, APP_DEBUG on, maintenance, folder missing), **Dashboard**,
   **Files**, **Logs**, **Monitor**, **Health**, **Security**, **Tune**,
   **Setup** and **Settings** (the server's own: name, SSH host, team,
   environment, VPN, tab colour…; Save, Duplicate, Delete…). **Open shell**
@@ -453,7 +453,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   actions and settings); nothing on either server changes. If the other
   server already has an app with that id, it becomes `<id>-2`. Dragging is
   off while the sidebar filter is in use.
-- **Discover apps** (a server tab ▸ Overview ▸ *Discover apps…*, or
+- **Discover apps** (a server tab ▸ Apps ▸ *Discover apps…*, or
   right-click a server): looks around the server (read-only) for Laravel
   apps: an `artisan` under /var/www, /opt, /srv, /home, following links
   (e.g. /opt/www → /mnt/…, Deployer's `current`; never `releases/`), and
@@ -466,7 +466,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   the domains it's served on (wildcard vhosts like `root
   /opt/www/x/$subdomain/public` included). Tick the ones you want, adjust
   names / IDs, *Add*. Apps already in Kemudi are listed as such.
-- **New app** (a server tab ▸ Overview ▸ *New app…*, or right-click a
+- **New app** (a server tab ▸ Apps ▸ *New app…*, or right-click a
   server): sets up a Laravel app on the server and adds it to Kemudi. Kemudi
   first looks at the server (read-only): PHP versions, PHP-FPM sockets, the
   login user's public keys, how its other apps are owned, MySQL users and
