@@ -2,6 +2,7 @@ import { Check, Copy, Eye, EyeOff, Pencil, Plus, RotateCw, ScanSearch } from "lu
 import { useEffect, useMemo, useState } from "react";
 
 import { Btn } from "@/components/kit/Btn";
+import { Group, Tool } from "@/components/kit/Toolbar";
 import { triggerAction } from "@/lib/actions";
 import { copyText } from "@/lib/clipboard";
 import { getCached, putCached, restoreSecrets, type Cached, type CachedEnvVar } from "@/lib/inspectCache";
@@ -297,9 +298,11 @@ export function InspectPanel({
             Inspected {ago(cached.at)} · {stamp(cached.at)}
           </span>
         )}
-        <Btn variant="outline" disabled={busy || !path.trim()} onClick={() => void run()} title={`Read-only look at ${path} on ${serverId}`}>
-          <ScanSearch className="size-4" /> {busy ? "Inspecting…" : ins ? "Inspect again" : "Inspect"}
-        </Btn>
+        <Group>
+          <Tool disabled={busy || !path.trim()} onClick={() => void run()} title={`Read-only look at ${path} on ${serverId}`} label={busy ? "Inspecting…" : ins ? "Inspect again" : "Inspect"}>
+            <ScanSearch className="size-[16px]" strokeWidth={1.6} />
+          </Tool>
+        </Group>
       </div>
       {!ins && !busy && (
         <div className="text-[12px] leading-5 text-subtle-foreground">

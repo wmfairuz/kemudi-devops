@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 
 import { DashboardView } from "@/components/dashboard/DashboardView";
 import { FilesView } from "@/components/files/FilesView";
-import { Btn } from "@/components/kit/Btn";
+import { Group, Tool } from "@/components/kit/Toolbar";
 import { LogsView } from "@/components/logs/LogsView";
 import { ServerSettings } from "@/components/manage/DetailsView";
 import { HealthView } from "@/components/health/HealthView";
@@ -89,18 +89,16 @@ export function ServerTabView({ tab, visible }: { tab: Tab; visible: boolean }) 
           </button>
         ))}
         <span className="flex-1" />
-        <Btn size="sm" variant="outline" onClick={() => openServerShell(server)} title={server.asg ? "A Session Manager shell on each running instance" : `ssh ${server.host}`}>
-          <SquareTerminal className="size-3.5" /> {server.asg ? "Shells on all instances" : "Open shell"}
-        </Btn>
-        {alone(section) && (
-          <button
-            title="Open this section in a tab of its own"
-            onClick={() => openSectionAlone(server, section, tab)}
-            className="flex size-7 cursor-pointer items-center justify-center rounded-full text-subtle-foreground hover:bg-hover hover:text-foreground"
-          >
-            <ExternalLink className="size-3.5" />
-          </button>
-        )}
+        <Group size="sm">
+          <Tool size="sm" label={server.asg ? "Shells on all instances" : "Open shell"} onClick={() => openServerShell(server)} title={server.asg ? "A Session Manager shell on each running instance" : `ssh ${server.host}`}>
+            <SquareTerminal className="size-[15px]" strokeWidth={1.6} />
+          </Tool>
+          {alone(section) && (
+            <Tool size="sm" title="Open this section in a tab of its own" onClick={() => openSectionAlone(server, section, tab)}>
+              <ExternalLink className="size-[15px]" strokeWidth={1.6} />
+            </Tool>
+          )}
+        </Group>
       </div>
       <div className="relative min-h-0 flex-1" onMouseDownCapture={() => keepTab(tab.id)} onKeyDownCapture={() => keepTab(tab.id)}>
         {seen.map((sec) => (

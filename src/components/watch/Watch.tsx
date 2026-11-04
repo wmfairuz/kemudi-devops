@@ -12,8 +12,7 @@ import { errorMessage, openUrl, type App, type Server, type ServerWatch, type Wa
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/manage/Badge";
 import { AppsList } from "@/components/manage/DetailsView";
-import { Group, Tool } from "@/components/kit/Toolbar";
-import { Segmented } from "@/components/manage/fields";
+import { Group, Tool, ToolSwitch } from "@/components/kit/Toolbar";
 import { useFleetUi } from "@/stores/fleetUi";
 import { openDetails } from "@/stores/manage";
 import { useStatus } from "@/stores/status";
@@ -405,7 +404,7 @@ export function ServerApps({ server }: { server: Server }) {
               )}
             </>
           }
-          lead={<Segmented<AppsView> label="Show apps as" value={view} options={[{ value: "pictures", label: "Pictures" }, { value: "list", label: "List" }]} onChange={pick} />}
+          lead={<ToolSwitch<AppsView> label="Show apps as" value={view} options={[{ value: "pictures", label: "Pictures" }, { value: "list", label: "List" }]} onChange={pick} />}
           status={status}
           grid={view === "pictures" ? <AppsGrid server={server} status={status} /> : undefined}
         />
@@ -509,9 +508,11 @@ export function ServerOverview({ server }: { server: Server }) {
           <span className="min-w-0 flex-1 truncate text-[12px] text-subtle-foreground">
             {skipped ? "Not checked in the background (Settings ▸ Checks)" : "From the background checks: nothing is read from the server to show this."}
           </span>
-          <Btn size="sm" variant="outline" disabled={running} onClick={() => void useWatch.getState().refresh([server.id]).catch((e) => toastError(errorMessage(e)))}>
-            {running ? <Spinner size={11} /> : <RefreshCw className="size-3.5" />} Check now
-          </Btn>
+          <Group>
+            <Tool label="Check now" title="Check now (every check, read-only)" disabled={running} onClick={() => void useWatch.getState().refresh([server.id]).catch((e) => toastError(errorMessage(e)))}>
+              {running ? <Spinner size={13} /> : <RefreshCw className="size-[16px]" strokeWidth={1.6} />}
+            </Tool>
+          </Group>
         </div>
 
         <section className="overflow-hidden rounded-xl border border-divider bg-panel">

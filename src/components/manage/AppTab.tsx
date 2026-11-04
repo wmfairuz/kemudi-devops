@@ -2,7 +2,7 @@ import { ExternalLink, SquareTerminal } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { FilesView } from "@/components/files/FilesView";
-import { Btn } from "@/components/kit/Btn";
+import { Group, Tool } from "@/components/kit/Toolbar";
 import { LogsView } from "@/components/logs/LogsView";
 import { QueuesView } from "@/components/queues/QueuesView";
 import { openServerShell } from "@/lib/fleet";
@@ -60,18 +60,21 @@ export function AppTabView({ tab, visible }: { tab: Tab; visible: boolean }) {
           </button>
         ))}
         <span className="flex-1" />
-        <Btn size="sm" variant="outline" onClick={() => openServerShell(server, app)} title={server.asg ? "A Session Manager shell on each running instance, in its folder" : `ssh ${server.host}, in ${app.path}`}>
-          <SquareTerminal className="size-3.5" /> {server.asg ? "Shells on all instances" : "Open shell"}
-        </Btn>
-        {VIEWS.includes(section) && (
-          <button
-            title="Open this section in a tab of its own"
-            onClick={() => alone(section)}
-            className="flex size-7 cursor-pointer items-center justify-center rounded-full text-subtle-foreground hover:bg-hover hover:text-foreground"
+        <Group size="sm">
+          <Tool
+            size="sm"
+            label={server.asg ? "Shells on all instances" : "Open shell"}
+            onClick={() => openServerShell(server, app)}
+            title={server.asg ? "A Session Manager shell on each running instance, in its folder" : `ssh ${server.host}, in ${app.path}`}
           >
-            <ExternalLink className="size-3.5" />
-          </button>
-        )}
+            <SquareTerminal className="size-[15px]" strokeWidth={1.6} />
+          </Tool>
+          {VIEWS.includes(section) && (
+            <Tool size="sm" title="Open this section in a tab of its own" onClick={() => alone(section)}>
+              <ExternalLink className="size-[15px]" strokeWidth={1.6} />
+            </Tool>
+          )}
+        </Group>
       </div>
       <div className="relative min-h-0 flex-1" onMouseDownCapture={() => keepTab(tab.id)} onKeyDownCapture={() => keepTab(tab.id)}>
         {/* Overview, Web server, Supervisor, Cron, .env and Settings: one
