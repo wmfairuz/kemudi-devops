@@ -114,7 +114,8 @@ type Phase = { kind: "probing" } | { kind: "error"; message: string } | { kind: 
 function NewApp({ server }: { server: Server }) {
   const serverId = server.id;
   const prod = server.env === "prod";
-  const [d, setD] = useState<NewAppDraft>(() => useNewApp.getState().drafts[serverId] ?? blank(server));
+  // The last form for this server (kept on disk until it's set up).
+  const [d, setD] = useState<NewAppDraft>(() => ({ ...blank(server), ...useNewApp.getState().drafts[serverId] }));
   const set = (patch: Partial<NewAppDraft>) => setD((x) => ({ ...x, ...patch }));
   const [probe, setProbe] = useState<NewAppProbe | null>(null);
   const [certs, setCerts] = useState<CertbotCert[]>([]);
@@ -335,7 +336,7 @@ function NewApp({ server }: { server: Server }) {
   };
 
   const close = async () => {
-    if ((d.name || d.repo) && !(await askConfirm("Close the new app form?", "Nothing has been done on the server. The form is kept until you quit Kemudi.", "Close"))) return;
+    if ((d.name || d.repo) && !(await askConfirm("Close the new app form?", "Nothing more is done on the server. The form is kept (after a restart too): New app… on this server opens it again.", "Close"))) return;
     useNewApp.getState().close();
   };
 
@@ -749,6 +750,18 @@ function NewApp({ server }: { server: Server }) {
           />
         )}
         <span className="flex-1" />
+        {(d.name || d.repo) && (
+          <Btn
+            variant="ghost"
+            title="Clear the form (it's kept until the app is set up)"
+            onClick={() => {
+              setD(blank(server));
+              load();
+            }}
+          >
+            Start over
+          </Btn>
+        )}
         <Btn variant="outline" className="pr-2.5" onClick={() => void close()}>
           Cancel <Hint>esc</Hint>
         </Btn>

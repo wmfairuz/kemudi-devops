@@ -127,7 +127,12 @@ export function EntityMenu() {
           { label: "Details…", run: () => openDetails({ kind: "server", serverId: server.id }) },
           { label: "Add app…", run: () => openDetails({ kind: "app", serverId: server.id, appId: null }) },
           { label: "Discover apps…", hint: "find Laravel apps on it", run: () => useManage.getState().setDiscover(server.id) },
-          { label: "New app…", hint: "set one up from git", run: () => useNewApp.getState().open(server.id) },
+          {
+            label: "New app…",
+            // A form not set up yet (a failed run) comes back as it was.
+            hint: useNewApp.getState().drafts[server.id]?.name ? `continue ${useNewApp.getState().drafts[server.id]?.name}` : "set one up from git",
+            run: () => useNewApp.getState().open(server.id),
+          },
         ],
         [
           { label: "Group…", hint: server.group ?? "none", run: () => void pickGroup(server) },
