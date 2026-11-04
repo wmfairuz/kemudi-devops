@@ -136,7 +136,8 @@ function Section({ title, children, right }: { title: string; children: React.Re
   );
 }
 
-function ConfigBlock({ file, config, onEdit }: { file: string; config: string; onEdit?: () => void }) {
+/** `tall`: on a section of its own (an app tab's), down to the window's bottom. */
+function ConfigBlock({ file, config, onEdit, tall }: { file: string; config: string; onEdit?: () => void; tall?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="flex flex-col gap-1.5">
@@ -155,7 +156,7 @@ function ConfigBlock({ file, config, onEdit }: { file: string; config: string; o
         )}
       </div>
       {open && (
-        <pre className="selectable max-h-[320px] overflow-auto rounded-lg border border-divider bg-background p-3 font-mono text-[11.5px] leading-[17px] whitespace-pre text-foreground">
+        <pre className={cn("selectable overflow-auto", tall ? "max-h-[max(320px,calc(100vh-300px))]" : "max-h-[320px]", " rounded-lg border border-divider bg-background p-3 font-mono text-[11.5px] leading-[17px] whitespace-pre text-foreground")}>
           {config}
         </pre>
       )}
@@ -208,6 +209,8 @@ export function InspectPanel({
   /** The overview's lines open their section. */
   onGo?: (part: Exclude<InspectPart, "overview">) => void;
 }) {
+  // A part on its own (an app tab's section) gets the window's height.
+  const tall = !!only && only !== "overview";
   const show = (p: Exclude<InspectPart, "overview">) => !only || only === p || (only === "overview" && p === "code");
   const [cached, setCached] = useState<Cached | null>(() => getCached(serverId, path));
   const programMenu = useServiceMenu(serverId, appId);
@@ -429,6 +432,7 @@ export function InspectPanel({
                   {v.phpSocket && <> · PHP {v.phpVersion ?? "?"} ({v.phpSocket})</>}
                 </div>
                 <ConfigBlock
+                  tall={tall}
                   file={v.file}
                   config={v.config}
                   onEdit={() =>
@@ -505,6 +509,7 @@ export function InspectPanel({
             ))}
             {supervisorFileList.map(([file, config]) => (
               <ConfigBlock
+                tall={tall}
                 key={file}
                 file={file}
                 config={config}
@@ -562,6 +567,7 @@ export function InspectPanel({
           </Section>}
 
           {show("env") && <EnvSection
+            tall={tall}
             env={ins.env}
             error={ins.envError}
             secretsError={secretsError}
@@ -651,7 +657,10 @@ function EnvSection({
   onEdit,
   prod,
   path,
+  tall,
 }: {
+  /** On a section of its own: the list goes down to the window's bottom. */
+  tall?: boolean;
   env: CachedEnvVar[] | null;
   error: string | null;
   /** The encrypted secret store couldn't be read or written. */
@@ -761,7 +770,7 @@ function EnvSection({
           className="h-7 min-w-0 flex-1 rounded-md border border-control-border bg-background px-2 font-mono text-[12px] outline-none focus:border-primary/60"
         />
       </div>
-      <div className="flex max-h-[360px] flex-col overflow-y-auto rounded-lg border border-divider bg-background">
+      <div className={cn("flex flex-col overflow-y-auto rounded-lg border border-divider bg-background", tall ? "max-h-[max(360px,calc(100vh-290px))]" : "max-h-[360px]")}>
         {list.map((e) => {
           const hidden = e.redacted || (e.secret && !shown.has(e.key));
           return (
