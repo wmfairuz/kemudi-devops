@@ -16,11 +16,14 @@ export function EnvTable({ text, onChange }: { text: string; onChange: (t: strin
   const [newValue, setNewValue] = useState("");
   const q = filter.trim().toLowerCase();
   const list = q ? vars.filter((v) => v.key.toLowerCase().includes(q)) : vars;
-  const newKeyOk = VALID_KEY.test(newKey) && !vars.some((v) => v.key === newKey);
+  // A key that's already there: Set changes it (its last line, the one
+  // Laravel reads) instead of adding a second.
+  const existing = [...vars].reverse().find((v) => v.key === newKey);
+  const newKeyOk = VALID_KEY.test(newKey);
 
   const add = () => {
     if (!newKeyOk) return;
-    onChange(addVar(text, newKey, newValue));
+    onChange(existing ? setLine(text, existing.index, newKey, newValue) : addVar(text, newKey, newValue));
     setNewKey("");
     setNewValue("");
   };
@@ -68,7 +71,7 @@ export function EnvTable({ text, onChange }: { text: string; onChange: (t: strin
           aria-label="New key"
           className={cn(
             "h-7 w-[260px] rounded-md border bg-background px-2 font-mono text-[12px] outline-none placeholder:text-faint-foreground focus:border-primary/60",
-            newKey && !newKeyOk ? "border-env-prod/60" : "border-control-border",
+            newKey && !newKeyOk ? "border-env-prod/60" : existing ? "border-env-staging/70" : "border-control-border",
           )}
         />
         <input
@@ -79,10 +82,21 @@ export function EnvTable({ text, onChange }: { text: string; onChange: (t: strin
           aria-label="New value"
           className="h-7 min-w-0 flex-1 rounded-md border border-control-border bg-background px-2 font-mono text-[12px] outline-none placeholder:text-faint-foreground focus:border-primary/60"
         />
-        <Btn size="sm" variant="outline" type="submit" disabled={!newKeyOk}>
-          <Plus className="size-3.5" /> Add
+        <Btn size="sm" variant="outline" type="submit" disabled={!newKeyOk} title={existing ? `${newKey} is already in the file: Set changes its value` : undefined}>
+          {existing ? "Set" : (
+            <>
+              <Plus className="size-3.5" /> Add
+            </>
+          )}
         </Btn>
       </form>
+      {newKey && (!newKeyOk || existing) && (
+        <div className={cn("-mt-1.5 px-5 pb-2 text-[11.5px]", !newKeyOk ? "text-env-prod-fg" : "text-subtle-foreground")}>
+          {!newKeyOk
+            ? "A key is letters, digits, _ and . (not starting with a digit)."
+            : <>{newKey} is already in the file{isSecret(newKey, existing!.value) ? "" : <> (now <span className="font-mono">{existing!.value || "empty"}</span>)</>}: Set changes it.</>}
+        </div>
+      )}
     </div>
   );
 }

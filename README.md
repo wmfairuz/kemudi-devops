@@ -230,7 +230,8 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   **Try again**. (`KEMUDI_SECRET_CACHE=off` keeps secrets in memory only and
   never touches the Keychain, for a second test copy of the app.)
 - **Edit .env** (Inspect ▸ .env ▸ Edit): a **Table** (change values, rename or
-  remove keys, add new ones; secrets masked until you show them) or **Text**
+  remove keys, add new ones; a key that's already there turns Add into
+  **Set**, which changes its value; secrets masked until you show them) or **Text**
   (CodeMirror). Edits change one line at a time, so comments, blank lines,
   order, `export` and inline `# comments` are kept. **Review changes** shows a
   diff and what changed by key name; on prod you type the server name to
