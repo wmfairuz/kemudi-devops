@@ -6,7 +6,8 @@ import { EnvTag } from "@/components/kit/EnvTag";
 import { Hint } from "@/components/kit/Kbd";
 import { Modal, ModalFooter, ModalHeader } from "@/components/kit/Modal";
 import { Field, TextInput } from "@/components/manage/fields";
-import { dashboardAuth, dashboardMaintenance, dashboardStatus, errorMessage, openUrl, type App, type AppSwitches, type BasicLogin, type Dashboard, type LoginFile, type Server } from "@/lib/ipc";
+import { Spinner } from "@/components/kit/Spinner";
+import { dashboardAuth, dashboardMaintenance, dashboardRuns, dashboardStatus, dashboardWorkers, errorMessage, openUrl, type App, type AppSwitches, type BasicLogin, type Dashboard, type LoginFile, type Runs, type Server } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { useConfig } from "@/stores/config";
 import { askChoice } from "@/stores/confirm";
@@ -26,6 +27,28 @@ const OWN_DIR = "/etc/nginx/kemudi-auth/";
 
 /** "team" or "team, qa" for a login file. */
 const usersOf = (logins: LoginFile[], path: string | null) => (path ? (logins.find((l) => l.path === path)?.users ?? []).join(", ") : "");
+
+/** The workers Kemudi stopped when it put an app down, to start again when
+ *  it goes back up (on this Mac). */
+const STOPPED_KEY = "kemudi.stoppedWorkers";
+function stoppedAll(): Record<string, string[]> {
+  try {
+    return JSON.parse(localStorage.getItem(STOPPED_KEY) ?? "{}") as Record<string, string[]>;
+  } catch {
+    return {};
+  }
+}
+export const stoppedOf = (serverId: string, appId: string): string[] => stoppedAll()[`${serverId}/${appId}`] ?? [];
+function setStopped(serverId: string, appId: string, programs: string[]) {
+  const all = stoppedAll();
+  if (programs.length) all[`${serverId}/${appId}`] = programs;
+  else delete all[`${serverId}/${appId}`];
+  try {
+    localStorage.setItem(STOPPED_KEY, JSON.stringify(all));
+  } catch {
+    // Not kept: going up won't start them; the dashboard still says so.
+  }
+}
 
 const bypassUrl = (app: App, secret: string) => `${(app.url ?? "").replace(/\/+$/, "")}/${secret}`;
 
@@ -97,10 +120,19 @@ export function DashboardView({ tab, visible }: { tab: Tab; visible: boolean }) 
   };
 
   const goUp = async (app: App) => {
-    if (app.env === "prod" && !(await askChoice(`Bring ${app.name} back up?`, `artisan up on ${server.name} (production).`, "Bring it up", "Cancel"))) return;
+    const stopped = stoppedOf(server.id, app.id);
+    const workers = stopped.length ? `; then supervisorctl start ${stopped.join(", ")} (the workers Kemudi stopped)` : "";
+    if (app.env === "prod" && !(await askChoice(`Bring ${app.name} back up?`, `artisan up on ${server.name} (production)${workers}.`, "Bring it up", "Cancel"))) return;
     void change(app, "laravel", async () => {
       await dashboardMaintenance(server.id, app.id, false, false);
-      return `${app.name} is live again`;
+      if (!stopped.length) return `${app.name} is live again`;
+      try {
+        await dashboardWorkers(server.id, app.id, true, stopped);
+      } catch (e) {
+        throw new Error(`it's live again, but its workers (${stopped.join(", ")}) didn't start: ${errorMessage(e)}`);
+      }
+      setStopped(server.id, app.id, []);
+      return `${app.name} is live again; its workers (${stopped.join(", ")}) are started`;
     });
   };
   const authOff = async (app: App) => {
@@ -114,7 +146,7 @@ export function DashboardView({ tab, visible }: { tab: Tab; visible: boolean }) 
   const needsRoot = data && !["root", "ok"].includes(data.sudo);
   return (
     <div className="light-ui absolute inset-0 flex flex-col bg-background text-foreground">
-      <div className="flex h-11 flex-none items-center gap-2 border-b border-divider px-3">
+      <div className="flex h-11 flex-none items-center gap-2 border-b border-divider px-5">
         <span className="text-[13px] font-semibold">Dashboard</span>
         <span className="text-[12.5px] text-subtle-foreground">{server.name}</span>
         <EnvTag env={server.env} />
@@ -137,7 +169,7 @@ export function DashboardView({ tab, visible }: { tab: Tab; visible: boolean }) 
           <RotateCw className={cn("size-3.5", loading && "animate-spin")} /> Refresh
         </Btn>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
         {error && <div className="mb-3 text-[12.5px] text-env-prod-fg">{error}</div>}
         {needsRoot && (
           <div className="mb-3 flex items-center gap-3 rounded-lg border border-env-staging/40 bg-env-staging-tint px-3 py-2 text-[12px]">
@@ -207,13 +239,24 @@ export function DashboardView({ tab, visible }: { tab: Tab; visible: boolean }) 
           server={server}
           app={downFor}
           onClose={() => setDownFor(null)}
-          onConfirm={(withSecret) => {
+          onConfirm={(withSecret, stop) => {
             const app = downFor;
             setDownFor(null);
             void change(app, "laravel", async () => {
               const r = await dashboardMaintenance(server.id, app.id, true, withSecret);
               if (r.secret && app.url) void navigator.clipboard.writeText(bypassUrl(app, r.secret)).catch(() => {});
-              return r.secret && app.url ? `${app.name} is in maintenance mode; the bypass link is copied` : `${app.name} is in maintenance mode`;
+              let msg = r.secret && app.url ? `${app.name} is in maintenance mode; the bypass link is copied` : `${app.name} is in maintenance mode`;
+              if (stop.length) {
+                try {
+                  await dashboardWorkers(server.id, app.id, false, stop);
+                } catch (e) {
+                  throw new Error(`it's in maintenance mode, but its workers weren't stopped: ${errorMessage(e)}`);
+                }
+                // With any it stopped before (and hasn't started since).
+                setStopped(server.id, app.id, [...new Set([...stoppedOf(server.id, app.id), ...stop])]);
+                msg += `; its workers (${stop.join(", ")}) are stopped`;
+              }
+              return msg;
             });
           }}
         />
@@ -300,6 +343,11 @@ function AppRow({
               <Switch on={!s.down} busy={busy === "laravel"} label={`${app.name} live`} onClick={s.down ? onUp : onDown} />
               <span className={cn("text-[12.5px]", s.down ? "text-[#8a5a12]" : "text-[#17702a]")}>{busy === "laravel" ? "…" : s.down ? "Maintenance mode" : "Live"}</span>
             </div>
+            {s.down && stoppedOf(server.id, app.id).length > 0 && (
+              <span className="text-[11.5px] text-subtle-foreground">
+                Workers stopped: {stoppedOf(server.id, app.id).join(", ")} (they start again when it goes live)
+              </span>
+            )}
             {s.down && s.secret && (
               <div className="flex items-center gap-1.5 text-[11.5px] text-subtle-foreground">
                 <span className="truncate">Bypass: /{s.secret}</span>
@@ -372,11 +420,30 @@ function AppRow({
   );
 }
 
-function DownDialog({ server, app, onClose, onConfirm }: { server: Server; app: App; onClose: () => void; onConfirm: (withSecret: boolean) => void }) {
+function DownDialog({ server, app, onClose, onConfirm }: { server: Server; app: App; onClose: () => void; onConfirm: (withSecret: boolean, stop: string[]) => void }) {
   const [withSecret, setWithSecret] = useState(true);
+  const [runs, setRuns] = useState<Runs | null>(null);
+  const [runsError, setRunsError] = useState<string | null>(null);
+  const [stop, setStop] = useState<string[]>([]);
   const prod = app.env === "prod";
+  useEffect(() => {
+    let live = true;
+    dashboardRuns(server.id, app.id)
+      .then((r) => {
+        if (!live) return;
+        setRuns(r);
+        // Every running worker, unless sudo can't stop them.
+        if (r.sudo !== "none") setStop(r.workers.filter((w) => w.running > 0).map((w) => w.program));
+      })
+      .catch((e) => live && setRunsError(errorMessage(e)));
+    return () => {
+      live = false;
+    };
+  }, [server.id, app.id]);
+  const anyway = runs?.cron.filter((c) => !c.pauses) ?? [];
+  const pausing = runs?.cron.filter((c) => c.pauses) ?? [];
   return (
-    <Modal open onOpenChange={(o) => !o && onClose()} title="Maintenance mode" width={460}>
+    <Modal open onOpenChange={(o) => !o && onClose()} title="Maintenance mode" width={580}>
       <ModalHeader>
         <span className="text-[15px] font-semibold">Put {app.name} in maintenance mode?</span>
         <span className="text-[12.5px] leading-5 text-muted-foreground">
@@ -384,8 +451,8 @@ function DownDialog({ server, app, onClose, onConfirm }: { server: Server; app: 
           {prod ? " (production)" : ""}: visitors get Laravel's 503 page until you bring it back up.
         </span>
       </ModalHeader>
-      <div className="px-5 pb-4">
-        <label className="flex cursor-pointer items-start gap-2 text-[12.5px]">
+      <div className="flex max-h-[min(60vh,520px)] flex-col gap-3 overflow-y-auto px-5 pb-4 text-[12.5px]">
+        <label className="flex cursor-pointer items-start gap-2">
           <input type="checkbox" className="mt-0.5 accent-primary" checked={withSecret} onChange={(e) => setWithSecret(e.target.checked)} />
           <span>
             With a bypass link
@@ -394,14 +461,97 @@ function DownDialog({ server, app, onClose, onConfirm }: { server: Server; app: 
             </span>
           </span>
         </label>
+
+        <div className="flex flex-col gap-2 rounded-lg border border-divider bg-panel px-3 py-2.5">
+          <span className="text-[11px] font-semibold tracking-wide text-subtle-foreground uppercase">While it's down</span>
+          {!runs && !runsError && (
+            <span className="flex items-center gap-2 text-subtle-foreground">
+              <Spinner size={11} /> Looking at its workers and cron…
+            </span>
+          )}
+          {runsError && <span className="text-subtle-foreground">Couldn't look at its workers and cron: {runsError}</span>}
+          {runs && (
+            <>
+              {runs.workers.length > 0 && (
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11.5px] text-subtle-foreground">
+                    Supervisor workers: tick the ones to stop too (<span className="font-mono">supervisorctl stop</span>; they start again when it goes live).
+                    {runs.sudo === "none" && " Stopping them needs sudo: save this server's sudo password in Passwords (⇧⌘K)."}
+                  </span>
+                  {runs.workers.map((w) => (
+                    <label key={w.program} className={cn("flex items-start gap-2", runs.sudo !== "none" && w.running > 0 && "cursor-pointer")} title={w.command}>
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 accent-primary"
+                        disabled={runs.sudo === "none" || w.running === 0}
+                        checked={stop.includes(w.program)}
+                        onChange={(e) => setStop((list) => (e.target.checked ? [...list, w.program] : list.filter((x) => x !== w.program)))}
+                      />
+                      <span className="flex min-w-0 flex-col">
+                        <span>
+                          <span className="font-mono">{w.program}</span>{" "}
+                          <span className="text-subtle-foreground">
+                            · {w.running === 0 ? (w.states.join(", ").toLowerCase() || "not running") : `${w.running} of ${w.total} running`}
+                          </span>
+                        </span>
+                        <span className={cn("text-[11.5px]", w.runsWhileDown && w.running > 0 ? "text-[#8a5a12]" : "text-subtle-foreground")}>
+                          {w.kind === "other"
+                            ? "Not a Laravel worker: keeps running while it's down"
+                            : w.runsWhileDown
+                              ? "Runs with --force: keeps working while it's down"
+                              : w.kind === "schedule"
+                                ? "schedule:work: skips its tasks while it's down"
+                                : "Pauses by itself while it's down (picks up no jobs; they wait in the queue)"}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+              {pausing.map((c) => (
+                <div key={c.source + c.line} className="flex flex-col">
+                  <span className="truncate font-mono text-[11.5px]" title={`${c.source}: ${c.line}`}>
+                    {c.line}
+                  </span>
+                  <span className="text-[11.5px] text-subtle-foreground">
+                    {c.line.includes("schedule:run") ? "Its scheduler: Laravel skips the scheduled tasks while it's down" : "Pauses while it's down"} ({c.source})
+                  </span>
+                </div>
+              ))}
+              {runs.evenInMaintenance.length > 0 && (
+                <div className="flex flex-col">
+                  <span className="text-[11.5px] text-[#8a5a12]">Scheduled to run even in maintenance mode:</span>
+                  {runs.evenInMaintenance.map((l) => (
+                    <span key={l} className="truncate font-mono text-[11.5px]" title={l}>
+                      {l}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {anyway.map((c) => (
+                <div key={c.source + c.line} className="flex flex-col">
+                  <span className="truncate font-mono text-[11.5px]" title={`${c.source}: ${c.line}`}>
+                    {c.line}
+                  </span>
+                  <span className="text-[11.5px] text-[#8a5a12]">Cron runs this even while it's down: it doesn't go through the scheduler ({c.source})</span>
+                </div>
+              ))}
+              {runs.workers.length === 0 && runs.cron.length === 0 && runs.evenInMaintenance.length === 0 ? (
+                <span className="text-subtle-foreground">No Supervisor workers or cron lines name its folder.</span>
+              ) : (
+                runs.cron.length === 0 && <span className="text-[11.5px] text-subtle-foreground">No cron line names its folder: its scheduler isn't running anyway.</span>
+              )}
+            </>
+          )}
+        </div>
       </div>
       <ModalFooter>
         <span className="flex-1" />
         <Btn variant="outline" className="pr-2.5" onClick={onClose}>
           Cancel <Hint>esc</Hint>
         </Btn>
-        <Btn autoFocus variant={prod ? "danger" : "primary"} onClick={() => onConfirm(withSecret)}>
-          Put it down
+        <Btn autoFocus variant={prod ? "danger" : "primary"} onClick={() => onConfirm(withSecret, stop)}>
+          {stop.length ? `Put it down, stop ${stop.length} worker${stop.length === 1 ? "" : "s"}` : "Put it down"}
         </Btn>
       </ModalFooter>
     </Modal>

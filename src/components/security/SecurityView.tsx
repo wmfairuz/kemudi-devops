@@ -221,7 +221,7 @@ export function SecurityView({ server }: { server: Server }) {
 
   return (
     <div className="light-ui absolute inset-0 overflow-y-auto bg-background text-foreground">
-      <div className="mx-auto flex max-w-[1100px] flex-col gap-4 px-6 py-5">
+      <div className="flex w-full flex-col gap-4 px-5 py-5">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[15px] font-semibold">{server.name}</span>
           <EnvTag env={server.env} />

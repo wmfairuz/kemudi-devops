@@ -190,7 +190,7 @@ export function QueuesView({ tab, visible }: { tab: Tab; visible: boolean }) {
 
   return (
     <div className="light-ui absolute inset-0 flex flex-col bg-background text-foreground">
-      <div className="flex h-11 flex-none items-center gap-2 border-b border-divider px-3">
+      <div className="flex h-11 flex-none items-center gap-2 border-b border-divider px-5">
         <span className="text-[13px] font-semibold">Queues</span>
         <span className="text-[12.5px] text-subtle-foreground">{app?.name ?? appId} on {serverId}</span>
         {server && <EnvTag env={env} />}
@@ -231,7 +231,7 @@ export function QueuesView({ tab, visible }: { tab: Tab; visible: boolean }) {
           </Btn>
         </div>
       )}
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3" style={font}>
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3" style={font}>
         {!status && !error && <div className="py-6 text-[0.9em] text-subtle-foreground">Asking {app?.name ?? appId}…</div>}
         {status && (
           <div className="flex flex-col gap-4">

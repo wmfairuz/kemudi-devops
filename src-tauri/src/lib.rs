@@ -24,6 +24,7 @@ mod remote_files;
 mod secops;
 mod secret_cache;
 mod session;
+mod shots;
 mod shell_integration;
 mod snippets;
 mod ssh;
@@ -174,6 +175,10 @@ pub fn run() {
             dashboard::dashboard_status,
             dashboard::dashboard_maintenance,
             dashboard::dashboard_auth,
+            dashboard::dashboard_runs,
+            dashboard::dashboard_workers,
+            shots::app_shot,
+            shots::app_shot_take,
             setup::setup_check,
             setup::setup_plan,
             setup::setup_source,

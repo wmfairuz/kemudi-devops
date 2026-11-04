@@ -124,7 +124,7 @@ export function TuneView({ tab, visible }: { tab: Tab; visible: boolean }) {
 
   return (
     <div className="light-ui absolute inset-0 flex flex-col bg-background text-foreground">
-      <div className="flex h-11 flex-none items-center gap-2 border-b border-divider px-3">
+      <div className="flex h-11 flex-none items-center gap-2 border-b border-divider px-5">
         <span className="text-[13px] font-semibold">Fine-tune</span>
         <span className="text-[12.5px] text-subtle-foreground">{server?.name ?? serverId}</span>
         {server && <EnvTag env={server.env} />}
@@ -139,7 +139,7 @@ export function TuneView({ tab, visible }: { tab: Tab; visible: boolean }) {
         </Btn>
       </div>
       {error && <div className="flex-none bg-env-prod/8 px-4 py-2 text-[12px] text-env-prod-fg">{error}</div>}
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3" style={font}>
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3" style={font}>
         {!t && !error && <div className="py-6 text-[0.9em] text-subtle-foreground">Looking at {server?.name ?? serverId}: CPUs, memory, PHP-FPM pools and their workers, OPcache, MySQL, nginx… (read-only)</div>}
         {t && b && (
           <div className="flex flex-col gap-4">

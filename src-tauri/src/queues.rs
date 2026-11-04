@@ -135,7 +135,27 @@ fn status_script(path: &str, php: &str, password: Option<&str>) -> String {
     format!(
         r#"{pre}if [ -n "$RU" ]; then echo "@@user $OWN"; else echo "@@user $ME"; fi
 TAB=$(printf '\t')
-echo @@programs
+{workers}echo @@ps
+{{ ps -eo pid=,etimes=,user=,unit=,args= 2>/dev/null || ps -eo pid=,etimes=,user=,args= 2>/dev/null | sed 's/^\( *[0-9][0-9]* *[0-9][0-9]* *[^ ]*\)/\1 -/'; }} | grep -E 'queue:(work|listen)|horizon|schedule:work' | grep -F -- "$P" | grep -v -e grep -e supervisord
+echo @@cron
+(cat /etc/crontab /etc/cron.d/* 2>/dev/null; crontab -l 2>/dev/null; [ "$ME" = root ] && crontab -l -u "$OWN" 2>/dev/null) | grep -F -- "$P" | grep -F schedule | grep -v '^[[:space:]]*#' | head -5
+QN=$(for c in $(supconfs); do grep -F -- "$P" "$c" 2>/dev/null; done | sed -n 's/.*--queue[= ]\([^ ]*\).*/\1/p' | tr '\n' ',')
+echo @@php
+$RU "$PHP" -- status "$QN" 2>&1 <<'KEMUDI_PHP'
+{php}KEMUDI_PHP
+"#,
+        pre = prelude(path, php, password),
+        workers = workers_sh(),
+        php = PHP,
+    )
+}
+
+/// Prints `@@programs` (program, conf file and command of each Supervisor
+/// program whose conf names `$P`) and `@@status` (supervisorctl status).
+/// Needs `getsu` and `$P`.
+pub(crate) fn workers_sh() -> String {
+    format!(
+        r#"echo @@programs
 {sup}for c in $(supconfs); do
   [ -f "$c" ] || continue
   t=$(cat -- "$c" 2>/dev/null) || {{ getsu; [ -n "$SU" ] && t=$($SU cat -- "$c"); }} || continue
@@ -147,18 +167,8 @@ st=$(supervisorctl status 2>/dev/null)
 case "$st" in ""|*"refused"*|*"ermission"*|*"no such file"*|[Ee]rror:*) getsu; st=""; [ -n "$SU" ] && st=$($SU supervisorctl status 2>/dev/null) ;; esac
 case "$st" in *"ermission"*|[Ee]rror:*|*"refused"*|*"no such file"*) st="" ;; esac
 printf '%s\n' "$st"
-echo @@ps
-{{ ps -eo pid=,etimes=,user=,unit=,args= 2>/dev/null || ps -eo pid=,etimes=,user=,args= 2>/dev/null | sed 's/^\( *[0-9][0-9]* *[0-9][0-9]* *[^ ]*\)/\1 -/'; }} | grep -E 'queue:(work|listen)|horizon|schedule:work' | grep -F -- "$P" | grep -v -e grep -e supervisord
-echo @@cron
-(cat /etc/crontab /etc/cron.d/* 2>/dev/null; crontab -l 2>/dev/null; [ "$ME" = root ] && crontab -l -u "$OWN" 2>/dev/null) | grep -F -- "$P" | grep -F schedule | grep -v '^[[:space:]]*#' | head -5
-QN=$(for c in $(supconfs); do grep -F -- "$P" "$c" 2>/dev/null; done | sed -n 's/.*--queue[= ]\([^ ]*\).*/\1/p' | tr '\n' ',')
-echo @@php
-$RU "$PHP" -- status "$QN" 2>&1 <<'KEMUDI_PHP'
-{php}KEMUDI_PHP
 "#,
-        pre = prelude(path, php, password),
         sup = crate::app_inspect::SUPCONFS,
-        php = PHP,
     )
 }
 
@@ -293,7 +303,7 @@ pub struct QueueStatus {
     pub laravel_error: Option<String>,
 }
 
-fn section<'a>(out: &'a str, name: &str) -> Vec<&'a str> {
+pub(crate) fn section<'a>(out: &'a str, name: &str) -> Vec<&'a str> {
     let mut lines = Vec::new();
     let mut on = false;
     for l in out.lines() {
@@ -329,19 +339,9 @@ fn php_json(out: &str) -> Result<&str, String> {
     })
 }
 
-fn parse_status(out: &str) -> AppResult<QueueStatus> {
-    // Errors before the PHP part (no app, no artisan) are the whole answer.
-    let head = out.split("\n@@php").next().unwrap_or(out);
-    crate::remote_files::errors(head)?;
-    let mut s = QueueStatus {
-        user: out
-            .lines()
-            .find_map(|l| l.strip_prefix("@@user "))
-            .unwrap_or_default()
-            .trim()
-            .to_string(),
-        ..QueueStatus::default()
-    };
+/// The `@@programs` and `@@status` sections (see `workers_sh`).
+pub(crate) fn parse_workers(out: &str) -> Vec<Worker> {
+    let mut workers = Vec::new();
     let status: Vec<(String, String, String)> = section(out, "status")
         .iter()
         .filter_map(|l| {
@@ -361,7 +361,7 @@ fn parse_status(out: &str) -> AppResult<QueueStatus> {
             .filter(|(n, _, _)| n == program || n.starts_with(&format!("{program}:")))
             .collect();
         if procs.is_empty() {
-            s.workers.push(Worker {
+            workers.push(Worker {
                 program: program.to_string(),
                 process: None,
                 state: if status.is_empty() {
@@ -379,7 +379,7 @@ fn parse_status(out: &str) -> AppResult<QueueStatus> {
             });
         }
         for (n, state, info) in procs {
-            s.workers.push(Worker {
+            workers.push(Worker {
                 program: program.to_string(),
                 process: Some(n.clone()),
                 state: state.clone(),
@@ -389,6 +389,23 @@ fn parse_status(out: &str) -> AppResult<QueueStatus> {
             });
         }
     }
+    workers
+}
+
+fn parse_status(out: &str) -> AppResult<QueueStatus> {
+    // Errors before the PHP part (no app, no artisan) are the whole answer.
+    let head = out.split("\n@@php").next().unwrap_or(out);
+    crate::remote_files::errors(head)?;
+    let mut s = QueueStatus {
+        user: out
+            .lines()
+            .find_map(|l| l.strip_prefix("@@user "))
+            .unwrap_or_default()
+            .trim()
+            .to_string(),
+        ..QueueStatus::default()
+    };
+    s.workers = parse_workers(out);
     for l in section(out, "ps") {
         let mut it = l.split_whitespace();
         let (Some(pid), Some(secs), Some(user), Some(unit)) =

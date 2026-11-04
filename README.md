@@ -173,7 +173,13 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   a missing folder; Open goes to Apps), setup;
   nothing is read from the server to show it; *Check now*), **Apps** (its
   apps, with + Add app / Discover apps… / New app… and what the checks found
-  in each: APP_ENV, APP_DEBUG on, maintenance, folder missing), **Dashboard**,
+  in each: APP_ENV, APP_DEBUG on, maintenance, folder missing; as a
+  **List** or as **Pictures** of each app's front page, like Herd's: taken
+  by Chrome, Edge, Chromium or Brave running headless on this Mac, in a
+  profile of its own, so an app behind a login shows that page; kept in
+  `shots/` in the data folder and taken again when a day old, or with
+  *Retake pictures* / ↻ on a picture. This is the one thing besides ssh
+  that opens a connection, and only in Pictures view), **Dashboard**,
   **Files**, **Logs**, **Monitor**, **Health**, **Security**, **Tune**,
   **Setup** and **Settings** (the server's own: name, SSH host, team,
   environment, VPN, tab colour…; Save, Duplicate, Delete…). **Open shell**
@@ -732,6 +738,14 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
     `current/`), run as the owner of its `storage/`. Down can come with a
     **bypass link** (`--secret`, Laravel 8+): `<url>/<secret>` lets you in,
     in that browser; it's copied for you and shown on the row.
+    Before it goes down, the dialog looks (read-only) at what keeps running:
+    its Supervisor programs (a `queue:work` worker pauses by itself in
+    maintenance mode; one with `--force`, or not Laravel's, keeps going),
+    cron lines naming its folder (`schedule:run` skips its tasks while it's
+    down; a command cron runs directly doesn't), and tasks scheduled
+    `->evenInMaintenanceMode()`. Tick workers to **stop them too**
+    (`supervisorctl stop`, needs sudo); going live again starts the ones
+    Kemudi stopped (remembered on this Mac, shown on the row).
   - *Basic auth*: nginx only, put where the vhost keeps it:
     - a vhost that switches by host (`auth_basic $auth_required;` with
       `map $host $auth_required { app.example.com "Restricted Area"; default off; }`

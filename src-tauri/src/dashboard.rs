@@ -1220,6 +1220,258 @@ pub async fn dashboard_maintenance(
     result
 }
 
+// ------------------------------------------- what runs while an app is down
+
+/// Finds the app (`$P` as configured, `$A` where artisan is: maybe
+/// `current/`), its owner, and `getsu` (sudo, only when asked for).
+fn runs_prelude(path: &str, password: Option<&str>) -> String {
+    format!(
+        r#"export LC_ALL=C
+getsu() {{ [ -n "$SUDONE" ] && return 0; SUDONE=1
+{prelude}}}
+P={p}
+[ -d "$P" ] || {{ echo "@@err $P doesn't exist"; exit 0; }}
+A="$P"
+[ -f "$A/artisan" ] || {{ [ -f "$A/current/artisan" ] && A="$A/current"; }}
+ME=$(id -un)
+OWN=$(stat -c %U "$A/storage" 2>/dev/null || stat -c %U "$A")
+"#,
+        prelude = sudo_prelude(password),
+        p = shell_quote(path.trim().trim_end_matches('/')),
+    )
+}
+
+/// The app's Supervisor programs, every cron line that names its folder
+/// (the system's, this user's, the app owner's and root's), and the
+/// scheduled tasks that run even in maintenance mode. Read-only.
+fn runs_script(path: &str, password: Option<&str>) -> String {
+    format!(
+        r#"{pre}{workers}echo @@cron
+tag() {{ awk -v s="$1" '{{print s "\t" $0}}'; }}
+{{
+  for f in /etc/crontab /etc/cron.d/*; do [ -f "$f" ] && tag "$f" < "$f" 2>/dev/null; done
+  crontab -l 2>/dev/null | tag "crontab of $ME"
+  if [ "$OWN" != "$ME" ]; then
+    if [ "$ME" = root ]; then crontab -l -u "$OWN" 2>/dev/null | tag "crontab of $OWN"
+    else getsu; [ -n "$SU" ] && $SU crontab -l -u "$OWN" 2>/dev/null | tag "crontab of $OWN"; fi
+  fi
+  if [ "$ME" != root ] && [ "$OWN" != root ]; then getsu; [ -n "$SU" ] && $SU crontab -l 2>/dev/null | tag "crontab of root"; fi
+}} | grep -F -- "$P" | awk -F'\t' '$2 !~ /^[ \t]*#/' | head -20
+echo @@even
+cd "$A" 2>/dev/null && grep -n -F evenInMaintenanceMode -- app/Console/Kernel.php routes/console.php bootstrap/app.php 2>/dev/null | head -10
+echo @@sudo
+if [ "$ME" = root ]; then echo root; else getsu; if [ -n "$SU" ]; then echo ok; else echo none; fi; fi
+"#,
+        pre = runs_prelude(path, password),
+        workers = crate::queues::workers_sh(),
+    )
+}
+
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RunWorker {
+    pub program: String,
+    pub command: String,
+    /// "queue", "horizon", "schedule" (schedule:work) or "other".
+    pub kind: String,
+    /// It keeps working while the app is down (`--force`, or not Laravel's).
+    pub runs_while_down: bool,
+    /// Processes running (RUNNING / STARTING) and in all.
+    pub running: usize,
+    pub total: usize,
+    /// Each process's state, when they differ: "RUNNING", "STOPPED"…
+    pub states: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CronRun {
+    /// Where it is: /etc/cron.d/x, "crontab of www-data".
+    pub source: String,
+    pub line: String,
+    /// It goes through Laravel and stops while the app is down
+    /// (`schedule:run`, or `queue:work` without `--force`).
+    pub pauses: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Runs {
+    pub workers: Vec<RunWorker>,
+    pub cron: Vec<CronRun>,
+    /// `file:line: …evenInMaintenanceMode()`: scheduled tasks that run anyway.
+    pub even_in_maintenance: Vec<String>,
+    /// "root", "ok" (sudo works) or "none": whether workers can be stopped.
+    pub sudo: String,
+}
+
+fn worker_kind(command: &str) -> &'static str {
+    if command.contains("horizon") {
+        "horizon"
+    } else if command.contains("queue:work") || command.contains("queue:listen") {
+        "queue"
+    } else if command.contains("schedule:work") {
+        "schedule"
+    } else {
+        "other"
+    }
+}
+
+fn forced(command: &str) -> bool {
+    command.split_whitespace().any(|w| w == "--force")
+}
+
+fn parse_runs(out: &str) -> AppResult<Runs> {
+    errors(out.split("\n@@programs").next().unwrap_or(out))?;
+    let mut workers: Vec<RunWorker> = Vec::new();
+    for w in crate::queues::parse_workers(out) {
+        let up = matches!(w.state.as_str(), "RUNNING" | "STARTING" | "BACKOFF");
+        match workers.iter_mut().find(|x| x.program == w.program) {
+            Some(x) => {
+                x.total += usize::from(w.process.is_some());
+                x.running += usize::from(up);
+                x.states.push(w.state);
+            }
+            None => {
+                let kind = worker_kind(&w.command);
+                workers.push(RunWorker {
+                    runs_while_down: kind == "other" || forced(&w.command),
+                    kind: kind.into(),
+                    program: w.program,
+                    command: w.command,
+                    running: usize::from(up),
+                    total: usize::from(w.process.is_some()),
+                    states: vec![w.state],
+                });
+            }
+        }
+    }
+    for w in &mut workers {
+        w.states.sort();
+        w.states.dedup();
+    }
+    let cron = crate::queues::section(out, "cron")
+        .iter()
+        .filter_map(|l| {
+            let (source, line) = l.split_once('\t')?;
+            let line = line.trim();
+            if line.is_empty() {
+                return None;
+            }
+            let pauses = line.contains("schedule:run") || (line.contains("queue:work") && !forced(line));
+            Some(CronRun { source: source.to_string(), line: line.to_string(), pauses })
+        })
+        .collect();
+    let even_in_maintenance = crate::queues::section(out, "even")
+        .iter()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+    let sudo = crate::queues::section(out, "sudo")
+        .first()
+        .map_or("none", |s| s.trim())
+        .to_string();
+    Ok(Runs { workers, cron, even_in_maintenance, sudo })
+}
+
+/// What keeps running when the app is put down: its Supervisor workers,
+/// cron lines and tasks scheduled `evenInMaintenanceMode` (read-only).
+#[tauri::command]
+pub async fn dashboard_runs(state: State<'_, AppState>, server_id: String, app_id: String) -> AppResult<Runs> {
+    let server = lookup(&state, &server_id)?;
+    let app = app_of(&server, &app_id)?.clone();
+    let password = saved_sudo(&server_id).await;
+    let out = crate::monitor::run_all(&state, &server_id, &runs_script(&app.path, password.as_deref())).await?;
+    parse_runs(&out)
+}
+
+fn valid_program(p: &str) -> bool {
+    !p.is_empty()
+        && p.len() <= 128
+        && p.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c))
+        && !p.starts_with('-')
+}
+
+/// `supervisorctl stop` / `start` of some of the app's programs (only ones
+/// whose conf names the app's folder).
+fn workers_script(path: &str, start: bool, programs: &[String], password: Option<&str>) -> String {
+    let names = programs.iter().map(|p| shell_quote(p)).collect::<Vec<_>>().join(" ");
+    let verb = if start { "start" } else { "stop" };
+    format!(
+        r#"{pre}if [ "$ME" = root ]; then S=""; else getsu; S="$SU"; [ -n "$S" ] || {{ echo "@@err can't {verb} its workers: {NO_SUDO}"; exit 0; }}; fi
+{sup}OK=" "
+for c in $(supconfs); do
+  [ -f "$c" ] || continue
+  t=$(cat -- "$c" 2>/dev/null) || t=$($S cat -- "$c" 2>/dev/null) || continue
+  case "$t" in *"$P"*) OK="$OK$(printf '%s\n' "$t" | sed -n 's/^\[program:\([^]]*\)\].*/\1/p' | tr '\n' ' ')" ;; esac
+done
+ARGS=""
+for n in {names}; do
+  case "$OK" in *" $n "*) ARGS="$ARGS $n:*" ;; *) echo "@@err $n isn't one of this app's Supervisor programs"; exit 0 ;; esac
+done
+set -f
+out=$($S supervisorctl {verb} $ARGS 2>&1); rc=$?
+printf '%s\n' "$out" | tail -40
+echo "@@rc $rc"
+"#,
+        pre = runs_prelude(path, password),
+        sup = crate::app_inspect::SUPCONFS,
+    )
+}
+
+/// supervisorctl's answer: fine when each line says it's done (or already
+/// was: "not running", "already started").
+fn parse_workers_act(out: &str) -> AppResult<String> {
+    errors(out)?;
+    let lines: Vec<&str> = out.lines().filter(|l| !l.starts_with("@@") && !l.trim().is_empty()).collect();
+    let rc = out.lines().find_map(|l| l.strip_prefix("@@rc ")).unwrap_or("").trim();
+    let fine = |l: &&str| {
+        let l = l.to_ascii_lowercase();
+        ["stopped", "started", "not running", "already started"].iter().any(|w| l.contains(w))
+    };
+    if rc == "0" || (!lines.is_empty() && lines.iter().all(fine)) {
+        Ok(lines.join("\n"))
+    } else {
+        Err(AppError::Invalid(if lines.is_empty() {
+            format!("supervisorctl failed (exit {rc})")
+        } else {
+            lines.join("\n")
+        }))
+    }
+}
+
+/// Stop (or start again) some of an app's queue workers: Supervisor programs.
+#[tauri::command]
+pub async fn dashboard_workers(
+    state: State<'_, AppState>,
+    server_id: String,
+    app_id: String,
+    start: bool,
+    programs: Vec<String>,
+) -> AppResult<String> {
+    let server = lookup(&state, &server_id)?;
+    let app = app_of(&server, &app_id)?.clone();
+    if programs.is_empty() {
+        return Ok(String::new());
+    }
+    if let Some(bad) = programs.iter().find(|p| !valid_program(p)) {
+        return Err(AppError::Invalid(format!("`{bad}` isn't a Supervisor program name")));
+    }
+    let password = saved_sudo(&server_id).await;
+    let script = workers_script(&app.path, start, &programs, password.as_deref());
+    let result = crate::monitor::run_all(&state, &server_id, &script)
+        .await
+        .and_then(|out| parse_workers_act(&out));
+    let label = format!(
+        "Queue workers {} (supervisorctl {} {})",
+        if start { "started" } else { "stopped" },
+        if start { "start" } else { "stop" },
+        programs.join(", ")
+    );
+    audit(&state, &server, &app, "dash:workers", &label, &result);
+    result
+}
+
 // --------------------------------------------------------------- basic auth
 
 /// Which login turning basic auth on uses.
@@ -1829,10 +2081,41 @@ mod tests {
             maintenance_script("/var/www/shop", "php", false, None, Some("pw")),
             apply_script("shop", Some("team:$apr1$x$y"), &[change], None),
             apply_script("shop", None, &[], Some("pw")),
+            runs_script("/var/www/shop", Some("pw")),
+            workers_script("/var/www/shop", false, &["shop-worker".into(), "shop-horizon".into()], None),
+            workers_script("/var/www/shop", true, &["shop-worker".into()], Some("pw")),
         ] {
             let out = Command::new("bash").args(["-n", "-c", &s]).output().expect("bash");
             assert!(out.status.success(), "{}\n{s}", String::from_utf8_lossy(&out.stderr));
         }
+    }
+
+    #[test]
+    fn parses_runs() {
+        let out = "@@programs\nshop-worker\t/etc/supervisor/conf.d/shop.conf\tphp /var/www/shop/artisan queue:work --sleep=3\nshop-forced\t/etc/supervisor/conf.d/shop.conf\tphp /var/www/shop/artisan queue:work --force\nshop-node\t/etc/supervisor/conf.d/shop.conf\tnode /var/www/shop/ws.js\n@@status\nshop-worker:shop-worker_00   RUNNING   pid 1, uptime 1:00:00\nshop-worker:shop-worker_01   STOPPED   Nov 04 10:00 AM\nshop-forced                  RUNNING   pid 3, uptime 1:00:00\nshop-node                    RUNNING   pid 4, uptime 1:00:00\n@@cron\n/etc/cron.d/shop\t* * * * * www-data php /var/www/shop/artisan schedule:run >> /dev/null 2>&1\ncrontab of www-data\t0 2 * * * cd /var/www/shop && php artisan report:daily\n@@even\nroutes/console.php:12:Schedule::command('backup:run')->daily()->evenInMaintenanceMode();\n@@sudo\nok\n";
+        let r = parse_runs(out).unwrap();
+        assert_eq!(r.workers.len(), 3);
+        let w = &r.workers[0];
+        assert_eq!((w.program.as_str(), w.kind.as_str(), w.running, w.total, w.runs_while_down), ("shop-worker", "queue", 1, 2, false));
+        assert_eq!(w.states, vec!["RUNNING", "STOPPED"]);
+        assert!(r.workers[1].runs_while_down && r.workers[2].runs_while_down);
+        assert_eq!(r.workers[2].kind, "other");
+        assert_eq!(r.cron.len(), 2);
+        assert!(r.cron[0].pauses && !r.cron[1].pauses);
+        assert_eq!(r.cron[1].source, "crontab of www-data");
+        assert_eq!(r.even_in_maintenance.len(), 1);
+        assert_eq!(r.sudo, "ok");
+        assert!(parse_runs("@@err /x doesn't exist\n").is_err());
+    }
+
+    #[test]
+    fn supervisorctl_answers() {
+        assert!(parse_workers_act("shop-worker:shop-worker_00: stopped\n@@rc 0\n").is_ok());
+        // Already stopped: supervisorctl says so with exit 1; that's fine.
+        assert!(parse_workers_act("shop-worker:shop-worker_00: ERROR (not running)\n@@rc 1\n").is_ok());
+        assert!(parse_workers_act("shop-worker: ERROR (no such group)\n@@rc 1\n").is_err());
+        assert!(parse_workers_act("@@err shop-x isn't one of this app's Supervisor programs\n").is_err());
+        assert!(valid_program("shop-worker_1.a") && !valid_program("-x") && !valid_program("a b") && !valid_program("a;b"));
     }
 
     #[test]

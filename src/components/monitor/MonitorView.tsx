@@ -127,8 +127,8 @@ export function MonitorView({ tab, title, visible }: { tab: Tab; title: string; 
   const fullDisks = sample ? sample.disks.filter((_, i) => diskPcts[i]! >= THRESHOLDS.disk.bad) : [];
 
   return (
-    <div className="absolute inset-0 overflow-y-auto bg-terminal px-6 py-5 text-[13px] text-foreground">
-      <div className="mx-auto flex max-w-[1100px] flex-col gap-4">
+    <div className="absolute inset-0 overflow-y-auto bg-terminal px-5 py-5 text-[13px] text-foreground">
+      <div className="flex w-full flex-col gap-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex min-w-0 flex-1 flex-col">
             <span className="truncate text-[16px] font-semibold">{title}</span>

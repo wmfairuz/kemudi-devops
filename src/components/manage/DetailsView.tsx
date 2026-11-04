@@ -1,5 +1,5 @@
 import { FolderOpen, ListChecks, PackagePlus, ScanSearch, ScrollText } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 
 import { Btn } from "@/components/kit/Btn";
 import { EnvTag } from "@/components/kit/EnvTag";
@@ -87,6 +87,9 @@ function Gone({ what }: { what: string }) {
   return <div className="p-10 text-[13px] text-subtle-foreground">{what} no longer exists.</div>;
 }
 
+/** Set inside a server or app tab's Settings section. */
+const InTab = createContext(false);
+
 /** Badge + title over a grey card of right-aligned labels (Querious). */
 function Page({
   badge,
@@ -106,17 +109,20 @@ function Page({
   /** Second column when there's room (else below), e.g. Inspect or apps. */
   side?: React.ReactNode;
 }) {
-  // Two columns once the main area (not the window) is wide enough.
+  // Two columns once the main area (not the window) is wide enough. In a
+  // tab's Settings section: from the left, like the tab's other sections.
+  const inTab = useContext(InTab);
   return (
     <div className="@container w-full">
       <div
         className={cn(
-          "mx-auto grid w-full gap-x-8 gap-y-4 px-8 pt-12 pb-12",
-          side ? "max-w-[1280px] @min-[960px]:grid-cols-[minmax(0,560px)_minmax(0,1fr)] @min-[960px]:items-start" : "max-w-[600px]",
+          "grid w-full gap-x-8 gap-y-4 pb-12",
+          inTab ? "px-5 pt-5" : "mx-auto px-8 pt-12",
+          side ? "max-w-[1280px] @min-[960px]:grid-cols-[minmax(0,560px)_minmax(0,1fr)] @min-[960px]:items-start" : inTab ? "max-w-[640px]" : "max-w-[600px]",
         )}
       >
         <div className="flex min-w-0 flex-col gap-4">
-          <div className={cn("flex items-center gap-3", side ? "justify-center @min-[960px]:justify-start" : "justify-center")}>
+          <div className={cn("flex items-center gap-3", inTab ? "justify-start" : side ? "justify-center @min-[960px]:justify-start" : "justify-center")}>
             {badge}
             <div className="flex min-w-0 flex-col">
               <div className="flex items-center gap-2 truncate text-[19px] font-semibold tracking-[-0.01em]">{title}</div>
@@ -204,7 +210,9 @@ function shellFor(server: Server, app?: App) {
 export function ServerSettings({ server }: { server: Server }) {
   return (
     <div className="light-ui absolute inset-0 overflow-y-auto bg-background text-foreground">
-      <ServerDetails key={server.id} server={server} />
+      <InTab.Provider value>
+        <ServerDetails key={server.id} server={server} />
+      </InTab.Provider>
     </div>
   );
 }
@@ -931,48 +939,77 @@ function SudoPassword({ serverId }: { serverId: string }) {
 
 /** The server's apps (its Overview): each opens its page; add, discover
  *  or set up a new one. */
-export function AppsList({ server, status, aside }: { server: Server; status?: (app: App) => React.ReactNode; aside?: React.ReactNode }) {
+export function AppsList({
+  server,
+  status,
+  aside,
+  grid,
+}: {
+  server: Server;
+  status?: (app: App) => React.ReactNode;
+  aside?: React.ReactNode;
+  /** Shown instead of the list (the Pictures view). */
+  grid?: React.ReactNode;
+}) {
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex items-baseline gap-2">
+      <div className="flex items-center gap-2">
         <span className="flex-1 text-[10.5px] font-medium tracking-wide text-faint-foreground uppercase">Apps on {server.name}</span>
         {aside}
       </div>
-      <div className="flex flex-col overflow-hidden rounded-xl border border-divider">
-        {server.apps.map((a) => (
-          <button
-            key={a.id}
-            onClick={() => openDetails({ kind: "app", serverId: server.id, appId: a.id })}
-            className="flex cursor-pointer items-center gap-2.5 border-b border-divider px-3 py-2 text-left last:border-b-0 hover:bg-hover"
-          >
-            <Badge id={`${server.id}/${a.id}`} name={a.name} size={24} />
-            <span className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate text-[12.5px] text-foreground">{a.name}</span>
-              <span className="truncate font-mono text-[10.5px] text-subtle-foreground">{a.path}</span>
-            </span>
-            {status && <span className="flex flex-none items-center gap-2 text-[12px]">{status(a)}</span>}
-          </button>
-        ))}
-        <div className="flex items-center gap-2 px-3 py-2">
-          <Btn size="sm" variant="outline" onClick={() => openDetails({ kind: "app", serverId: server.id, appId: null })}>
-            + Add app
-          </Btn>
-          <Btn
-            size="sm"
-            variant="primary"
-            onClick={() => useManage.getState().setDiscover(server.id)}
-            title={server.asg ? "Look for Laravel apps on one of its instances (they're alike) and add the ones you pick" : "Look around the server for Laravel apps and add the ones you pick"}
-          >
-            <ScanSearch className="size-3.5" /> Discover apps…
-          </Btn>
-          {!server.asg && (
-            <Btn size="sm" variant="outline" onClick={() => useNewApp.getState().open(server.id)} title="Set up a new Laravel app on this server: clone, .env, database, nginx, queue worker, HTTPS">
-              <PackagePlus className="size-3.5" /> New app…
-            </Btn>
-          )}
+      {grid ? (
+        <>
+          {grid}
+          <div className="flex items-center gap-2 pt-3">
+            <AppsAdd server={server} />
+          </div>
+        </>
+      ) : (
+        <div className="flex flex-col overflow-hidden rounded-xl border border-divider">
+          {server.apps.map((a) => (
+            <button
+              key={a.id}
+              onClick={() => openDetails({ kind: "app", serverId: server.id, appId: a.id })}
+              className="flex cursor-pointer items-center gap-2.5 border-b border-divider px-3 py-2 text-left last:border-b-0 hover:bg-hover"
+            >
+              <Badge id={`${server.id}/${a.id}`} name={a.name} size={24} />
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate text-[12.5px] text-foreground">{a.name}</span>
+                <span className="truncate font-mono text-[10.5px] text-subtle-foreground">{a.path}</span>
+              </span>
+              {status && <span className="flex flex-none items-center gap-2 text-[12px]">{status(a)}</span>}
+            </button>
+          ))}
+          <div className="flex items-center gap-2 px-3 py-2">
+            <AppsAdd server={server} />
+          </div>
         </div>
-      </div>
+      )}
     </div>
+  );
+}
+
+/** + Add app, Discover apps… and New app… for a server. */
+function AppsAdd({ server }: { server: Server }) {
+  return (
+    <>
+      <Btn size="sm" variant="outline" onClick={() => openDetails({ kind: "app", serverId: server.id, appId: null })}>
+        + Add app
+      </Btn>
+      <Btn
+        size="sm"
+        variant="primary"
+        onClick={() => useManage.getState().setDiscover(server.id)}
+        title={server.asg ? "Look for Laravel apps on one of its instances (they're alike) and add the ones you pick" : "Look around the server for Laravel apps and add the ones you pick"}
+      >
+        <ScanSearch className="size-3.5" /> Discover apps…
+      </Btn>
+      {!server.asg && (
+        <Btn size="sm" variant="outline" onClick={() => useNewApp.getState().open(server.id)} title="Set up a new Laravel app on this server: clone, .env, database, nginx, queue worker, HTTPS">
+          <PackagePlus className="size-3.5" /> New app…
+        </Btn>
+      )}
+    </>
   );
 }
 
@@ -1380,7 +1417,7 @@ function AppDetails({ server, app, section, onGo }: { server: Server; app: App |
   return (
     <>
       <div className="light-ui absolute inset-0 overflow-y-auto bg-background text-foreground" hidden={!part}>
-        <div className="flex w-full flex-col gap-4 px-6 py-5">
+        <div className="flex w-full flex-col gap-4 px-5 py-5">
           {section === "overview" && (
             <div className="flex items-center gap-3">
               <Badge id={`${server.id}/${app.id}`} name={app.name} size={36} />
@@ -1414,7 +1451,7 @@ function AppDetails({ server, app, section, onGo }: { server: Server; app: App |
         </div>
       </div>
       <div className="light-ui absolute inset-0 overflow-y-auto bg-background text-foreground" hidden={section !== "settings"}>
-        {page}
+        <InTab.Provider value>{page}</InTab.Provider>
       </div>
     </>
   );

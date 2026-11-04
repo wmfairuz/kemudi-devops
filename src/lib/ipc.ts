@@ -1630,6 +1630,50 @@ export const dashboardMaintenance = (serverId: string, appId: string, down: bool
 export const dashboardAuth = (serverId: string, appId: string, on: boolean, login: BasicLogin | null): Promise<{ check: string; files: string[]; user: string | null }> =>
   invoke("dashboard_auth", { serverId, appId, on, login });
 
+export interface RunWorker {
+  program: string;
+  command: string;
+  /** "queue", "horizon", "schedule" (schedule:work) or "other". */
+  kind: string;
+  /** Keeps working while the app is down (--force, or not Laravel's). */
+  runsWhileDown: boolean;
+  running: number;
+  total: number;
+  states: string[];
+}
+export interface CronRun {
+  source: string;
+  line: string;
+  /** Goes through Laravel and stops while the app is down. */
+  pauses: boolean;
+}
+/** What keeps running when an app is put down (read-only). */
+export interface Runs {
+  workers: RunWorker[];
+  cron: CronRun[];
+  evenInMaintenance: string[];
+  /** "root", "ok" or "none": whether workers can be stopped. */
+  sudo: string;
+}
+export const dashboardRuns = (serverId: string, appId: string): Promise<Runs> => invoke("dashboard_runs", { serverId, appId });
+/** supervisorctl stop / start of some of an app's programs. */
+export const dashboardWorkers = (serverId: string, appId: string, start: boolean, programs: string[]): Promise<string> =>
+  invoke("dashboard_workers", { serverId, appId, start, programs });
+
+// ---- Pictures of apps (their URL, taken by headless Chrome on this Mac) ----
+
+export interface Shot {
+  /** data:image/jpeg;base64,… */
+  data: string;
+  /** Unix seconds. */
+  at: number;
+  url: string;
+}
+/** The picture kept from before, if any (nothing is taken). */
+export const appShot = (serverId: string, appId: string): Promise<Shot | null> => invoke("app_shot", { serverId, appId });
+/** Takes a new picture of the app's URL. */
+export const appShotTake = (serverId: string, appId: string): Promise<Shot> => invoke("app_shot_take", { serverId, appId });
+
 // ---- Watch: background checks (Home's Needs attention) ----
 
 export interface WatchSettings {

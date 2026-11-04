@@ -1,6 +1,6 @@
 // The background checks' results, shown: Needs attention (Home and a
 // server's Overview), the fleet grid (Home) and a server's Overview.
-import { AlertTriangle, BellOff, Bug, Cpu, Database, HardDrive, Lock, MemoryStick, RefreshCw, RotateCw, ShieldAlert, Unplug, Wrench } from "lucide-react";
+import { AlertTriangle, BellOff, ExternalLink, Bug, Cpu, Database, HardDrive, Lock, MemoryStick, RefreshCw, RotateCw, ShieldAlert, Unplug, Wrench } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Btn } from "@/components/kit/Btn";
@@ -8,13 +8,16 @@ import { EnvTag } from "@/components/kit/EnvTag";
 import { PopupMenu } from "@/components/kit/PopupMenu";
 import { Spinner } from "@/components/kit/Spinner";
 import { StatusDot } from "@/components/kit/StatusDot";
-import { errorMessage, type Server, type ServerWatch, type WatchItem, type WatchSettings } from "@/lib/ipc";
+import { errorMessage, openUrl, type App, type Server, type ServerWatch, type WatchItem, type WatchSettings } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/manage/Badge";
 import { AppsList } from "@/components/manage/DetailsView";
+import { Segmented } from "@/components/manage/fields";
 import { useFleetUi } from "@/stores/fleetUi";
 import { openDetails } from "@/stores/manage";
 import { useStatus } from "@/stores/status";
 import { openServer, type ServerSection } from "@/stores/tabs";
+import { loadShots, shotKey, takeShot, useShots } from "@/stores/shots";
 import { toastError } from "@/stores/toasts";
 import { agoS, useWatch } from "@/stores/watch";
 
@@ -342,31 +345,139 @@ function Bar({ value, warn, urgent }: { value: number; warn: number; urgent: num
   );
 }
 
+type AppsView = "list" | "pictures";
+const VIEW_KEY = "kemudi.appsView";
+function savedView(): AppsView {
+  try {
+    return localStorage.getItem(VIEW_KEY) === "pictures" ? "pictures" : "list";
+  } catch {
+    return "list";
+  }
+}
+
 /** A server's Apps section: each app with what the background checks last
- *  found in it (its .env), + Add app / Discover apps… / New app…. */
+ *  found in it (its .env), as a list or as pictures of their front pages;
+ *  + Add app / Discover apps… / New app…. */
 export function ServerApps({ server }: { server: Server }) {
   const up = useWatch((s) => s.snapshot?.servers[server.id]?.updates);
   const now = useClock();
+  const [view, setView] = useState<AppsView>(savedView);
+  const urls = server.apps.map((a) => `${a.id}=${a.url ?? ""}`).join(" ");
+  useEffect(() => {
+    if (view === "pictures") void loadShots(server.id, server.apps);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, server.id, urls]);
+  const pick = (v: AppsView) => {
+    setView(v);
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      // Just for now, then.
+    }
+  };
+  const status = (a: App) => {
+    const st = up?.value.apps.find((x) => x.id === a.id);
+    if (!st) return <Dim>–</Dim>;
+    if (st.missing) return <span className="text-env-prod-fg">folder missing</span>;
+    return (
+      <>
+        {st.downSince && <span className="text-[#8a5a12]">maintenance since {agoS(st.downSince, now)}</span>}
+        {st.appDebug && <span className={a.env === "prod" || st.appEnv === "production" ? "text-env-prod-fg" : "text-subtle-foreground"}>APP_DEBUG on</span>}
+        <Dim>{st.appEnv ?? "no .env"}</Dim>
+      </>
+    );
+  };
   return (
     <div className="light-ui absolute inset-0 overflow-y-auto bg-background text-foreground">
-      <div className="flex w-full flex-col gap-4 px-6 py-5">
+      <div className="flex w-full flex-col gap-4 px-5 py-5">
         <AppsList
           server={server}
-          aside={<span className="text-[11px] text-subtle-foreground">{up ? `checked ${agoS(up.at, now)}` : "not checked yet"}</span>}
-          status={(a) => {
-            const st = up?.value.apps.find((x) => x.id === a.id);
-            if (!st) return <Dim>–</Dim>;
-            if (st.missing) return <span className="text-env-prod-fg">folder missing</span>;
-            return (
-              <>
-                {st.downSince && <span className="text-[#8a5a12]">maintenance since {agoS(st.downSince, now)}</span>}
-                {st.appDebug && <span className={a.env === "prod" || st.appEnv === "production" ? "text-env-prod-fg" : "text-subtle-foreground"}>APP_DEBUG on</span>}
-                <Dim>{st.appEnv ?? "no .env"}</Dim>
-              </>
-            );
-          }}
+          aside={
+            <>
+              <span className="text-[11px] text-subtle-foreground">{up ? `checked ${agoS(up.at, now)}` : "not checked yet"}</span>
+              {view === "pictures" && server.apps.some((a) => a.url) && (
+                <Btn size="sm" variant="ghost" onClick={() => void loadShots(server.id, server.apps, true)} title="Take every app's picture again (headless Chrome on this Mac opens each URL)">
+                  <RefreshCw className="size-3.5" /> Retake pictures
+                </Btn>
+              )}
+              <Segmented<AppsView> label="Show apps as" value={view} options={[{ value: "list", label: "List" }, { value: "pictures", label: "Pictures" }]} onChange={pick} />
+            </>
+          }
+          status={status}
+          grid={view === "pictures" ? <AppsGrid server={server} status={status} /> : undefined}
         />
       </div>
+    </div>
+  );
+}
+
+function AppsGrid({ server, status }: { server: Server; status: (a: App) => React.ReactNode }) {
+  const shots = useShots((s) => s.map);
+  return (
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-x-5 gap-y-6">
+      {server.apps.map((a) => {
+        const e = shots[shotKey(server.id, a.id)];
+        const open = () => openDetails({ kind: "app", serverId: server.id, appId: a.id });
+        return (
+          <div key={a.id} className="group flex min-w-0 flex-col gap-2">
+            <button
+              onClick={open}
+              title={`Open ${a.name}'s tab`}
+              className="relative aspect-[16/10] cursor-pointer overflow-hidden rounded-xl border border-divider bg-panel shadow-sm transition-shadow hover:shadow-md"
+            >
+              {e?.shot ? (
+                <img src={e.shot.data} alt="" draggable={false} className={cn("size-full object-cover object-top", e.busy && "opacity-60")} />
+              ) : (
+                <span className="flex size-full flex-col items-center justify-center gap-2 px-4 text-center">
+                  <Badge id={`${server.id}/${a.id}`} name={a.name} size={40} />
+                  <span className="line-clamp-2 text-[11px] text-subtle-foreground">
+                    {!a.url ? "No URL: set one in its Settings for a picture" : e?.busy ? "Taking a picture…" : e?.error ? e.error : ""}
+                  </span>
+                </span>
+              )}
+              {e?.busy && (
+                <span className="absolute top-2 right-2 rounded-full bg-background/90 p-1 shadow-sm">
+                  <Spinner size={11} />
+                </span>
+              )}
+              {a.url && !e?.busy && (
+                <span
+                  role="button"
+                  tabIndex={-1}
+                  title="Take its picture again"
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    takeShot(server.id, a.id);
+                  }}
+                  className="absolute top-2 right-2 hidden rounded-full bg-background/90 p-1 text-subtle-foreground shadow-sm group-hover:block hover:text-foreground"
+                >
+                  <RotateCw className="size-3" />
+                </span>
+              )}
+            </button>
+            <div className="flex min-w-0 items-start gap-2">
+              <div className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate text-[13px] font-semibold">{a.name}</span>
+                {a.url ? (
+                  <button
+                    className="flex w-fit max-w-full cursor-pointer items-center gap-1 truncate text-[11.5px] text-primary hover:underline"
+                    onClick={() => void openUrl(a.url!).catch((err) => toastError(errorMessage(err)))}
+                  >
+                    <span className="truncate">{a.url.replace(/^https?:\/\//, "")}</span>
+                    <ExternalLink className="size-3 flex-none" />
+                  </button>
+                ) : (
+                  <span className="truncate font-mono text-[10.5px] text-subtle-foreground">{a.path}</span>
+                )}
+                <span className="flex flex-wrap items-center gap-x-2 text-[11px]">{status(a)}</span>
+              </div>
+              <Btn size="sm" variant="outline" onClick={open}>
+                Open
+              </Btn>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -388,7 +499,7 @@ export function ServerOverview({ server }: { server: Server }) {
 
   return (
     <div className="light-ui absolute inset-0 overflow-y-auto bg-background text-foreground">
-      <div className="mx-auto flex max-w-[1100px] flex-col gap-4 px-6 py-5">
+      <div className="flex w-full flex-col gap-4 px-5 py-5">
         <div className="flex items-center gap-2">
           <span className="text-[15px] font-semibold">{server.name}</span>
           <EnvTag env={server.env} />
