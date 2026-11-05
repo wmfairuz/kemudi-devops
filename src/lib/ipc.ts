@@ -1866,3 +1866,57 @@ export const watchSecurity = (serverIds: string[], audit: boolean): Promise<Watc
 export const watchSnooze = (key: string, days: number): Promise<WatchSnapshot> => invoke("watch_snooze", { key, days });
 export const watchSettingsGet = (): Promise<WatchSettings> => invoke("watch_settings_get");
 export const watchSettingsSet = (settings: WatchSettings): Promise<WatchSettings> => invoke("watch_settings_set", { settings });
+
+// ------------------------------------------------------------ database (read-only)
+
+export interface DbTable {
+  name: string;
+  kind: "table" | "view";
+  /** The database's estimate (InnoDB's is rough). */
+  rows: number | null;
+  bytes: number | null;
+}
+export interface DbTables {
+  driver: string;
+  database: string;
+  connection: string;
+  version: string;
+  tables: DbTable[];
+}
+export type DbOp = "eq" | "ne" | "lt" | "gt" | "contains" | "starts" | "null" | "notnull";
+export interface DbFilter {
+  column: string;
+  op: DbOp;
+  value: string;
+}
+export interface DbRequest {
+  mode: "browse" | "sql";
+  table?: string;
+  sql?: string;
+  sort?: { column: string; desc: boolean } | null;
+  filters?: DbFilter[];
+  offset: number;
+  limit: number;
+  /** Just this cell of the page, whole. */
+  full?: { row: number; col: number } | null;
+}
+export interface DbColumn {
+  name: string;
+  type: string;
+  key: boolean;
+}
+export interface DbResult {
+  driver: string;
+  database: string;
+  sql: string;
+  ms: number;
+  columns: DbColumn[];
+  rows: (string | null)[][];
+  /** Cells cut short: [row, col, whole length in bytes]. */
+  cut: [number, number, number][];
+  /** Binary cells, shown as 0x…: [row, col]. */
+  bin: [number, number][];
+  more: boolean;
+}
+export const dbTables = (serverId: string, appId: string): Promise<DbTables> => invoke("db_tables", { serverId, appId });
+export const dbQuery = (serverId: string, appId: string, req: DbRequest): Promise<DbResult> => invoke("db_query", { serverId, appId, req });

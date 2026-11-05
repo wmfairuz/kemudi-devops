@@ -3,6 +3,7 @@ import { HighlightStyle, StreamLanguage, syntaxHighlighting } from "@codemirror/
 import { nginx } from "@codemirror/legacy-modes/mode/nginx";
 import { properties } from "@codemirror/legacy-modes/mode/properties";
 import { shell } from "@codemirror/legacy-modes/mode/shell";
+import { mySQL } from "@codemirror/legacy-modes/mode/sql";
 import { unifiedMergeView } from "@codemirror/merge";
 import { EditorState, type Extension } from "@codemirror/state";
 import {
@@ -20,7 +21,7 @@ import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 
 /** File kinds Kemudi edits on servers. `ini` covers Supervisor confs. */
-export type CodeLanguage = "env" | "nginx" | "ini" | "shell" | "plain";
+export type CodeLanguage = "env" | "nginx" | "ini" | "shell" | "sql" | "plain";
 
 function language(lang: CodeLanguage): Extension {
   switch (lang) {
@@ -31,6 +32,8 @@ function language(lang: CodeLanguage): Extension {
       return StreamLanguage.define(nginx);
     case "shell":
       return StreamLanguage.define(shell);
+    case "sql":
+      return StreamLanguage.define(mySQL);
     case "plain":
       return [];
   }
@@ -79,7 +82,11 @@ const base = (lang: CodeLanguage): Extension[] => [
   EditorView.lineWrapping,
 ];
 
-/** CodeMirror for a config file. `onSave` runs on ⌘S / ⌘↵. */
+/** What `onRun` gets: the text and the selection (or the cursor). */
+export type RunPick = { doc: string; from: number; to: number };
+
+/** CodeMirror for a config file. `onSave` runs on ⌘S / ⌘↵; `onRun`, when
+ *  given, takes ⌘↵ instead (with the selection). */
 export function CodeEditor({
   value,
   onChange,
@@ -87,23 +94,34 @@ export function CodeEditor({
   onSave,
   className,
   autoFocus,
+  onRun,
+  onCursor,
 }: {
   value: string;
   onChange: (v: string) => void;
   lang: CodeLanguage;
   onSave?: () => void;
+  onRun?: (pick: RunPick) => void;
+  /** The selection moved (or the cursor). */
+  onCursor?: (from: number, to: number) => void;
   className?: string;
   autoFocus?: boolean;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
-  const latest = useRef({ onChange, onSave });
-  latest.current = { onChange, onSave };
+  const latest = useRef({ onChange, onSave, onRun, onCursor });
+  latest.current = { onChange, onSave, onRun, onCursor };
 
   useEffect(() => {
     if (!host.current) return;
     const save = () => {
       latest.current.onSave?.();
+      return true;
+    };
+    const run = (v: EditorView) => {
+      if (!latest.current.onRun) return save();
+      const sel = v.state.selection.main;
+      latest.current.onRun({ doc: v.state.doc.toString(), from: sel.from, to: sel.to });
       return true;
     };
     const v = new EditorView({
@@ -113,9 +131,10 @@ export function CodeEditor({
         extensions: [
           ...base(lang),
           history(),
-          keymap.of([{ key: "Mod-s", run: save }, { key: "Mod-Enter", run: save }, indentWithTab, ...defaultKeymap, ...historyKeymap]),
+          keymap.of([{ key: "Mod-s", run: save }, { key: "Mod-Enter", run }, indentWithTab, ...defaultKeymap, ...historyKeymap]),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) latest.current.onChange(u.state.doc.toString());
+            if (u.selectionSet || u.docChanged) latest.current.onCursor?.(u.state.selection.main.from, u.state.selection.main.to);
           }),
         ],
       }),

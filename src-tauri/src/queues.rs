@@ -103,7 +103,7 @@ echo '@@json ' . json_encode($out, $J) . "\n";
 
 /// Sets `SU` lazily (`getsu`), finds the app, and `RU`: how to run as the
 /// owner of its storage/ (nothing when that's us; never root's files).
-fn prelude(path: &str, php: &str, password: Option<&str>) -> String {
+pub(crate) fn prelude(path: &str, php: &str, password: Option<&str>) -> String {
     format!(
         r#"export LC_ALL=C
 getsu() {{ [ -n "$SUDONE" ] && return 0; SUDONE=1
@@ -320,7 +320,7 @@ pub(crate) fn section<'a>(out: &'a str, name: &str) -> Vec<&'a str> {
 }
 
 /// The PHP part's answer: its JSON, or why it didn't come.
-fn php_json(out: &str) -> Result<&str, String> {
+pub(crate) fn php_json(out: &str) -> Result<&str, String> {
     if let Some(j) = out.lines().find_map(|l| l.strip_prefix("@@json ")) {
         return Ok(j);
     }
@@ -460,7 +460,7 @@ pub(crate) fn php_binary(p: &str) -> Option<String> {
     })
 }
 
-fn app_of(
+pub(crate) fn app_of(
     state: &AppState,
     server_id: &str,
     app_id: &str,

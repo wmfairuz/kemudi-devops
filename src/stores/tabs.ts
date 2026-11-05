@@ -934,7 +934,7 @@ function openPreview(opts: OpenOptions): string {
 /** An app's tab: Overview (its code, what the checks found, what Inspect
  *  found), Web server, Supervisor, Cron, .env, Files, Logs, Queues and
  *  Settings (its own: path, URL, branch, PHP…). */
-export type AppSection = "overview" | "web" | "supervisor" | "cron" | "env" | "files" | "logs" | "queues" | "settings";
+export type AppSection = "overview" | "web" | "supervisor" | "cron" | "env" | "files" | "logs" | "queues" | "database" | "settings";
 
 export const APP_SECTIONS: { id: AppSection; label: string }[] = [
   { id: "overview", label: "Overview" },
@@ -945,6 +945,7 @@ export const APP_SECTIONS: { id: AppSection; label: string }[] = [
   { id: "files", label: "Files" },
   { id: "logs", label: "Logs" },
   { id: "queues", label: "Queues" },
+  { id: "database", label: "Database" },
   { id: "settings", label: "Settings" },
 ];
 

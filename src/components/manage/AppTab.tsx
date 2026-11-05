@@ -1,6 +1,7 @@
 import { ExternalLink, SquareTerminal } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { DatabaseView } from "@/components/database/DatabaseView";
 import { FilesView } from "@/components/files/FilesView";
 import { Group, Tool } from "@/components/kit/Toolbar";
 import { LogsView } from "@/components/logs/LogsView";
@@ -12,8 +13,10 @@ import { APP_SECTIONS, keepTab, openFiles, openLogs, openQueues, setAppSection, 
 
 import { AppParts } from "./DetailsView";
 
-/** Sections that are views of their own (and can be a tab of their own, ↗). */
-const VIEWS: AppSection[] = ["files", "logs", "queues"];
+/** Sections that are views of their own (kept loaded while you switch). */
+const VIEWS: AppSection[] = ["files", "logs", "queues", "database"];
+/** The ones that can also be a tab of their own (⌘-click, ↗). */
+const ALONE: AppSection[] = ["files", "logs", "queues"];
 
 /** An app's one tab, like a server's: a bar of sections (⌘-click, or ↗,
  *  opens Files, Logs or Queues as a tab of its own) and Open shell. What
@@ -46,9 +49,9 @@ export function AppTabView({ tab, visible }: { tab: Tab; visible: boolean }) {
         {APP_SECTIONS.map((x) => (
           <button
             key={x.id}
-            title={VIEWS.includes(x.id) ? "⌘-click: in a tab of its own" : undefined}
+            title={ALONE.includes(x.id) ? "⌘-click: in a tab of its own" : undefined}
             onClick={(e) => {
-              if (e.metaKey && VIEWS.includes(x.id)) alone(x.id);
+              if (e.metaKey && ALONE.includes(x.id)) alone(x.id);
               else go(x.id);
             }}
             className={cn(
@@ -69,7 +72,7 @@ export function AppTabView({ tab, visible }: { tab: Tab; visible: boolean }) {
           >
             <SquareTerminal className="size-[15px]" strokeWidth={1.6} />
           </Tool>
-          {VIEWS.includes(section) && (
+          {ALONE.includes(section) && (
             <Tool size="sm" title="Open this section in a tab of its own" onClick={() => alone(section)}>
               <ExternalLink className="size-[15px]" strokeWidth={1.6} />
             </Tool>
@@ -89,6 +92,7 @@ export function AppTabView({ tab, visible }: { tab: Tab; visible: boolean }) {
               {s === "files" && <FilesView tab={tab} visible={visible && s === section} field="filesDir" />}
               {s === "logs" && <LogsView tab={tab} visible={visible && s === section} field="logsPath" />}
               {s === "queues" && <QueuesView tab={tab} visible={visible && s === section} />}
+              {s === "database" && <DatabaseView tab={tab} visible={visible && s === section} />}
             </div>
           ))}
       </div>

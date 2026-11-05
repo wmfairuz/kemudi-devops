@@ -229,7 +229,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   each for the web server, Supervisor, cron and .env, each opening its
   section, and its Code), **Web server**, **Supervisor**, **Cron**, **.env**
   (each what Inspect found, at full width, with its *Inspect again*),
-  **Files**, **Logs**, **Queues** and **Settings** (the app's own: name,
+  **Files**, **Logs**, **Queues**, **Database** and **Settings** (the app's own: name,
   path, URL, branch, git remote, PHP, environment, tab colour; Save,
   Delete…). **Open shell** (in the app's folder) is at the right of the bar;
   ⌘-click Files, Logs or Queues (or ↗) for a tab of its own. In a tab, what
@@ -635,6 +635,26 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   *Flush* need the server's name typed. Recorded in History.
   Supervisor configs are found the way Supervisor finds them (its
   `[include] files =`), including subfolders like `conf.d/<site>/*.conf`.
+- **Database** (an app tab ▸ *Database*): the app's own database,
+  read-only. On the left its tables and views (with the database's row
+  estimate; *Find a table*); click one for its rows, 100 a page, sorted by
+  its primary key or by a column you click (again: descending, again: off).
+  *Filter* adds conditions (=, ≠, <, >, contains, starts with, is NULL, is
+  not NULL), and a picked cell's *Filter by this* adds one. Click a cell
+  (arrows move) to see it whole underneath, JSON pretty-printed, with Copy
+  (⌘C); long values come in full only when picked. **Query**: an SQL editor
+  (kept per app); ⌘↵ or Run runs the statement the cursor is in, or the
+  selection, a page at a time. Footer: the SQL that ran, how long it took,
+  *Copy SQL* and *Edit as query*.
+  Nothing connects from the Mac: a short PHP script runs in the app's folder
+  over ssh, as the owner of its `storage/` (like Queues), reads the app's
+  database config the way Laravel does (its .env or cached config, without
+  booting the app) and connects with Laravel's own connector, so the password
+  never leaves the server. MySQL, MariaDB, Postgres and SQLite. Every query
+  runs in a read-only transaction (SQLite: `query_only`), so the database
+  itself refuses writes; only SELECT, WITH, SHOW, DESCRIBE and EXPLAIN are
+  sent, one statement at a time, no locking reads, each stopped after 10 s.
+  Rows are kept only while the tab is open.
 - **Health** (a server tab ▸ *Health*, or right-click a server): read-only
   checks. **SSL**: every name in the nginx/Apache vhosts (not `_`, regex or
   wildcard names), checked against the certificate actually served (from

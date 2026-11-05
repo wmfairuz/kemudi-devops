@@ -20,6 +20,7 @@ mod newapp;
 mod preflight;
 mod pty;
 mod queues;
+mod db;
 mod remote_files;
 mod runners;
 mod secops;
@@ -269,6 +270,8 @@ pub fn run() {
             queues::queues_status,
             queues::queues_failed_detail,
             queues::queues_act,
+            db::db_tables,
+            db::db_query,
             health::health_check,
             health::health_composer_audit,
             certs::certs_list,
