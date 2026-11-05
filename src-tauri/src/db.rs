@@ -29,6 +29,9 @@ $J = (defined('JSON_INVALID_UTF8_SUBSTITUTE') ? JSON_INVALID_UTF8_SUBSTITUTE : 0
 function kerr($m) { echo "\n@@err " . str_replace(array("\r", "\n"), ' ', $m) . "\n"; exit(0); }
 $req = json_decode(base64_decode(isset($argv[1]) ? $argv[1] : ''), true);
 if (!is_array($req)) kerr("Kemudi's request didn't arrive whole");
+$mode = isset($req['mode']) ? $req['mode'] : '';
+// Only `update` writes (one cell of one row); everything else reads.
+$writing = $mode === 'update';
 $base = getcwd();
 if (!is_readable($base . '/vendor/autoload.php')) kerr("can't read vendor/autoload.php (composer install not run, or not readable as " . get_current_user() . ")");
 try {
@@ -66,16 +69,32 @@ if (!$my && !$pg && !$lite) kerr("Kemudi reads MySQL, MariaDB, Postgres and SQLi
 if ($my && defined('PDO::MYSQL_ATTR_MULTI_STATEMENTS')) {
     $o = isset($c['options']) && is_array($c['options']) ? $c['options'] : array();
     $o[PDO::MYSQL_ATTR_MULTI_STATEMENTS] = false;
+    // rowCount() = rows matched (an update to the same value counts).
+    if ($writing) $o[PDO::MYSQL_ATTR_FOUND_ROWS] = true;
     $c['options'] = $o;
 }
 try {
     $conn = (new Illuminate\Database\Connectors\ConnectionFactory($app))->make($c, $name);
-    $pdo = $conn->getReadPdo();
+    $pdo = $writing ? $conn->getPdo() : $conn->getReadPdo();
 } catch (Throwable $e) { kerr("couldn't connect to the database: " . $e->getMessage()); }
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $pdo->setAttribute(PDO::ATTR_ORACLE_NULLS, PDO::NULL_NATURAL);
 $quiet = function ($sql) use ($pdo) { try { $pdo->exec($sql); } catch (Throwable $e) {} };
-try {
+if ($writing) {
+    try {
+        if ($my) {
+            $quiet('SET SESSION innodb_lock_wait_timeout = 5');
+            $quiet('SET SESSION max_statement_time = 10');
+            $pdo->exec('START TRANSACTION');
+        } elseif ($pg) {
+            $pdo->exec('BEGIN');
+            $pdo->exec("SET LOCAL statement_timeout = '10s'");
+            $pdo->exec("SET LOCAL lock_timeout = '5s'");
+        } else {
+            $pdo->exec('BEGIN');
+        }
+    } catch (Throwable $e) { kerr("couldn't start a transaction: " . $e->getMessage()); }
+} else try {
     if ($my) {
         $quiet('SET SESSION max_execution_time = 10000');
         $quiet('SET SESSION max_statement_time = 10');
@@ -100,7 +119,20 @@ $all = function ($sql, $args = array()) use ($pdo) {
     $st->closeCursor();
     return $r;
 };
-$mode = isset($req['mode']) ? $req['mode'] : '';
+// A table's columns: [[name, type, primary key?], …].
+$columnsOf = function ($table) use ($all, $qi, $my, $pg) {
+    try {
+        if ($my) {
+            return $all("SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_KEY = 'PRI' FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION", array($table));
+        }
+        if ($pg) {
+            return $all("SELECT a.attname, format_type(a.atttypid, a.atttypmod), COALESCE(a.attnum = ANY(i.indkey), false) FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace LEFT JOIN pg_index i ON i.indrelid = c.oid AND i.indisprimary WHERE n.nspname = current_schema() AND c.relname = ? AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum", array($table));
+        }
+        $cols = array();
+        foreach ($all('PRAGMA table_info(' . $qi($table) . ')') as $r) $cols[] = array($r[1], $r[2], (int) $r[5] > 0);
+        return $cols;
+    } catch (Throwable $e) { kerr("couldn't read the columns of $table: " . $e->getMessage()); }
+};
 $out = array('driver' => $driver, 'database' => isset($c['database']) ? basename((string) $c['database']) : '', 'connection' => $name);
 
 if ($mode === 'tables') {
@@ -125,6 +157,60 @@ if ($mode === 'tables') {
     exit(0);
 }
 
+if ($mode === 'update') {
+    // One cell of one row, found by its whole primary key and only if the
+    // cell still holds what was read (else someone changed it meanwhile).
+    $table = isset($req['table']) ? (string) $req['table'] : '';
+    $col = isset($req['column']) ? (string) $req['column'] : '';
+    $cols = $columnsOf($table);
+    if (!$cols) kerr("there's no table `$table` any more");
+    $names = array();
+    $pk = array();
+    foreach ($cols as $r) { $names[(string) $r[0]] = true; if ($r[2]) $pk[] = (string) $r[0]; }
+    if (!$pk) kerr("$table has no primary key, so a row can't be picked out safely: nothing changed");
+    if (!isset($names[$col])) kerr("no column `$col` in $table");
+    $key = isset($req['key']) && is_array($req['key']) ? $req['key'] : array();
+    $given = array();
+    foreach ($key as $k) $given[(string) $k['column']] = $k['value'];
+    $a = $pk; $b = array_keys($given); sort($a); sort($b);
+    if ($a !== $b) kerr("the row has to be named by its whole primary key (" . implode(', ', $pk) . "): nothing changed");
+    $text = function ($q) use ($my, $pg) { return $my ? "CAST($q AS CHAR)" : "CAST($q AS TEXT)"; };
+    $same = $my ? ' <=> ?' : ($pg ? ' IS NOT DISTINCT FROM ?' : ' IS ?');
+    $where = array();
+    $wargs = array();
+    foreach ($pk as $k) {
+        if ($given[$k] === null) kerr("the row's key `$k` is NULL: nothing changed");
+        $where[] = $qi($k) . ' = ?';
+        $wargs[] = (string) $given[$k];
+    }
+    $old = array_key_exists('old', $req) ? $req['old'] : null;
+    $value = array_key_exists('value', $req) ? $req['value'] : null;
+    $sql = 'UPDATE ' . $qi($table) . ' SET ' . $qi($col) . ' = ? WHERE ' . implode(' AND ', $where) . ' AND ' . $text($qi($col)) . $same;
+    $t0 = microtime(true);
+    try {
+        $st = $pdo->prepare($sql);
+        $st->execute(array_merge(array($value === null ? null : (string) $value), $wargs, array($old === null ? null : (string) $old)));
+        $n = $st->rowCount();
+        if ($n !== 1) {
+            $pdo->rollBack();
+            kerr($n === 0 ? "nothing changed: the row isn't there any more, or the cell changed since it was read (read the page again)" : "it would change $n rows, so nothing changed");
+        }
+        $st = $pdo->prepare('SELECT ' . $qi($col) . ' FROM ' . $qi($table) . ' WHERE ' . implode(' AND ', $where));
+        $st->execute($wargs);
+        $now = $st->fetchColumn();
+        $st->closeCursor();
+        $pdo->commit();
+    } catch (Throwable $e) {
+        try { $pdo->rollBack(); } catch (Throwable $e2) {}
+        kerr($e->getMessage());
+    }
+    if (is_resource($now)) $now = stream_get_contents($now);
+    $out['value'] = $now === null || $now === false ? null : (is_bool($now) ? ($now ? 'true' : 'false') : (string) $now);
+    $out['ms'] = (int) round((microtime(true) - $t0) * 1000);
+    echo "\n@@json " . json_encode($out, $J) . "\n";
+    exit(0);
+}
+
 $limit = max(1, min(500, (int) (isset($req['limit']) ? $req['limit'] : 100)));
 $offset = max(0, (int) (isset($req['offset']) ? $req['offset'] : 0));
 $full = isset($req['full']) && is_array($req['full']) ? $req['full'] : null;
@@ -135,16 +221,7 @@ $args = array();
 
 if ($mode === 'browse') {
     $table = isset($req['table']) ? (string) $req['table'] : '';
-    try {
-        if ($my) {
-            $cols = $all("SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_KEY = 'PRI' FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION", array($table));
-        } elseif ($pg) {
-            $cols = $all("SELECT a.attname, format_type(a.atttypid, a.atttypmod), COALESCE(a.attnum = ANY(i.indkey), false) FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace LEFT JOIN pg_index i ON i.indrelid = c.oid AND i.indisprimary WHERE n.nspname = current_schema() AND c.relname = ? AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum", array($table));
-        } else {
-            $cols = array();
-            foreach ($all('PRAGMA table_info(' . $qi($table) . ')') as $r) $cols[] = array($r[1], $r[2], (int) $r[5] > 0);
-        }
-    } catch (Throwable $e) { kerr("couldn't read the columns of $table: " . $e->getMessage()); }
+    $cols = $columnsOf($table);
     if (!$cols) kerr("there's no table `$table` any more");
     $names = array();
     $pk = array();
@@ -411,8 +488,265 @@ pub async fn db_tables(state: State<'_, AppState>, server_id: String, app_id: St
 pub async fn db_query(state: State<'_, AppState>, server_id: String, app_id: String, req: DbRequest) -> AppResult<DbResult> {
     check(&req)?;
     let json = serde_json::to_value(&req).map_err(|e| AppError::Invalid(e.to_string()))?;
-    let out = ask(&state, &server_id, &app_id, json).await?;
-    serde_json::from_str(answer(&out)?).map_err(|e| AppError::Invalid(format!("the answer didn't read: {e}")))
+    let res = async {
+        let out = ask(&state, &server_id, &app_id, json).await?;
+        serde_json::from_str(answer(&out)?).map_err(|e| AppError::Invalid(format!("the answer didn't read: {e}")))
+    }
+    .await;
+    // Your own queries go in the history (their first page; not a cell
+    // fetched whole).
+    if req.mode == "sql" && req.offset == 0 && req.full.is_none() {
+        record(&server_id, &app_id, &req.sql, &res);
+    }
+    res
+}
+
+// ------------------------------------------------------------ editing a cell
+
+/// One cell of one row, named by its whole primary key.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct DbUpdate {
+    pub table: String,
+    pub key: Vec<DbKey>,
+    pub column: String,
+    /// What the cell held when read (the update only lands if it still does).
+    pub old: Option<String>,
+    /// The new value (None: NULL).
+    pub value: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct DbKey {
+    pub column: String,
+    pub value: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct DbUpdated {
+    /// The cell as the database has it now.
+    pub value: Option<String>,
+    pub ms: u64,
+}
+
+/// `'it''s'`, or NULL: for showing SQL (History), never for running it.
+fn lit(v: Option<&str>) -> String {
+    match v {
+        None => "NULL".into(),
+        Some(v) => {
+            let v: String = if v.chars().count() > 200 { format!("{}…", v.chars().take(200).collect::<String>()) } else { v.to_string() };
+            format!("'{}'", v.replace('\'', "''"))
+        }
+    }
+}
+
+/// The UPDATE as History shows it.
+pub fn update_sql(u: &DbUpdate) -> String {
+    let wh: Vec<String> = u.key.iter().map(|k| format!("{} = {}", k.column, lit(k.value.as_deref()))).collect();
+    format!("UPDATE {} SET {} = {} WHERE {}", u.table, u.column, lit(u.value.as_deref()), wh.join(" AND "))
+}
+
+/// Change one cell (and nothing else): in a transaction that's rolled back
+/// unless exactly one row matched. Recorded in History.
+#[tauri::command]
+pub async fn db_update(state: State<'_, AppState>, server_id: String, app_id: String, update: DbUpdate) -> AppResult<DbUpdated> {
+    let bad = |s: &str| s.is_empty() || s.len() > 256 || s.contains('\0');
+    if bad(&update.table)
+        || bad(&update.column)
+        || update.key.is_empty()
+        || update.key.len() > 8
+        || update.key.iter().any(|k| bad(&k.column))
+        || update.value.as_ref().is_some_and(|v| v.len() > 60_000 || v.contains('\0'))
+        || update.old.as_ref().is_some_and(|v| v.len() > 60_000 || v.contains('\0'))
+    {
+        return Err(AppError::Invalid("that change isn't one Kemudi sends".into()));
+    }
+    let server = crate::remote_files::lookup(&state, &server_id)?;
+    let env = server.app(&app_id).map_or(server.env, |a| a.env);
+    let shown = update_sql(&update);
+    let run = state.audit.as_ref().ok().and_then(|log| {
+        log.start(&crate::audit::NewRun {
+            server_id: &server_id,
+            app_id: Some(&app_id),
+            action_id: "db-edit",
+            label: &format!("Edit {}.{}", update.table, update.column),
+            env: env.as_str(),
+            kind: "edit",
+            command: &shown,
+            edited: false,
+        })
+        .ok()
+        .map(|id| (log.clone(), id))
+    });
+    let mut json = serde_json::to_value(&update).map_err(|e| AppError::Invalid(e.to_string()))?;
+    json["mode"] = "update".into();
+    let res = async {
+        let out = ask(&state, &server_id, &app_id, json).await?;
+        serde_json::from_str::<DbUpdated>(answer(&out)?).map_err(|e| AppError::Invalid(format!("the answer didn't read: {e}")))
+    }
+    .await;
+    if let Some((log, id)) = run {
+        let _ = log.finish(id, Some(if res.is_ok() { 0 } else { 1 }));
+    }
+    res
+}
+
+// ------------------------------------------------------------ history and saved queries
+
+/// Queries you ran (newest last, per app) and the ones you saved, in
+/// `db-queries.json` in the data dir. Only the SQL and how it went: never
+/// rows.
+mod store {
+    use std::collections::BTreeMap;
+    use std::path::PathBuf;
+
+    use serde::{Deserialize, Serialize};
+
+    const MAX_HISTORY: usize = 200;
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+    #[serde(rename_all = "camelCase", default)]
+    pub struct Ran {
+        /// Unix ms.
+        pub at: u64,
+        pub sql: String,
+        pub ms: Option<u64>,
+        /// Rows on the first page (with `more`: there were more).
+        pub rows: Option<u32>,
+        pub more: bool,
+        pub error: Option<String>,
+    }
+
+    #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+    #[serde(rename_all = "camelCase", default)]
+    pub struct Saved {
+        pub id: String,
+        pub name: String,
+        pub sql: String,
+        pub at: u64,
+    }
+
+    #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase", default)]
+    pub struct AppQueries {
+        pub history: Vec<Ran>,
+        pub saved: Vec<Saved>,
+    }
+
+    #[derive(Debug, Default, Serialize, Deserialize)]
+    struct File {
+        #[serde(default)]
+        apps: BTreeMap<String, AppQueries>,
+    }
+
+    fn path() -> Option<PathBuf> {
+        crate::data_dir().map(|d| d.join("db-queries.json"))
+    }
+
+    pub fn now_ms() -> u64 {
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
+    }
+
+    fn key(server: &str, app: &str) -> String {
+        format!("{server}/{app}")
+    }
+
+    pub fn get(server: &str, app: &str) -> AppQueries {
+        let Some(p) = path() else { return AppQueries::default() };
+        let _one = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let file: File = std::fs::read(&p).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+        file.apps.get(&key(server, app)).cloned().unwrap_or_default()
+    }
+
+    /// Change one app's queries and write the file (atomically).
+    pub fn update(server: &str, app: &str, f: impl FnOnce(&mut AppQueries)) -> Result<AppQueries, String> {
+        let p = path().ok_or("no data folder")?;
+        let _one = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let mut file: File = std::fs::read(&p).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+        let q = file.apps.entry(key(server, app)).or_default();
+        f(q);
+        if q.history.len() > MAX_HISTORY {
+            q.history.drain(..q.history.len() - MAX_HISTORY);
+        }
+        let out = q.clone();
+        let tmp = p.with_extension("json.tmp");
+        serde_json::to_vec_pretty(&file)
+            .map_err(|e| e.to_string())
+            .and_then(|b| std::fs::write(&tmp, b).map_err(|e| e.to_string()))
+            .and_then(|()| std::fs::rename(&tmp, &p).map_err(|e| e.to_string()))?;
+        Ok(out)
+    }
+
+    /// The same SQL again moves to the end instead of adding a copy.
+    pub fn ran(q: &mut AppQueries, r: Ran) {
+        q.history.retain(|h| h.sql.trim() != r.sql.trim());
+        q.history.push(r);
+    }
+}
+
+pub use store::{AppQueries, Ran, Saved};
+
+fn record(server_id: &str, app_id: &str, sql: &str, res: &AppResult<DbResult>) {
+    let r = Ran {
+        at: store::now_ms(),
+        sql: sql.trim().to_string(),
+        ms: res.as_ref().ok().map(|r| r.ms),
+        rows: res.as_ref().ok().map(|r| r.rows.len() as u32),
+        more: res.as_ref().is_ok_and(|r| r.more),
+        error: res.as_ref().err().map(|e| e.to_string().chars().take(300).collect()),
+    };
+    if let Err(e) = store::update(server_id, app_id, |q| store::ran(q, r)) {
+        eprintln!("kemudi: query history not kept: {e}");
+    }
+}
+
+/// An app's query history (oldest first) and saved queries.
+#[tauri::command]
+pub fn db_queries(server_id: String, app_id: String) -> AppQueries {
+    store::get(&server_id, &app_id)
+}
+
+/// Save a query under a name (the same name: replaced).
+#[tauri::command]
+pub fn db_query_save(server_id: String, app_id: String, name: String, sql: String) -> AppResult<AppQueries> {
+    let name = name.trim().to_string();
+    if name.is_empty() || name.len() > 200 || sql.trim().is_empty() || sql.len() > 60_000 {
+        return Err(AppError::Invalid("a saved query needs a name and some SQL".into()));
+    }
+    store::update(&server_id, &app_id, |q| {
+        let at = store::now_ms();
+        match q.saved.iter_mut().find(|s| s.name == name) {
+            Some(s) => {
+                s.sql = sql.trim().to_string();
+                s.at = at;
+            }
+            None => q.saved.push(Saved { id: format!("q{at}"), name, sql: sql.trim().to_string(), at }),
+        }
+    })
+    .map_err(AppError::Invalid)
+}
+
+/// Rename (`name`) or delete (`name` None) a saved query.
+#[tauri::command]
+pub fn db_query_saved_edit(server_id: String, app_id: String, id: String, name: Option<String>) -> AppResult<AppQueries> {
+    store::update(&server_id, &app_id, |q| match name.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()) {
+        Some(n) => {
+            if let Some(s) = q.saved.iter_mut().find(|s| s.id == id) {
+                s.name = n;
+            }
+        }
+        None => q.saved.retain(|s| s.id != id),
+    })
+    .map_err(AppError::Invalid)
+}
+
+/// Forget an app's query history (saved queries stay).
+#[tauri::command]
+pub fn db_history_clear(server_id: String, app_id: String) -> AppResult<AppQueries> {
+    store::update(&server_id, &app_id, |q| q.history.clear()).map_err(AppError::Invalid)
 }
 
 #[cfg(test)]
@@ -442,6 +776,29 @@ mod tests {
         assert!(check(&DbRequest { mode: "drop".into(), ..Default::default() }).is_err());
         assert!(check(&DbRequest { limit: 501, ..sql("select 1") }).is_err());
         assert!(check(&DbRequest { mode: "browse".into(), table: "users".into(), ..Default::default() }).is_ok());
+    }
+
+    #[test]
+    fn shows_an_update() {
+        let u = DbUpdate {
+            table: "addresses".into(),
+            key: vec![DbKey { column: "id".into(), value: Some("7".into()) }],
+            column: "line_1".into(),
+            old: Some("a".into()),
+            value: Some("Jalan O'Hara".into()),
+        };
+        assert_eq!(update_sql(&u), "UPDATE addresses SET line_1 = 'Jalan O''Hara' WHERE id = '7'");
+        assert!(update_sql(&DbUpdate { value: None, ..u }).contains("= NULL WHERE"));
+    }
+
+    #[test]
+    fn history_moves_a_repeat_to_the_end() {
+        let mut q = AppQueries::default();
+        let r = |sql: &str| Ran { sql: sql.into(), ..Default::default() };
+        store::ran(&mut q, r("select 1"));
+        store::ran(&mut q, r("select 2"));
+        store::ran(&mut q, r(" select 1 "));
+        assert_eq!(q.history.iter().map(|h| h.sql.trim()).collect::<Vec<_>>(), ["select 2", "select 1"]);
     }
 
     #[test]

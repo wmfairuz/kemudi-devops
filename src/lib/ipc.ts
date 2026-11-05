@@ -1920,3 +1920,43 @@ export interface DbResult {
 }
 export const dbTables = (serverId: string, appId: string): Promise<DbTables> => invoke("db_tables", { serverId, appId });
 export const dbQuery = (serverId: string, appId: string, req: DbRequest): Promise<DbResult> => invoke("db_query", { serverId, appId, req });
+/** One cell of one row, named by its whole primary key. */
+export interface DbUpdate {
+  table: string;
+  key: { column: string; value: string | null }[];
+  column: string;
+  /** What the cell held when read: the change only lands if it still does. */
+  old: string | null;
+  /** The new value (null: NULL). */
+  value: string | null;
+}
+export const dbUpdate = (serverId: string, appId: string, update: DbUpdate): Promise<{ value: string | null; ms: number }> =>
+  invoke("db_update", { serverId, appId, update });
+
+export interface DbRan {
+  /** Unix ms. */
+  at: number;
+  sql: string;
+  ms: number | null;
+  rows: number | null;
+  more: boolean;
+  error: string | null;
+}
+export interface DbSaved {
+  id: string;
+  name: string;
+  sql: string;
+  at: number;
+}
+/** An app's query history (oldest first) and saved queries. */
+export interface DbQueries {
+  history: DbRan[];
+  saved: DbSaved[];
+}
+export const dbQueries = (serverId: string, appId: string): Promise<DbQueries> => invoke("db_queries", { serverId, appId });
+export const dbQuerySave = (serverId: string, appId: string, name: string, sql: string): Promise<DbQueries> =>
+  invoke("db_query_save", { serverId, appId, name, sql });
+/** Rename (name) or delete (name null) a saved query. */
+export const dbQuerySavedEdit = (serverId: string, appId: string, id: string, name: string | null): Promise<DbQueries> =>
+  invoke("db_query_saved_edit", { serverId, appId, id, name });
+export const dbHistoryClear = (serverId: string, appId: string): Promise<DbQueries> => invoke("db_history_clear", { serverId, appId });

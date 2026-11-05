@@ -642,16 +642,25 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   *Filter* adds conditions (=, ≠, <, >, contains, starts with, is NULL, is
   not NULL), and a picked cell's *Filter by this* adds one. Click a cell
   (arrows move) to see it whole underneath, JSON pretty-printed, with Copy
-  (⌘C); long values come in full only when picked. **Query**: an SQL editor
-  (kept per app); ⌘↵ or Run runs the statement the cursor is in, or the
-  selection, a page at a time. Footer: the SQL that ran, how long it took,
-  *Copy SQL* and *Edit as query*.
+  (⌘C); long values come in full only when picked. **Edit a cell**
+  (double-click it, Enter, or *Edit*; *NULL* sets no value; ⌘↵ saves): you
+  see the exact UPDATE first, and production asks you to type the server's
+  name. Only in a table with a primary key; the change lands only if exactly
+  that one row still holds what was read (else nothing changes: read the
+  page again), in its own transaction. Recorded in History.
+  **Query**: an SQL editor (kept per app); ⌘↵ or Run runs the statement the
+  cursor is in, or the selection, a page at a time. **History** (every query
+  you ran here, with rows / time or the error; click to run again) and
+  **Saved** queries (*Save…* names the statement at the cursor; rename,
+  delete) are on the right, kept per app in `db-queries.json` in the data
+  folder: only the SQL, never rows. Footer: the SQL that ran, how long it
+  took, *Copy SQL* and *Edit as query*.
   Nothing connects from the Mac: a short PHP script runs in the app's folder
   over ssh, as the owner of its `storage/` (like Queues), reads the app's
   database config the way Laravel does (its .env or cached config, without
   booting the app) and connects with Laravel's own connector, so the password
   never leaves the server. MySQL, MariaDB, Postgres and SQLite. Every query
-  runs in a read-only transaction (SQLite: `query_only`), so the database
+  (all but a cell edit) runs in a read-only transaction (SQLite: `query_only`), so the database
   itself refuses writes; only SELECT, WITH, SHOW, DESCRIBE and EXPLAIN are
   sent, one statement at a time, no locking reads, each stopped after 10 s.
   Rows are kept only while the tab is open.

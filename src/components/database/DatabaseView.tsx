@@ -1,15 +1,39 @@
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Copy, Eye, KeyRound, Lock, Play, Plus, RotateCw, SquareCode, Table2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Bookmark, ChevronLeft, ChevronRight, Copy, CornerDownLeft, Eye, History, KeyRound, Lock, Pencil, Play, Plus, RotateCw, SquareCode, Table2, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { Btn } from "@/components/kit/Btn";
 import { CodeEditor } from "@/components/kit/CodeEditor";
+import { EnvTag } from "@/components/kit/EnvTag";
+import { Hint } from "@/components/kit/Kbd";
+import { Modal, ModalFooter, ModalHeader } from "@/components/kit/Modal";
 import { wordsMatch } from "@/components/kit/Filters";
 import { Spinner } from "@/components/kit/Spinner";
 import { Group, Tool } from "@/components/kit/Toolbar";
 import { copyText } from "@/lib/clipboard";
-import { dbQuery, dbTables, errorMessage, type DbFilter, type DbOp, type DbRequest, type DbResult, type DbTables } from "@/lib/ipc";
+import {
+  dbHistoryClear,
+  dbQueries,
+  dbQuery,
+  dbQuerySave,
+  dbQuerySavedEdit,
+  dbTables,
+  dbUpdate,
+  errorMessage,
+  type DbFilter,
+  type DbOp,
+  type DbQueries,
+  type DbRequest,
+  type DbResult,
+  type DbTables,
+  type DbUpdate,
+  type Env,
+} from "@/lib/ipc";
 import { cn } from "@/lib/utils";
+import { findServer } from "@/stores/config";
+import { askConfirm, askText } from "@/stores/confirm";
 import type { Tab } from "@/stores/tabs";
 import { useToasts } from "@/stores/toasts";
+import { agoS } from "@/stores/watch";
 
 const PAGE = 100;
 
@@ -198,14 +222,87 @@ export function DatabaseView({ tab, visible }: { tab: Tab; visible: boolean }) {
 }
 
 /** "Read-only" pill: what keeps this safe on production. */
-function ReadOnly() {
+function ReadOnly({ why }: { why?: string }) {
   return (
     <span
-      title="Every query runs in a read-only transaction: the database itself refuses writes. Only SELECT, WITH, SHOW, DESCRIBE and EXPLAIN are sent, each stopped after 10 s."
-      className="flex h-6 flex-none items-center gap-1 rounded-full bg-muted px-2 text-[11px] text-subtle-foreground"
+      title={
+        why
+          ? "Cells can only be changed in a table with a primary key (it names the one row to change)."
+          : "Every query runs in a read-only transaction: the database itself refuses writes. Only SELECT, WITH, SHOW, DESCRIBE and EXPLAIN are sent, each stopped after 10 s. To change data, edit a cell in a table."
+      }
+      className="flex h-6 flex-none items-center gap-1 rounded-full bg-muted px-2 text-[11px] whitespace-nowrap text-subtle-foreground"
     >
-      <Lock className="size-3" strokeWidth={2} /> Read-only
+      <Lock className="size-3" strokeWidth={2} /> Read-only{why ? `: ${why}` : ""}
     </span>
+  );
+}
+
+function EditHint() {
+  return (
+    <span
+      title="Double-click a cell (or press Enter on it) to change it. You see the UPDATE before it runs; production asks you to type the server's name. Only that one row can change, and only if the cell still holds what was read."
+      className="flex h-6 flex-none items-center gap-1 rounded-full bg-muted px-2 text-[11px] whitespace-nowrap text-subtle-foreground"
+    >
+      <Pencil className="size-3" strokeWidth={2} /> Double-click a cell to edit
+    </span>
+  );
+}
+
+/** The UPDATE as shown before it runs (and as History records it). */
+function updateSql(u: DbUpdate): string {
+  const lit = (v: string | null) => (v === null ? "NULL" : `'${(v.length > 200 ? `${v.slice(0, 200)}…` : v).replace(/'/g, "''")}'`);
+  return `UPDATE ${u.table} SET ${u.column} = ${lit(u.value)} WHERE ${u.key.map((k) => `${k.column} = ${lit(k.value)}`).join(" AND ")}`;
+}
+
+/** Confirm a cell change: the UPDATE, and on production the server's
+ *  name typed. */
+function EditConfirm({ sql, env, word, busy, error, onCancel, onOk }: { sql: string; env: Env; word: string; busy: boolean; error: string | null; onCancel: () => void; onOk: () => void }) {
+  const prod = env === "prod";
+  const [text, setText] = useState("");
+  const ok = !busy && (!prod || text === word);
+  return (
+    <Modal open onOpenChange={(o) => !o && !busy && onCancel()} title="Change this cell?" width={560}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (ok) onOk();
+        }}
+      >
+        <ModalHeader>
+          <span className="flex items-center gap-2 text-[15px] font-semibold">
+            Change this cell? <EnvTag env={env} />
+          </span>
+        </ModalHeader>
+        <div className="flex flex-col gap-3 px-5 pb-4 text-[12.5px] leading-[18px] text-muted-foreground">
+          <pre className="max-h-[40vh] overflow-auto rounded-lg bg-muted px-3 py-2 font-mono text-[12px] break-words whitespace-pre-wrap text-foreground">{sql}</pre>
+          <span>Only this row changes, and only if the cell still holds what was read; otherwise nothing changes. Recorded in History.</span>
+          {prod && (
+            <label className="flex flex-col gap-1.5">
+              <span className="rounded-lg bg-env-prod/8 px-3 py-2 text-env-prod-fg">
+                This is production. Type <span className="font-mono font-semibold">{word}</span> to change it.
+              </span>
+              <input
+                autoFocus
+                value={text}
+                spellCheck={false}
+                onChange={(e) => setText(e.target.value)}
+                className="h-8 rounded-md border border-control-border bg-background px-2 font-mono text-[12.5px] outline-none focus:border-primary/60"
+              />
+            </label>
+          )}
+          {error && <div className="rounded-lg bg-env-prod/8 px-3 py-2 break-words text-env-prod-fg">{error}</div>}
+        </div>
+        <ModalFooter>
+          <span className="flex-1" />
+          <Btn variant="outline" className="pr-2.5" onClick={onCancel} disabled={busy}>
+            Cancel <Hint>esc</Hint>
+          </Btn>
+          <Btn type="submit" variant={prod ? "danger" : "primary"} disabled={!ok} autoFocus={!prod}>
+            {busy ? "Changing…" : "Change"}
+          </Btn>
+        </ModalFooter>
+      </form>
+    </Modal>
   );
 }
 
@@ -297,7 +394,7 @@ function Browse({
         )}
         {busy && <Spinner />}
         <span className="flex-1" />
-        <ReadOnly />
+        {result && (result.columns.some((c) => c.key) ? <EditHint /> : <ReadOnly why="no primary key" />)}
         <Group size="sm">
           <Tool size="sm" label="Filter" title="Add a filter (column, condition, value)" onClick={() => addFilter()} disabled={!result}>
             <Plus className="size-[14px]" strokeWidth={1.8} />
@@ -368,6 +465,7 @@ function Browse({
       <Results
         serverId={serverId}
         appId={appId}
+        table={table}
         result={result}
         req={req}
         error={error}
@@ -387,6 +485,8 @@ function Browse({
 
 const DRAFT = (s: string, a: string) => `kemudi.dbQuery.${s}/${a}`;
 
+const PANEL = "kemudi.dbPanel";
+
 function Query({ serverId, appId, insert, onInserted }: { serverId: string; appId: string; insert: string | null; onInserted: () => void }) {
   const [text, setText] = useState(() => {
     try {
@@ -395,64 +495,245 @@ function Query({ serverId, appId, insert, onInserted }: { serverId: string; appI
       return "";
     }
   });
+  const textRef = useRef(text);
   const cursor = useRef({ from: 0, to: 0 });
   const { result, error, busy, req, ask } = useAsk(serverId, appId);
   const [offset, setOffset] = useState(0);
   const [ran, setRan] = useState("");
+  const [qs, setQs] = useState<DbQueries | null>(null);
+  const [panel, setPanelState] = useState<"history" | "saved" | "">(() => {
+    try {
+      const v = localStorage.getItem(PANEL);
+      return v === "saved" || v === "" ? v : "history";
+    } catch {
+      return "history";
+    }
+  });
+  const setPanel = (p: typeof panel) => {
+    setPanelState(p);
+    try {
+      localStorage.setItem(PANEL, p);
+    } catch {
+      // Not kept; fine.
+    }
+  };
+  const reload = () => dbQueries(serverId, appId).then(setQs, () => {});
+  useEffect(() => {
+    void reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const save = (t: string) => {
     setText(t);
+    textRef.current = t;
     try {
       localStorage.setItem(DRAFT(serverId, appId), t);
     } catch {
       // Not kept; fine.
     }
   };
-  // "Edit as query" from a table: add it at the end and run it.
-  useEffect(() => {
-    if (insert === null) return;
-    const t = text.trim() ? `${text.trimEnd()}\n\n${insert};` : `${insert};`;
-    save(t);
-    onInserted();
-    run(insert);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [insert]);
   const run = (sql: string, o = 0) => {
     if (!sql.trim()) return;
     setRan(sql);
     setOffset(o);
-    void ask({ mode: "sql", sql, offset: o, limit: PAGE });
+    void ask({ mode: "sql", sql, offset: o, limit: PAGE }).then(() => {
+      if (o === 0) void reload();
+    });
   };
-  const runHere = () => run(statementAt(text, cursor.current.from, cursor.current.to));
+  /** Put a query in the editor (at the end, unless it's there already),
+   *  and run it. */
+  const use = (sql: string, go = true) => {
+    const t = textRef.current;
+    if (!t.includes(sql.trim())) save(t.trim() ? `${t.trimEnd()}\n\n${sql.trim()};\n` : `${sql.trim()};\n`);
+    if (go) run(sql);
+  };
+  // "Edit as query" from a table.
+  useEffect(() => {
+    if (insert === null) return;
+    use(insert);
+    onInserted();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [insert]);
+  const here = () => statementAt(textRef.current, cursor.current.from, cursor.current.to);
+  const saveAs = async (sql: string, name = "") => {
+    if (!sql.trim()) return;
+    const names = (qs?.saved ?? []).map((q) => q.name);
+    const guess = name || sql.replace(/\s+/g, " ").trim().slice(0, 48);
+    const n = await askText("Save this query", "A name for it (an existing name replaces that query).", "Save", guess, names);
+    if (!n?.trim()) return;
+    try {
+      setQs(await dbQuerySave(serverId, appId, n, sql));
+      setPanel("saved");
+    } catch (e) {
+      useToasts.getState().push(errorMessage(e), "error");
+    }
+  };
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="h-[36%] min-h-[120px] flex-none border-b border-divider">
-        <CodeEditor
-          value={text}
-          onChange={save}
-          lang="sql"
-          className="h-full"
-          onRun={(p) => run(statementAt(p.doc, p.from, p.to))}
-          onCursor={(from, to) => (cursor.current = { from, to })}
+    <div className="flex h-full">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="h-[36%] min-h-[120px] flex-none border-b border-divider">
+          <CodeEditor
+            value={text}
+            onChange={save}
+            lang="sql"
+            className="h-full"
+            onRun={(p) => run(statementAt(p.doc, p.from, p.to))}
+            onCursor={(from, to) => (cursor.current = { from, to })}
+          />
+        </div>
+        <div className="flex h-11 flex-none items-center gap-2 border-b border-divider px-3">
+          <button
+            onClick={() => run(here())}
+            disabled={busy || !text.trim()}
+            title="Run the selection, or the statement the cursor is in (⌘↵)"
+            className="flex h-7 flex-none cursor-pointer items-center gap-1.5 rounded-full bg-primary px-3 text-[12.5px] font-medium text-primary-foreground shadow-sm hover:opacity-90 disabled:cursor-default disabled:opacity-50"
+          >
+            <Play className="size-3.5" fill="currentColor" strokeWidth={0} /> Run
+          </button>
+          <Group size="sm">
+            <Tool size="sm" label="Save…" title="Save the statement the cursor is in (or the selection) under a name" onClick={() => void saveAs(here())} disabled={!text.trim()}>
+              <Bookmark className="size-[14px]" strokeWidth={1.7} />
+            </Tool>
+          </Group>
+          <span className="min-w-0 truncate text-[11.5px] text-subtle-foreground">⌘↵ runs the statement the cursor is in, or the selection</span>
+          {busy && <Spinner />}
+          <span className="flex-1" />
+          <ReadOnly />
+          {result && !error && <Pager offset={offset} count={result.rows.length} more={result.more} busy={busy} onPage={(o) => run(ran, o)} />}
+          <Group size="sm">
+            <Tool size="sm" title="History: the queries you ran here" active={panel === "history"} onClick={() => setPanel(panel === "history" ? "" : "history")}>
+              <History className="size-[15px]" strokeWidth={1.7} />
+            </Tool>
+            <Tool size="sm" title="Saved queries" active={panel === "saved"} onClick={() => setPanel(panel === "saved" ? "" : "saved")}>
+              <Bookmark className="size-[14px]" strokeWidth={1.7} />
+            </Tool>
+          </Group>
+        </div>
+        <Results serverId={serverId} appId={appId} result={result} req={req} error={error} offset={offset} />
+      </div>
+      {panel && (
+        <QueriesPanel
+          kind={panel}
+          qs={qs}
+          onKind={setPanel}
+          onUse={use}
+          onSave={(sql) => void saveAs(sql)}
+          onRename={async (id, name) => {
+            const n = await askText("Rename this query", "Its new name.", "Rename", name);
+            if (n?.trim()) setQs(await dbQuerySavedEdit(serverId, appId, id, n));
+          }}
+          onDelete={async (id, name) => {
+            if (await askConfirm(`Delete “${name}”?`, "Only the saved query goes; nothing in the database changes.", "Delete")) setQs(await dbQuerySavedEdit(serverId, appId, id, null));
+          }}
+          onClear={async () => {
+            if (await askConfirm("Clear this app's query history?", "Saved queries stay.", "Clear")) setQs(await dbHistoryClear(serverId, appId));
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** History (newest first) or saved queries: click runs one (adding it to
+ *  the editor); hover for more. */
+function QueriesPanel({
+  kind,
+  qs,
+  onKind,
+  onUse,
+  onSave,
+  onRename,
+  onDelete,
+  onClear,
+}: {
+  kind: "history" | "saved";
+  qs: DbQueries | null;
+  onKind: (k: "history" | "saved") => void;
+  onUse: (sql: string, run?: boolean) => void;
+  onSave: (sql: string) => void;
+  onRename: (id: string, name: string) => void;
+  onDelete: (id: string, name: string) => void;
+  onClear: () => void;
+}) {
+  const [find, setFind] = useState("");
+  const history = [...(qs?.history ?? [])].reverse().filter((h) => wordsMatch(find, h.sql));
+  const saved = [...(qs?.saved ?? [])].sort((a, b) => a.name.localeCompare(b.name)).filter((q) => wordsMatch(find, `${q.name} ${q.sql}`));
+  const now = Date.now() / 1000;
+  const act = "flex size-6 cursor-pointer items-center justify-center rounded-md text-subtle-foreground hover:bg-hover-strong hover:text-foreground";
+  return (
+    <aside className="flex w-[300px] flex-none flex-col border-l border-divider bg-sidebar">
+      <div className="flex h-11 flex-none items-center gap-1 border-b border-divider px-2">
+        {(["history", "saved"] as const).map((k) => (
+          <button
+            key={k}
+            onClick={() => onKind(k)}
+            className={cn("h-7 cursor-pointer rounded-full px-3 text-[12.5px]", kind === k ? "bg-hover-strong font-medium" : "text-subtle-foreground hover:bg-hover")}
+          >
+            {k === "history" ? `History ${qs?.history.length ?? ""}` : `Saved ${qs?.saved.length ?? ""}`}
+          </button>
+        ))}
+        <span className="flex-1" />
+        {kind === "history" && (qs?.history.length ?? 0) > 0 && (
+          <button onClick={onClear} className="h-6 cursor-pointer rounded-full px-2 text-[11.5px] text-primary hover:bg-primary/10">
+            Clear
+          </button>
+        )}
+      </div>
+      <div className="flex-none p-2 pb-1">
+        <input
+          value={find}
+          onChange={(e) => setFind(e.target.value)}
+          onKeyDown={(e) => e.key === "Escape" && setFind("")}
+          placeholder={kind === "history" ? "Find in history" : "Find a saved query"}
+          spellCheck={false}
+          className="h-7 w-full rounded-lg border border-control-border bg-muted px-2 text-[12.5px] outline-none placeholder:text-subtle-foreground focus:border-primary/60"
         />
       </div>
-      <div className="flex h-11 flex-none items-center gap-2 border-b border-divider px-3">
-        <button
-          onClick={runHere}
-          disabled={busy || !text.trim()}
-          title="Run the selection, or the statement the cursor is in (⌘↵)"
-          className="flex h-7 cursor-pointer items-center gap-1.5 rounded-full bg-primary px-3 text-[12.5px] font-medium text-primary-foreground shadow-sm hover:opacity-90 disabled:cursor-default disabled:opacity-50"
-        >
-          <Play className="size-3.5" fill="currentColor" strokeWidth={0} /> Run
-        </button>
-        <span className="text-[11.5px] text-subtle-foreground">⌘↵ runs the statement the cursor is in, or the selection</span>
-        {busy && <Spinner />}
-        <span className="flex-1" />
-        <ReadOnly />
-        {result && !error && <Pager offset={offset} count={result.rows.length} more={result.more} busy={busy} onPage={(o) => run(ran, o)} />}
+      <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
+        {kind === "history" &&
+          history.map((h) => (
+            <div key={`${h.at}${h.sql}`} title={`${h.sql}\n\nClick: run it again`} onClick={() => onUse(h.sql)} className="group relative cursor-pointer rounded-md px-2 py-1.5 hover:bg-hover">
+              <div className="line-clamp-3 font-mono text-[11.5px] leading-[16px] break-words whitespace-pre-wrap">{h.sql}</div>
+              <div className={cn("mt-0.5 truncate text-[10.5px]", h.error ? "text-env-prod-fg" : "text-faint-foreground")}>
+                {agoS(Math.round(h.at / 1000), now)}
+                {h.error ? ` · ${h.error}` : ` · ${h.rows ?? 0}${h.more ? "+" : ""} row${h.rows === 1 && !h.more ? "" : "s"} · ${h.ms ?? 0} ms`}
+              </div>
+              <span className="absolute top-1 right-1 hidden gap-0.5 rounded-md bg-sidebar shadow-sm group-hover:flex" onClick={(e) => e.stopPropagation()}>
+                <button className={act} title="Put it in the editor without running it" onClick={() => onUse(h.sql, false)}>
+                  <CornerDownLeft className="size-3.5" />
+                </button>
+                <button className={act} title="Save it under a name" onClick={() => onSave(h.sql)}>
+                  <Bookmark className="size-3.5" />
+                </button>
+              </span>
+            </div>
+          ))}
+        {kind === "saved" &&
+          saved.map((q) => (
+            <div key={q.id} title={`${q.sql}\n\nClick: run it`} onClick={() => onUse(q.sql)} className="group relative cursor-pointer rounded-md px-2 py-1.5 hover:bg-hover">
+              <div className="truncate text-[12.5px] font-medium">{q.name}</div>
+              <div className="line-clamp-2 font-mono text-[11px] leading-[15px] break-words whitespace-pre-wrap text-subtle-foreground">{q.sql}</div>
+              <span className="absolute top-1 right-1 hidden gap-0.5 rounded-md bg-sidebar shadow-sm group-hover:flex" onClick={(e) => e.stopPropagation()}>
+                <button className={act} title="Put it in the editor without running it" onClick={() => onUse(q.sql, false)}>
+                  <CornerDownLeft className="size-3.5" />
+                </button>
+                <button className={act} title="Rename" onClick={() => onRename(q.id, q.name)}>
+                  <Pencil className="size-3.5" />
+                </button>
+                <button className={act} title="Delete" onClick={() => onDelete(q.id, q.name)}>
+                  <Trash2 className="size-3.5" />
+                </button>
+              </span>
+            </div>
+          ))}
+        {qs && kind === "history" && history.length === 0 && (
+          <div className="p-2 text-[12px] text-subtle-foreground">{find ? "Nothing matches." : "Queries you run here show up here (only the SQL, never rows)."}</div>
+        )}
+        {qs && kind === "saved" && saved.length === 0 && (
+          <div className="p-2 text-[12px] text-subtle-foreground">{find ? "Nothing matches." : "Save a query with Save… (or the bookmark on a History entry) to keep it here."}</div>
+        )}
       </div>
-      <Results serverId={serverId} appId={appId} result={result} req={req} error={error} offset={offset} />
-    </div>
+    </aside>
   );
 }
 
@@ -470,6 +751,7 @@ const oneLine = (v: string) => v.replace(/\r?\n/g, " ↵ ").replace(/\t/g, " ");
 function Results({
   serverId,
   appId,
+  table,
   result,
   req,
   error,
@@ -481,6 +763,8 @@ function Results({
 }: {
   serverId: string;
   appId: string;
+  /** Browsing this table: cells can be changed (when it has a primary key). */
+  table?: string;
   result: DbResult | null;
   req: DbRequest | null;
   error: string | null;
@@ -492,10 +776,20 @@ function Results({
 }) {
   const [sel, setSel] = useState<{ r: number; c: number } | null>(null);
   const [whole, setWhole] = useState<Record<string, string | { error: string }>>({});
+  /** Cells changed here: what the database has now. */
+  const [edits, setEdits] = useState<Record<string, string | null>>({});
+  const [draft, setDraft] = useState<{ text: string; isNull: boolean } | null>(null);
+  const [confirm, setConfirm] = useState<DbUpdate | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [editErr, setEditErr] = useState<string | null>(null);
   useEffect(() => {
     setSel(null);
     setWhole({});
+    setEdits({});
+    setDraft(null);
   }, [result]);
+  const server = findServer(serverId);
+  const env: Env = server?.apps.find((a) => a.id === appId)?.env ?? server?.env ?? "dev";
   const w = useMemo(() => (result ? widths(result) : []), [result]);
   const cut = useMemo(() => new Map((result?.cut ?? []).map(([r, c, n]) => [`${r}:${c}`, n])), [result]);
   const bin = useMemo(() => new Set((result?.bin ?? []).map(([r, c]) => `${r}:${c}`)), [result]);
@@ -513,12 +807,72 @@ function Results({
       .catch((e) => setWhole((m) => ({ ...m, [k]: { error: errorMessage(e) } })));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, cutLen, got]);
-  const value = typeof got === "string" ? got : raw;
+  const value = key in edits ? (edits[key] ?? null) : typeof got === "string" ? got : raw;
+  const cellAt = (r: number, c: number) => {
+    const k = `${r}:${c}`;
+    return k in edits ? (edits[k] ?? null) : (result?.rows[r]?.[c] ?? null);
+  };
+  const pk = (result?.columns ?? []).map((c, i) => ({ name: c.name, i, key: c.key })).filter((x) => x.key);
+  /** Why a cell can't be changed here (null: it can). */
+  const noEdit = (r: number, c: number): string | null => {
+    const k = `${r}:${c}`;
+    if (!table) return "Change data in a table's view (Query is read-only)";
+    if (pk.length === 0) return "This table has no primary key";
+    if (pk.some((p) => cellAt(r, p.i) === null || cut.has(`${r}:${p.i}`) || bin.has(`${r}:${p.i}`))) return "This row's key can't be read whole";
+    if (bin.has(k)) return "Binary values can't be edited here";
+    if (cut.has(k) && !(k in edits) && typeof whole[k] !== "string") return "Loading the whole value first…";
+    return null;
+  };
+  const startEdit = (r: number, c: number) => {
+    setSel({ r, c });
+    setEditErr(null);
+    if (noEdit(r, c)) return;
+    const k = `${r}:${c}`;
+    const v = k in edits ? (edits[k] ?? null) : typeof whole[k] === "string" ? (whole[k] as string) : (result?.rows[r]?.[c] ?? null);
+    setDraft({ text: v ?? "", isNull: v === null });
+  };
+  const askSave = () => {
+    if (!sel || !draft || !result || !table) return;
+    const now = draft.isNull ? null : draft.text;
+    if (now === value) {
+      setDraft(null);
+      return;
+    }
+    setEditErr(null);
+    setConfirm({
+      table,
+      key: pk.map((p) => ({ column: p.name, value: cellAt(sel.r, p.i) })),
+      column: result.columns[sel.c]?.name ?? "",
+      old: value,
+      value: now,
+    });
+  };
+  const doSave = async () => {
+    if (!confirm || !sel) return;
+    setSaving(true);
+    try {
+      const res = await dbUpdate(serverId, appId, confirm);
+      const k = `${sel.r}:${sel.c}`;
+      setEdits((m) => ({ ...m, [k]: res.value }));
+      setConfirm(null);
+      setDraft(null);
+      useToasts.getState().push(`Changed ${confirm.table}.${confirm.column} (${res.ms} ms)`, "info");
+    } catch (e) {
+      setEditErr(errorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  };
   const copy = async (v: string | null) => {
     if (await copyText(v ?? "NULL")) useToasts.getState().push("Copied", "info");
   };
   const onKey = (e: React.KeyboardEvent) => {
     if (!sel || !result) return;
+    if (e.key === "Enter" && table) {
+      e.preventDefault();
+      startEdit(sel.r, sel.c);
+      return;
+    }
     if ((e.metaKey || e.ctrlKey) && e.key === "c" && !window.getSelection()?.toString()) {
       e.preventDefault();
       void copy(value);
@@ -531,6 +885,7 @@ function Results({
     const r = Math.max(0, Math.min(result.rows.length - 1, sel.r + m[0]));
     const c = Math.max(0, Math.min(result.columns.length - 1, sel.c + m[1]));
     setSel({ r, c });
+    setDraft(null);
     document.getElementById(`dbcell-${r}-${c}`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
   };
   const pretty = useMemo(() => {
@@ -592,23 +947,29 @@ function Results({
               {result.rows.map((row, r) => (
                 <tr key={r} className="even:bg-muted/45">
                   <td className="sticky left-0 border-r border-divider bg-sidebar px-2 text-right text-[10.5px] text-faint-foreground">{offset + r + 1}</td>
-                  {row.map((v, c) => {
+                  {row.map((v0, c) => {
                     const k = `${r}:${c}`;
+                    const v = k in edits ? (edits[k] ?? null) : v0;
                     const on = sel?.r === r && sel.c === c;
                     return (
                       <td
                         key={c}
                         id={`dbcell-${r}-${c}`}
-                        onClick={() => setSel({ r, c })}
+                        onClick={() => {
+                          if (sel?.r !== r || sel.c !== c) setDraft(null);
+                          setSel({ r, c });
+                        }}
+                        onDoubleClick={() => table && startEdit(r, c)}
                         className={cn(
                           "h-[26px] cursor-default truncate border-r border-divider/60 px-2 whitespace-pre",
                           on && "bg-primary/15 outline-2 -outline-offset-2 outline-primary",
                           v === null && "text-faint-foreground italic",
                           bin.has(k) && "text-subtle-foreground",
+                          k in edits && "text-primary",
                         )}
                       >
                         {v === null ? "NULL" : oneLine(v)}
-                        {cut.has(k) && "…"}
+                        {cut.has(k) && !(k in edits) && "…"}
                       </td>
                     );
                   })}
@@ -630,7 +991,17 @@ function Results({
               {pretty && " · JSON"}
             </span>
             <span className="flex-1" />
-            {onFilter && (
+            {table && !draft && (
+              <button
+                onClick={() => startEdit(sel.r, sel.c)}
+                disabled={!!noEdit(sel.r, sel.c)}
+                title={noEdit(sel.r, sel.c) ?? "Change this cell (Enter, or double-click it)"}
+                className="flex h-6 cursor-pointer items-center gap-1 rounded-full px-2 text-[11.5px] text-primary hover:bg-primary/10 disabled:cursor-default disabled:opacity-40"
+              >
+                <Pencil className="size-3" /> Edit
+              </button>
+            )}
+            {onFilter && !draft && (
               <button
                 onClick={() => onFilter(value === null ? { column: col.name, op: "null", value: "" } : { column: col.name, op: "eq", value: value })}
                 disabled={bin.has(key) || (cutLen !== undefined && typeof got !== "string")}
@@ -640,13 +1011,49 @@ function Results({
                 Filter by this
               </button>
             )}
-            <button onClick={() => void copy(value)} className="flex h-6 cursor-pointer items-center gap-1 rounded-full px-2 text-[11.5px] text-primary hover:bg-primary/10" title="Copy (⌘C)">
-              <Copy className="size-3" /> Copy
-            </button>
-            <button aria-label="Close" onClick={() => setSel(null)} className="flex size-6 cursor-pointer items-center justify-center rounded-md text-subtle-foreground hover:bg-hover-strong">
+            {!draft && (
+              <button onClick={() => void copy(value)} className="flex h-6 cursor-pointer items-center gap-1 rounded-full px-2 text-[11.5px] text-primary hover:bg-primary/10" title="Copy (⌘C)">
+                <Copy className="size-3" /> Copy
+              </button>
+            )}
+            {draft && (
+              <>
+                <button
+                  onClick={() => setDraft((d) => d && { ...d, isNull: !d.isNull })}
+                  className={cn("h-6 cursor-pointer rounded-full px-2 text-[11.5px]", draft.isNull ? "bg-primary text-primary-foreground" : "text-primary hover:bg-primary/10")}
+                  title="Set the cell to NULL (no value)"
+                >
+                  NULL
+                </button>
+                <button onClick={() => setDraft(null)} className="h-6 cursor-pointer rounded-full px-2 text-[11.5px] text-primary hover:bg-primary/10">
+                  Cancel
+                </button>
+                <button onClick={askSave} className="flex h-6 cursor-pointer items-center gap-1 rounded-full bg-primary px-2.5 text-[11.5px] font-medium text-primary-foreground hover:opacity-90" title="⌘↵">
+                  Save… <CornerDownLeft className="size-3" />
+                </button>
+              </>
+            )}
+            <button aria-label="Close" onClick={() => { setSel(null); setDraft(null); }} className="flex size-6 cursor-pointer items-center justify-center rounded-md text-subtle-foreground hover:bg-hover-strong">
               <X className="size-3.5" />
             </button>
           </div>
+          {draft ? (
+            <textarea
+              autoFocus
+              value={draft.isNull ? "" : draft.text}
+              placeholder={draft.isNull ? "NULL" : ""}
+              onChange={(e) => setDraft({ text: e.target.value, isNull: false })}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setDraft(null);
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  askSave();
+                }
+              }}
+              spellCheck={false}
+              className="min-h-0 flex-1 resize-none bg-primary/[0.04] px-3 py-2 font-mono text-[12px] outline-none placeholder:text-faint-foreground placeholder:italic"
+            />
+          ) : (
           <pre className="min-h-0 flex-1 overflow-auto px-3 py-2 font-mono text-[12px] break-words whitespace-pre-wrap select-text">
             {got && typeof got !== "string" ? (
               <span className="text-env-prod-fg">{got.error}</span>
@@ -655,11 +1062,24 @@ function Results({
             ) : (
               <>
                 {pretty ?? value}
-                {cutLen !== undefined && got === undefined && <span className="text-subtle-foreground"> … loading the rest</span>}
+                {cutLen !== undefined && got === undefined && !(key in edits) && <span className="text-subtle-foreground"> … loading the rest</span>}
               </>
             )}
           </pre>
+          )}
+          {editErr && !confirm && <div className="flex-none border-t border-divider px-3 py-1.5 text-[11.5px] break-words text-env-prod-fg">{editErr}</div>}
         </div>
+      )}
+      {confirm && (
+        <EditConfirm
+          sql={updateSql(confirm)}
+          env={env}
+          word={serverId}
+          busy={saving}
+          error={editErr}
+          onCancel={() => setConfirm(null)}
+          onOk={() => void doSave()}
+        />
       )}
 
       <div className="flex h-7 flex-none items-center gap-2 border-t border-divider bg-sidebar px-3 text-[11px] text-subtle-foreground">
