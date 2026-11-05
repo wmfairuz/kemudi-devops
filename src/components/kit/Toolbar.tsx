@@ -1,10 +1,11 @@
 import { CAPSULE } from "@/components/kit/capsule";
 import { cn } from "@/lib/utils";
 
-type Size = "md" | "sm";
+type Size = "md" | "sm" | "xs";
 
 /** One button in a toolbar capsule: round with just an icon, or a pill
- *  with an icon and a label. `sm` fits a 44px section bar. */
+ *  with an icon and a label. `xs` sits in a 44px section bar, as tall as
+ *  its section names. */
 export function Tool({
   title,
   onClick,
@@ -32,8 +33,8 @@ export function Tool({
       disabled={disabled}
       className={cn(
         "flex flex-none cursor-pointer items-center justify-center gap-1.5 rounded-full text-foreground/80 transition-colors hover:bg-hover-strong hover:text-foreground active:scale-95 disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent disabled:active:scale-100",
-        size === "sm" ? "h-[26px]" : "h-[30px]",
-        label ? (size === "sm" ? "px-2.5 text-[12px]" : "px-3 text-[12.5px]") : size === "sm" ? "w-[26px]" : "w-[30px]",
+        size === "xs" ? "h-[22px]" : size === "sm" ? "h-[26px]" : "h-[30px]",
+        label ? (size === "md" ? "px-3 text-[12.5px]" : "px-2.5 text-[12px]") : size === "xs" ? "w-[22px]" : size === "sm" ? "w-[26px]" : "w-[30px]",
         active && "bg-hover-strong text-foreground",
       )}
     >
@@ -45,7 +46,7 @@ export function Tool({
 
 /** Buttons that belong together, in one capsule. */
 export function Group({ children, size = "md", className }: { children: React.ReactNode; size?: Size; className?: string }) {
-  return <div className={cn("flex flex-none items-center gap-0.5 px-[3px]", size === "sm" ? "h-[32px]" : "h-[38px]", CAPSULE, className)}>{children}</div>;
+  return <div className={cn("flex flex-none items-center gap-0.5 px-[3px]", size === "xs" ? "h-[28px]" : size === "sm" ? "h-[32px]" : "h-[38px]", CAPSULE, className)}>{children}</div>;
 }
 
 /** Pick one of a few views, in a capsule like the toolbar's. */
@@ -63,7 +64,7 @@ export function ToolSwitch<T extends string>({
   size?: Size;
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className={cn("flex flex-none items-center gap-0.5 px-[3px]", size === "sm" ? "h-[32px]" : "h-[38px]", CAPSULE)}>
+    <div role="radiogroup" aria-label={label} className={cn("flex flex-none items-center gap-0.5 px-[3px]", size === "xs" ? "h-[28px]" : size === "sm" ? "h-[32px]" : "h-[38px]", CAPSULE)}>
       {options.map((o) => {
         const on = o.value === value;
         return (

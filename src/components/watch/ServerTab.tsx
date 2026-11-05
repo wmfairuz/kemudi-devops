@@ -87,12 +87,12 @@ export function ServerTabView({ tab, visible }: { tab: Tab; visible: boolean }) 
           </button>
         ))}
         <span className="flex-1" />
-        <Group size="sm">
-          <Tool size="sm" label={server.asg ? "Shells on all instances" : "Open shell"} onClick={() => openServerShell(server)} title={server.asg ? "A Session Manager shell on each running instance" : `ssh ${server.host}`}>
+        <Group size="xs">
+          <Tool size="xs" label={server.asg ? "Shells on all instances" : "Open shell"} onClick={() => openServerShell(server)} title={server.asg ? "A Session Manager shell on each running instance" : `ssh ${server.host}`}>
             <SquareTerminal className="size-[15px]" strokeWidth={1.6} />
           </Tool>
           {alone(section) && (
-            <Tool size="sm" title="Open this section in a tab of its own" onClick={() => openSectionAlone(server, section, tab)}>
+            <Tool size="xs" title="Open this section in a tab of its own" onClick={() => openSectionAlone(server, section, tab)}>
               <ExternalLink className="size-[15px]" strokeWidth={1.6} />
             </Tool>
           )}

@@ -63,9 +63,9 @@ export function AppTabView({ tab, visible }: { tab: Tab; visible: boolean }) {
           </button>
         ))}
         <span className="flex-1" />
-        <Group size="sm">
+        <Group size="xs">
           <Tool
-            size="sm"
+            size="xs"
             label={server.asg ? "Shells on all instances" : "Open shell"}
             onClick={() => openServerShell(server, app)}
             title={server.asg ? "A Session Manager shell on each running instance, in its folder" : `ssh ${server.host}, in ${app.path}`}
@@ -73,7 +73,7 @@ export function AppTabView({ tab, visible }: { tab: Tab; visible: boolean }) {
             <SquareTerminal className="size-[15px]" strokeWidth={1.6} />
           </Tool>
           {ALONE.includes(section) && (
-            <Tool size="sm" title="Open this section in a tab of its own" onClick={() => alone(section)}>
+            <Tool size="xs" title="Open this section in a tab of its own" onClick={() => alone(section)}>
               <ExternalLink className="size-[15px]" strokeWidth={1.6} />
             </Tool>
           )}
