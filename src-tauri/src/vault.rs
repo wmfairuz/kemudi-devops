@@ -1,7 +1,9 @@
 //! Saved passwords: a plain list of entries (name, username, notes,
 //! password), filled into any terminal at a password prompt after the user
 //! picks one. An entry can be marked as the sudo password for some servers;
-//! saving root-owned files there uses it in the background.
+//! saving root-owned files there uses it in the background. An entry can
+//! also belong to servers (with a kind: OS user, database, web, other), so a
+//! server's Overview lists its logins; each server can have notes too.
 //!
 //! Encrypted in `vault.bin` (data dir) with the same Keychain key as the .env
 //! secret cache, so there is still one Keychain item. Passwords never go to
@@ -39,12 +41,24 @@ struct Entry {
     /// The default login for basic auth (the server dashboard).
     #[serde(default)]
     basic_auth: bool,
+    /// Server ids it's a login on (shown on their Overview).
+    #[serde(default)]
+    servers: Vec<String>,
+    /// What it logs in to: "os", "db", "web", "other" ("" before kinds).
+    #[serde(default)]
+    kind: String,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Vault {
     entries: Vec<Entry>,
+    /// Server id → notes (free text, encrypted like the passwords).
+    #[serde(default)]
+    server_notes: BTreeMap<String, String>,
 }
+
+const KINDS: [&str; 5] = ["", "os", "db", "web", "other"];
 
 /// The first version: server id → { sudo, login }.
 #[derive(Deserialize)]
@@ -72,6 +86,8 @@ fn decode(value: serde_json::Value) -> Vault {
                 password: p,
                 sudo_for: vec![server.clone()],
                 basic_auth: false,
+                servers: vec![server.clone()],
+                kind: "os".into(),
             });
         }
         if let Some(p) = e.login {
@@ -83,10 +99,15 @@ fn decode(value: serde_json::Value) -> Vault {
                 password: p,
                 sudo_for: vec![],
                 basic_auth: false,
+                servers: vec![server.clone()],
+                kind: "os".into(),
             });
         }
     }
-    Vault { entries }
+    Vault {
+        entries,
+        ..Vault::default()
+    }
 }
 
 fn read_all() -> Result<Vault, String> {
@@ -187,6 +208,8 @@ pub struct EntryInfo {
     pub notes: String,
     pub sudo_for: Vec<String>,
     pub basic_auth: bool,
+    pub servers: Vec<String>,
+    pub kind: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -203,6 +226,10 @@ pub struct EntryInput {
     pub sudo_for: Vec<String>,
     #[serde(default)]
     pub basic_auth: bool,
+    #[serde(default)]
+    pub servers: Vec<String>,
+    #[serde(default)]
+    pub kind: String,
     /// None keeps the saved one (required for a new entry).
     pub password: Option<String>,
 }
@@ -236,6 +263,11 @@ fn apply(vault: &mut Vault, input: EntryInput) -> Result<String, String> {
     if input.id.is_none() && input.password.is_none() {
         return Err("type the password".into());
     }
+    if !KINDS.contains(&input.kind.as_str()) {
+        return Err(format!("unknown kind {:?}", input.kind));
+    }
+    let mut servers = input.servers;
+    servers.dedup();
     // One sudo password per server: taking a server moves it here.
     for e in vault.entries.iter_mut().filter(|e| e.id != id) {
         e.sudo_for.retain(|s| !input.sudo_for.contains(s));
@@ -253,6 +285,8 @@ fn apply(vault: &mut Vault, input: EntryInput) -> Result<String, String> {
             e.notes = notes;
             e.sudo_for = input.sudo_for;
             e.basic_auth = input.basic_auth;
+            e.servers = servers;
+            e.kind = input.kind;
             if let Some(p) = input.password {
                 e.password = p;
             }
@@ -265,6 +299,8 @@ fn apply(vault: &mut Vault, input: EntryInput) -> Result<String, String> {
             password: input.password.unwrap_or_default(),
             sudo_for: input.sudo_for,
             basic_auth: input.basic_auth,
+            servers,
+            kind: input.kind,
         }),
     }
     vault.entries.sort_by_key(|e| e.name.to_lowercase());
@@ -284,6 +320,8 @@ pub async fn vault_list() -> AppResult<Vec<EntryInfo>> {
                 notes: e.notes,
                 sudo_for: e.sudo_for,
                 basic_auth: e.basic_auth,
+                servers: e.servers,
+                kind: e.kind,
             })
             .collect())
     })
@@ -304,6 +342,33 @@ pub async fn vault_delete(id: String) -> AppResult<()> {
         })
     })
     .await
+}
+
+/// A server's notes ("" when none).
+#[tauri::command]
+pub async fn vault_server_notes(server_id: String) -> AppResult<String> {
+    blocking(move || Ok(read_all()?.server_notes.remove(&server_id).unwrap_or_default())).await
+}
+
+#[tauri::command]
+pub async fn vault_server_notes_save(server_id: String, notes: String) -> AppResult<()> {
+    blocking(move || update(|v| set_notes(v, &server_id, &notes))).await
+}
+
+fn set_notes(vault: &mut Vault, server_id: &str, notes: &str) -> Result<(), String> {
+    if server_id.trim().is_empty() {
+        return Err("no server".into());
+    }
+    if notes.len() > 64 * 1024 {
+        return Err("notes are limited to 64 KB".into());
+    }
+    let notes = notes.trim_end();
+    if notes.is_empty() {
+        vault.server_notes.remove(server_id);
+    } else {
+        vault.server_notes.insert(server_id.to_string(), notes.to_string());
+    }
+    Ok(())
 }
 
 /// Type a saved password (and ↵) into a terminal, after the user picked it
@@ -387,8 +452,36 @@ mod tests {
             notes: String::new(),
             sudo_for: sudo.iter().map(|s| s.to_string()).collect(),
             basic_auth: false,
+            servers: vec![],
+            kind: String::new(),
             password: pw.map(str::to_string),
         }
+    }
+
+    #[test]
+    fn logins_on_servers_and_notes() {
+        let mut v = Vault::default();
+        let id = apply(
+            &mut v,
+            EntryInput {
+                servers: vec!["stg".into(), "stg".into()],
+                kind: "db".into(),
+                ..input(None, "stg MySQL root", Some("pw"), &[])
+            },
+        )
+        .unwrap();
+        let e = v.entries.iter().find(|e| e.id == id).unwrap();
+        assert_eq!((e.servers.clone(), e.kind.as_str()), (vec!["stg".to_string()], "db"));
+        assert!(apply(&mut v, EntryInput { kind: "ftp".into(), ..input(None, "x", Some("p"), &[]) }).is_err());
+        set_notes(&mut v, "stg", "MySQL on 3307\n\n").unwrap();
+        assert_eq!(v.server_notes["stg"], "MySQL on 3307");
+        // Saved and read back.
+        let again = decode(serde_json::to_value(&v).unwrap());
+        assert_eq!(again.server_notes["stg"], "MySQL on 3307");
+        assert_eq!(again.entries, v.entries);
+        set_notes(&mut v, "stg", "  ").unwrap();
+        assert!(v.server_notes.is_empty(), "empty notes are removed");
+        assert!(set_notes(&mut v, "", "x").is_err());
     }
 
     #[test]

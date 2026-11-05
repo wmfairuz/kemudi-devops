@@ -2,10 +2,20 @@
 // terminal at its password prompt.
 import { create } from "zustand";
 
-import { errorMessage, vaultCopy, vaultDelete, vaultFill, vaultList, vaultSave, type VaultEntry, type VaultEntryInput } from "@/lib/ipc";
+import { errorMessage, vaultCopy, vaultDelete, vaultFill, vaultList, vaultSave, type VaultEntry, type VaultEntryInput, type VaultKind } from "@/lib/ipc";
 import type { PasswordPrompt } from "@/lib/terminalSession";
 import type { Tab } from "@/stores/tabs";
 import { toastError, useToasts } from "@/stores/toasts";
+import { useUi } from "@/stores/ui";
+
+/** What Passwords opens on: an entry, or a new one already linked to a
+ *  server (from its Logins). */
+export type VaultFocus = { id: string } | { server: string; kind: VaultKind } | null;
+
+export const KIND_LABEL: Record<VaultKind, string> = { os: "OS user", db: "Database", web: "Web login", other: "Other", "": "Other" };
+
+/** Its kind; one saved before kinds is guessed from what it's used for. */
+export const kindOf = (e: VaultEntry): Exclude<VaultKind, ""> => e.kind || (e.sudoFor.length ? "os" : e.basicAuth ? "web" : "other");
 
 interface VaultState {
   entries: VaultEntry[];
@@ -18,6 +28,9 @@ interface VaultState {
   load(): Promise<void>;
   save(input: VaultEntryInput): Promise<string | null>;
   remove(id: string): Promise<void>;
+  focus: VaultFocus;
+  /** Open Passwords on this entry, or on a new one for a server. */
+  show(focus: VaultFocus): void;
 }
 
 export const useVault = create<VaultState>((set, get) => ({
@@ -25,6 +38,11 @@ export const useVault = create<VaultState>((set, get) => ({
   loaded: false,
   error: null,
   picker: null,
+  focus: null,
+  show: (focus) => {
+    set({ focus });
+    useUi.getState().setOverlay("passwords");
+  },
   openPicker: (picker) => {
     set({ picker });
     if (!get().loaded) void get().load();
@@ -63,6 +81,13 @@ export function suggested(entries: VaultEntry[], tab: Tab | null, prompt: Passwo
   const score = (e: VaultEntry) => {
     let n = 0;
     if (tab?.serverId && e.sudoFor.includes(tab.serverId)) n += prompt?.kind === "sudo" ? 4 : 1;
+    // A login on this server; more so when its kind fits the prompt (mysql's
+    // "Enter password:" is an "other" prompt).
+    if (tab?.serverId && e.servers.includes(tab.serverId)) {
+      n += 2;
+      if ((prompt?.kind === "sudo" || prompt?.kind === "login") && e.kind === "os") n += 1;
+      if (prompt?.kind === "other" && e.kind === "db") n += 1;
+    }
     if (prompt?.kind === "login") {
       const hay = `${e.name} ${e.username} ${e.notes}`.toLowerCase();
       if (prompt.host && hay.includes(prompt.host.toLowerCase())) n += 3;

@@ -973,6 +973,9 @@ export const remoteFileRestore = (serverId: string, target: RemoteFileTarget, ba
 
 // ------------------------------------------------------------ saved passwords
 
+/** What a saved password logs in to ("" for one saved before kinds). */
+export type VaultKind = "" | "os" | "db" | "web" | "other";
+
 /** A saved password, without the password (that stays in Rust). */
 export interface VaultEntry {
   id: string;
@@ -983,6 +986,9 @@ export interface VaultEntry {
   sudoFor: string[];
   /** The default login for basic auth (server dashboard). */
   basicAuth: boolean;
+  /** Servers it's a login on (listed on their Overview). */
+  servers: string[];
+  kind: VaultKind;
 }
 
 export interface VaultEntryInput {
@@ -993,6 +999,8 @@ export interface VaultEntryInput {
   notes: string;
   sudoFor: string[];
   basicAuth: boolean;
+  servers: string[];
+  kind: VaultKind;
   /** null keeps the saved password (required for a new one). */
   password: string | null;
 }
@@ -1008,6 +1016,9 @@ export const vaultFill = (ptyId: number, id: string, serverId: string | null): P
   invoke("vault_fill", { ptyId, id, serverId });
 /** Copies it to the clipboard (cleared after the returned seconds). */
 export const vaultCopy = (id: string): Promise<number> => invoke("vault_copy", { id });
+/** A server's notes, encrypted with the passwords ("" when none). */
+export const vaultServerNotes = (serverId: string): Promise<string> => invoke("vault_server_notes", { serverId });
+export const vaultServerNotesSave = (serverId: string, notes: string): Promise<void> => invoke("vault_server_notes_save", { serverId, notes });
 
 // ------------------------------------------------------------ new nginx vhost
 

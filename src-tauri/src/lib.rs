@@ -324,6 +324,8 @@ pub fn run() {
             vault::vault_delete,
             vault::vault_fill,
             vault::vault_copy,
+            vault::vault_server_notes,
+            vault::vault_server_notes_save,
             snippets::snippet_save,
             snippets::snippet_delete,
             actions::commands::action_render,

@@ -1700,6 +1700,8 @@ async fn resolve_login(
                     notes: app.url.clone().unwrap_or_default(),
                     sudo_for: Vec::new(),
                     basic_auth: false,
+                    servers: vec![server.id.clone()],
+                    kind: "web".into(),
                     password: Some(password),
                 };
                 blocking(move || crate::vault::save_entry(entry)).await?;

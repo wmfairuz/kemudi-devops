@@ -24,6 +24,7 @@ import { openServer, type ServerSection } from "@/stores/tabs";
 import { loadShots, shotKey, takeShot, useShots } from "@/stores/shots";
 import { toastError } from "@/stores/toasts";
 import { agoS, useWatch } from "@/stores/watch";
+import { ServerLogins } from "./ServerLogins";
 
 /** Re-render every half minute, so "4 min ago" moves on. */
 function useClock() {
@@ -825,6 +826,8 @@ export function ServerOverview({ server }: { server: Server }) {
           <div className="flex h-10 items-center border-b border-divider px-3.5 text-[11.5px] font-semibold tracking-wide text-subtle-foreground uppercase">Needs attention</div>
           <AttentionList servers={[server]} showServer={false} empty={w ? "Nothing: all checks are fine." : "Not checked yet. Check now reads it (read-only)."} />
         </section>
+
+        <ServerLogins server={server} />
 
         {server.asg && (
           <div className="flex flex-wrap gap-2">

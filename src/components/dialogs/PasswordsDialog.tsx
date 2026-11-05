@@ -5,12 +5,12 @@ import { Btn } from "@/components/kit/Btn";
 import { Hint } from "@/components/kit/Kbd";
 import { Modal, ModalFooter, ModalHeader } from "@/components/kit/Modal";
 import { Field, TextInput } from "@/components/manage/fields";
-import type { Server, VaultEntry } from "@/lib/ipc";
+import type { Server, VaultEntry, VaultKind } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { useConfig } from "@/stores/config";
 import { askConfirm } from "@/stores/confirm";
 import { useUi } from "@/stores/ui";
-import { copyPassword, useVault } from "@/stores/vault";
+import { copyPassword, KIND_LABEL, kindOf, useVault } from "@/stores/vault";
 
 const NO_SERVERS: Server[] = [];
 
@@ -29,10 +29,15 @@ export function PasswordsDialog() {
   const { entries, loaded, error } = useVault();
   const [selected, setSelected] = useState<string | "new" | null>(null);
   const [filter, setFilter] = useState("");
+  // Opened from a server's Logins: that entry, or a new one for the server.
+  const focus = useVault((s) => s.focus);
+  const preset = focus && "server" in focus ? focus : null;
   useEffect(() => {
     if (!open) return;
     void useVault.getState().load();
     setFilter("");
+    const f = useVault.getState().focus;
+    if (f) setSelected("id" in f ? f.id : "new");
   }, [open]);
   // Nothing saved yet: start with the form.
   useEffect(() => {
@@ -48,7 +53,10 @@ export function PasswordsDialog() {
       open={open}
       onOpenChange={(o) => {
         setOverlay(o ? "passwords" : "none");
-        if (!o) setSelected(null);
+        if (!o) {
+          setSelected(null);
+          useVault.setState({ focus: null });
+        }
       }}
       title="Passwords"
       width={860}
@@ -70,7 +78,14 @@ export function PasswordsDialog() {
               spellCheck={false}
               className="h-7 min-w-0 flex-1 rounded-md border border-control-border bg-background px-2 text-[12px] outline-none placeholder:text-faint-foreground focus:border-primary/60"
             />
-            <Btn size="sm" variant="outline" onClick={() => setSelected("new")}>
+            <Btn
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                useVault.setState({ focus: null });
+                setSelected("new");
+              }}
+            >
               <Plus className="size-3.5" /> New
             </Btn>
           </div>
@@ -88,9 +103,9 @@ export function PasswordsDialog() {
                 <KeyRound className="size-3.5 flex-none text-subtle-foreground" />
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate text-[12.5px] text-foreground">{e.name}</span>
-                  {(e.username || e.sudoFor.length > 0 || e.basicAuth) && (
+                  {(e.username || e.servers.length > 0 || e.sudoFor.length > 0 || e.basicAuth) && (
                     <span className="truncate text-[11px] text-subtle-foreground">
-                      {[e.username, e.sudoFor.length ? `sudo on ${e.sudoFor.join(", ")}` : "", e.basicAuth ? "basic auth default" : ""].filter(Boolean).join(" · ")}
+                      {[e.username, e.servers.length ? `${KIND_LABEL[kindOf(e)]} on ${e.servers.join(", ")}` : "", e.sudoFor.length ? `sudo on ${e.sudoFor.join(", ")}` : "", e.basicAuth ? "basic auth default" : ""].filter(Boolean).join(" · ")}
                     </span>
                   )}
                 </span>
@@ -101,8 +116,9 @@ export function PasswordsDialog() {
         </div>
         {selected !== null && (
           <EntryForm
-            key={selected}
+            key={selected === "new" && preset ? `new:${preset.server}:${preset.kind}` : selected}
             entry={current}
+            preset={selected === "new" ? preset : null}
             onSaved={(id) => setSelected(id)}
             onDeleted={() => setSelected(entries.find((e) => e.id !== selected)?.id ?? "new")}
           />
@@ -110,7 +126,7 @@ export function PasswordsDialog() {
       </div>
       <ModalFooter>
         <span className="flex-1" />
-        <Btn variant="outline" className="pr-2.5" onClick={() => (setOverlay("none"), setSelected(null))}>
+        <Btn variant="outline" className="pr-2.5" onClick={() => (setOverlay("none"), setSelected(null), useVault.setState({ focus: null }))}>
           Done <Hint>esc</Hint>
         </Btn>
       </ModalFooter>
@@ -118,9 +134,51 @@ export function PasswordsDialog() {
   );
 }
 
-function EntryForm({ entry, onSaved, onDeleted }: { entry: VaultEntry | null; onSaved: (id: string) => void; onDeleted: () => void }) {
+const KINDS: VaultKind[] = ["os", "db", "web", "other"];
+const NAME_HINT: Record<VaultKind, string> = { os: "ubuntu", db: "MySQL root", web: "Admin panel", other: "Acme root", "": "Acme root" };
+const USER_HINT: Record<VaultKind, string> = { os: "ubuntu", db: "root", web: "admin@example.com", other: "root", "": "root" };
+
+/** Server chips to tick. */
+function ServerChips({ servers, on, set }: { servers: Server[]; on: string[]; set: (ids: string[]) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {servers.map((s) => {
+        const ticked = on.includes(s.id);
+        return (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => set(ticked ? on.filter((x) => x !== s.id) : [...on, s.id])}
+            className={cn(
+              "h-6 cursor-pointer rounded-md border px-2 text-[11.5px]",
+              ticked ? "border-primary bg-primary/10 text-foreground" : "border-control-border text-muted-foreground hover:bg-hover-strong",
+            )}
+          >
+            {ticked ? "✓ " : ""}
+            {s.name}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function EntryForm({
+  entry,
+  preset,
+  onSaved,
+  onDeleted,
+}: {
+  entry: VaultEntry | null;
+  preset: { server: string; kind: VaultKind } | null;
+  onSaved: (id: string) => void;
+  onDeleted: () => void;
+}) {
   const servers = useConfig((s) => s.snapshot?.config?.servers ?? NO_SERVERS);
-  const [name, setName] = useState(entry?.name ?? "");
+  const presetName = preset ? servers.find((s) => s.id === preset.server)?.name ?? preset.server : "";
+  const [kind, setKind] = useState<VaultKind>(entry ? kindOf(entry) : preset?.kind || "other");
+  const [linked, setLinked] = useState<string[]>(entry?.servers ?? (preset ? [preset.server] : []));
+  const [name, setName] = useState(entry?.name ?? (preset ? `${presetName} · ` : ""));
   const [username, setUsername] = useState(entry?.username ?? "");
   const [notes, setNotes] = useState(entry?.notes ?? "");
   const [sudoFor, setSudoFor] = useState<string[]>(entry?.sudoFor ?? []);
@@ -136,13 +194,15 @@ function EntryForm({ entry, onSaved, onDeleted }: { entry: VaultEntry | null; on
     username !== entry.username ||
     notes !== entry.notes ||
     sudoFor.join() !== entry.sudoFor.join() ||
+    linked.join() !== entry.servers.join() ||
+    kind !== kindOf(entry) ||
     basicAuth !== entry.basicAuth;
   const canSave = name.trim() !== "" && (!isNew || password !== "") && dirty && !busy;
 
   const save = async () => {
     if (!canSave) return;
     setBusy(true);
-    const id = await useVault.getState().save({ id: entry?.id ?? null, name, username, notes, sudoFor, basicAuth, password: password || null });
+    const id = await useVault.getState().save({ id: entry?.id ?? null, name, username, notes, sudoFor, basicAuth, servers: linked, kind, password: password || null });
     setBusy(false);
     if (id) {
       setPassword("");
@@ -158,12 +218,40 @@ function EntryForm({ entry, onSaved, onDeleted }: { entry: VaultEntry | null; on
         void save();
       }}
     >
+      <Field label="Kind">
+        {() => (
+          <div className="flex flex-wrap gap-1.5">
+            {KINDS.map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setKind(k)}
+                className={cn(
+                  "h-6 cursor-pointer rounded-md border px-2 text-[11.5px]",
+                  kind === k ? "border-primary bg-primary/10 text-foreground" : "border-control-border text-muted-foreground hover:bg-hover-strong",
+                )}
+              >
+                {KIND_LABEL[k]}
+              </button>
+            ))}
+          </div>
+        )}
+      </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Name">
-          {(id) => <TextInput id={id} autoFocus={isNew} value={name} placeholder="Acme root" className="font-sans" onChange={(e) => setName(e.target.value)} />}
+          {(id) => (
+            <TextInput
+              id={id}
+              autoFocus={isNew}
+              value={name}
+              placeholder={preset ? `${presetName} · ${NAME_HINT[kind]}` : NAME_HINT[kind]}
+              className="font-sans"
+              onChange={(e) => setName(e.target.value)}
+            />
+          )}
         </Field>
         <Field label="Username" hint="Optional; helps suggest it at an ssh login">
-          {(id) => <TextInput id={id} value={username} placeholder="root" onChange={(e) => setUsername(e.target.value)} />}
+          {(id) => <TextInput id={id} value={username} placeholder={USER_HINT[kind]} onChange={(e) => setUsername(e.target.value)} />}
         </Field>
       </div>
       <Field label={isNew ? "Password" : "New password"} hint={isNew ? undefined : "Leave empty to keep the saved one (it's never shown)"}>
@@ -195,34 +283,21 @@ function EntryForm({ entry, onSaved, onDeleted }: { entry: VaultEntry | null; on
           </div>
         )}
       </Field>
-      <Field label="sudo password on" hint="Used when saving root-owned files (vhosts, Supervisor) on these servers, and suggested at their sudo prompts">
-        {() => (
-          <div className="flex flex-wrap gap-1.5">
-            {servers.map((s) => {
-              const on = sudoFor.includes(s.id);
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => setSudoFor(on ? sudoFor.filter((x) => x !== s.id) : [...sudoFor, s.id])}
-                  className={cn(
-                    "h-6 cursor-pointer rounded-md border px-2 text-[11.5px]",
-                    on ? "border-primary bg-primary/10 text-foreground" : "border-control-border text-muted-foreground hover:bg-hover-strong",
-                  )}
-                >
-                  {on ? "✓ " : ""}
-                  {s.name}
-                </button>
-              );
-            })}
-          </div>
-        )}
+      <Field label="A login on" hint="Listed under Logins on these servers' Overview, and suggested first at password prompts in their tabs">
+        {() => <ServerChips servers={servers} on={linked} set={setLinked} />}
       </Field>
+      {(kind === "os" || sudoFor.length > 0) && (
+        <Field label="sudo password on" hint="Used when saving root-owned files (vhosts, Supervisor) on these servers, and suggested at their sudo prompts">
+          {() => <ServerChips servers={servers} on={sudoFor} set={setSudoFor} />}
+        </Field>
+      )}
+      {(kind === "web" || basicAuth) && (
       <label className="flex w-fit cursor-pointer items-center gap-2 text-[12px] text-foreground">
         <input type="checkbox" checked={basicAuth} onChange={(e) => setBasicAuth(e.target.checked)} className="accent-primary" />
         Default login for basic auth
         <span className="text-[11px] text-subtle-foreground">(server dashboard; needs a username)</span>
       </label>
+      )}
       <Field label="Notes">
         {(id) => (
           <textarea

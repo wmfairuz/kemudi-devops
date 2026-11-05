@@ -678,6 +678,8 @@ function DefaultLoginDialog({ onClose }: { onClose: (saved: boolean) => void }) 
       notes: current?.notes ?? "",
       sudoFor: current?.sudoFor ?? [],
       basicAuth: true,
+      servers: current?.servers ?? [],
+      kind: current?.kind ?? "web",
       password: password || null,
     });
     setBusy(false);

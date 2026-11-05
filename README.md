@@ -788,8 +788,18 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   value never reaches the web view. An entry can be the **sudo password on**
   some servers: it's suggested first at their sudo prompts and used (via
   sudo's askpass, on ssh's stdin, never a command line) when saving
-  root-owned files there. Encrypted in `vault.bin` with the one Keychain
-  key; History records fills by name only. `KEMUDI_KEYCHAIN_SERVICE=…` gives
+  root-owned files there. Each entry has a **kind** (OS user, Database, Web
+  login, Other) and can be **a login on** some servers: it's suggested first
+  at password prompts in their tabs (a Database one at mysql's `Enter
+  password:`). Encrypted in `vault.bin` with the one Keychain
+  key; History records fills by name only.
+- **Logins** (a server's Overview): how ssh reaches it (user@address · port ·
+  jump · key, from ~/.ssh/config; **Edit** opens its Settings), the saved
+  passwords that are logins on it or its sudo password (username, click to
+  copy; **Password** copies it, cleared after 45 s; ✎ edits it in Passwords),
+  **+ OS user / + Database / + Web login / + Other** to save a new one already
+  linked to the server, and **Notes** for the server (free text, ⌘S saves),
+  encrypted in `vault.bin` with the passwords. Never written to the server. `KEMUDI_KEYCHAIN_SERVICE=…` gives
   a test copy its own Keychain item.
 - **Server monitor**: right-click a server → **Monitor** (or the Monitor
   button on its page / Home) opens a monitor tab: CPU % with a 5-minute
