@@ -4,7 +4,7 @@ import { CAPSULE } from "@/components/kit/capsule";
 import { cn } from "@/lib/utils";
 
 /** A filter chip with its count: on (filled) or off; none to show, it's dimmed. */
-export function FilterChip({ label, on, n, onClick, title }: { label: string; on: boolean; n: number; onClick: () => void; title?: string }) {
+export function FilterChip({ label, on, n, onClick, title, sm }: { label: string; on: boolean; n: number; onClick: () => void; title?: string; sm?: boolean }) {
   return (
     <button
       type="button"
@@ -12,19 +12,20 @@ export function FilterChip({ label, on, n, onClick, title }: { label: string; on
       onClick={onClick}
       disabled={!on && n === 0}
       className={cn(
-        "flex h-[26px] flex-none cursor-pointer items-center gap-1.5 rounded-full px-2.5 text-[12px] whitespace-nowrap transition-colors active:scale-[0.97] disabled:cursor-default disabled:opacity-40",
+        "flex flex-none cursor-pointer items-center rounded-full whitespace-nowrap transition-colors active:scale-[0.97] disabled:cursor-default disabled:opacity-40",
+        sm ? "h-[22px] gap-1 px-2 text-[11.5px]" : "h-[26px] gap-1.5 px-2.5 text-[12px]",
         on ? "bg-primary font-medium text-primary-foreground" : "text-foreground/80 enabled:hover:bg-hover-strong enabled:hover:text-foreground",
       )}
     >
       {label}
-      <span className={cn("font-mono text-[10.5px]", on ? "text-primary-foreground/80" : "text-faint-foreground")}>{n}</span>
+      <span className={cn("font-mono", sm ? "text-[10px]" : "text-[10.5px]", on ? "text-primary-foreground/80" : "text-faint-foreground")}>{n}</span>
     </button>
   );
 }
 
 /** Chips that belong together, in one capsule. */
-export function ChipGroup({ children }: { children: React.ReactNode }) {
-  return <div className={cn("flex h-[32px] flex-none items-center gap-0.5 px-[3px]", CAPSULE)}>{children}</div>;
+export function ChipGroup({ children, sm }: { children: React.ReactNode; sm?: boolean }) {
+  return <div className={cn("flex flex-none items-center gap-0.5 px-[3px]", sm ? "h-[28px]" : "h-[32px]", CAPSULE)}>{children}</div>;
 }
 
 /** A filter set from somewhere else (e.g. a number tile): a chip that only takes it away. */

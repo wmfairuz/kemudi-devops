@@ -104,6 +104,11 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
 - **Open / closed is remembered**: servers and groups stay as you left them,
   across restarts. Bringing an app's tab to the front no longer reopens its
   server; a closed server whose app is in front is highlighted instead.
+- **Sidebar filters**: under the filter box, chips with counts for each
+  environment, Urgent / Attention (as in Home ▸ Needs attention) and
+  Unreachable narrow the server list ("Servers 3 of 19", with Clear); they
+  combine with the words typed in the box, open closed groups while on,
+  and are cleared by jumping to an app from ⌘K.
 - **Home tab** (pinned first; the start screen), the workspace: New
   terminal, SSH to host, Add server; then
   - **Find and filter** (with more than one server): a search box (a
@@ -493,7 +498,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   confirmation. Only Kemudi's record moves, as written (comments, its own
   actions and settings); nothing on either server changes. If the other
   server already has an app with that id, it becomes `<id>-2`. Dragging is
-  off while the sidebar filter is in use.
+  off while the sidebar filter or its chips are in use.
 - **Discover apps** (a server tab ▸ Apps ▸ *Discover apps…*, or
   right-click a server): looks around the server (read-only) for Laravel
   apps: an `artisan` under /var/www, /opt, /srv, /home, following links

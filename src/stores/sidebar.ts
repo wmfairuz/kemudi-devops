@@ -2,6 +2,8 @@
 // Persisted per machine so the tree looks the same after a restart.
 import { create } from "zustand";
 
+import { NO_FACETS, type ServerFacets } from "@/lib/serverFacets";
+
 const KEY = "kemudi.sidebar";
 
 interface Persisted {
@@ -25,6 +27,9 @@ function load(): Persisted {
 interface SidebarState extends Persisted {
   filter: string;
   setFilter(filter: string): void;
+  /** Environment / attention / unreachable chips under the filter box. */
+  facets: ServerFacets;
+  setFacets(f: Partial<ServerFacets>): void;
   toggle(serverId: string): void;
   toggleGroup(group: string): void;
   /** Open or close all of these servers at once. */
@@ -51,6 +56,8 @@ export const useSidebar = create<SidebarState>((set, get) => {
     ...load(),
     filter: "",
     setFilter: (filter) => set({ filter }),
+    facets: NO_FACETS,
+    setFacets: (f) => set((s) => ({ facets: { ...s.facets, ...f } })),
     toggle(serverId) {
       set((s) => ({ expanded: { ...s.expanded, [serverId]: !s.expanded[serverId] } }));
       save();
@@ -64,7 +71,7 @@ export const useSidebar = create<SidebarState>((set, get) => {
       save();
     },
     reveal(serverId, appId) {
-      set((s) => ({ expanded: { ...s.expanded, [serverId]: true }, selected: { serverId, appId }, filter: "" }));
+      set((s) => ({ expanded: { ...s.expanded, [serverId]: true }, selected: { serverId, appId }, filter: "", facets: NO_FACETS }));
       save();
       requestAnimationFrame(() =>
         document.getElementById(`app-${serverId}-${appId}`)?.scrollIntoView({ block: "nearest" }),

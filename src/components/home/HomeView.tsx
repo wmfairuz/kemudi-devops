@@ -9,7 +9,7 @@ import { LogoMark } from "@/components/kit/Logo";
 import { ColorDot, openTabConfig, useTabConfigs } from "@/components/tabconfigs/TabConfigs";
 import { AttentionList, FleetGrid } from "@/components/watch/Watch";
 import { canRunAgain, runAgain } from "@/lib/actions";
-import { auditList, errorMessage, sshConfigOpen, tabConfigsList, type AuditRun, type Env, type Server, type TabConfigEntry } from "@/lib/ipc";
+import { auditList, errorMessage, sshConfigOpen, tabConfigsList, type AuditRun, type Server, type TabConfigEntry } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { openDetails } from "@/stores/manage";
 import { useCurrentTeam, useTeamServers } from "@/stores/team";
@@ -17,10 +17,10 @@ import { openLocalShell, useTabs } from "@/stores/tabs";
 import { toastError } from "@/stores/toasts";
 import { useUi } from "@/stores/ui";
 import { useConfig } from "@/stores/config";
-import { useStatus } from "@/stores/status";
 import { useWatch } from "@/stores/watch";
 import { useWorkflows } from "@/stores/workflows";
 import type { Workflow } from "@/lib/ipc";
+import { ENV_LABEL, envsOf, facetsOn, NO_FACETS, useFacetTest, type ServerFacets } from "@/lib/serverFacets";
 
 function ago(ms: number): string {
   const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
@@ -168,9 +168,8 @@ export function HomeView() {
 
 // ------------------------------------------------------------ filter
 
-type HomeFilter = { q: string; env: Env | null; attention: "urgent" | "any" | null; down: boolean };
-const NO_FILTER: HomeFilter = { q: "", env: null, attention: null, down: false };
-const ENV_LABEL: Record<Env, string> = { prod: "Prod", staging: "Staging", qa: "QA", dev: "Dev" };
+type HomeFilter = ServerFacets & { q: string };
+const NO_FILTER: HomeFilter = { q: "", ...NO_FACETS };
 /** Kept while the app runs (Home comes and goes with tabs). */
 const useHomeFilter = create<HomeFilter>(() => NO_FILTER);
 
@@ -180,8 +179,8 @@ function HomeFilterBar({ servers, test }: { servers: Server[]; test: (s: Server,
   const f = useHomeFilter();
   const set = (g: Partial<HomeFilter>) => useHomeFilter.setState(g);
   const count = (g: Partial<HomeFilter>) => servers.filter((s) => test(s, { ...NO_FILTER, ...g })).length;
-  const envs = (["prod", "staging", "qa", "dev"] as Env[]).filter((e) => servers.some((s) => s.env === e));
-  const any = f.q !== "" || !!f.env || !!f.attention || f.down;
+  const envs = envsOf(servers);
+  const any = f.q !== "" || facetsOn(f);
   return (
     <div className="flex flex-wrap items-center gap-2">
       <FilterSearch value={f.q} onChange={(q) => set({ q })} placeholder="Find a server or app" />
@@ -213,14 +212,11 @@ function HomeFilterBar({ servers, test }: { servers: Server[]; test: (s: Server,
 function Workspace({ servers: team, teamName }: { servers: Server[]; teamName: string | null }) {
   const snap = useWatch((x) => x.snapshot);
   const settings = useWatch((x) => x.settings);
-  const status = useStatus((x) => x.byServer);
   const f = useHomeFilter();
   const [busy, setBusy] = useState(false);
-  const live = (snap?.items ?? []).filter((i) => !i.snoozedUntil && i.severity !== "info");
+  const facets = useFacetTest();
   const test = (s: Server, g: HomeFilter) => {
-    if (g.env && s.env !== g.env) return false;
-    if (g.down && status[s.id]?.state !== "down") return false;
-    if (g.attention && !live.some((i) => i.serverId === s.id && (g.attention === "any" || i.severity === "urgent"))) return false;
+    if (!facets(s, g)) return false;
     return wordsMatch(g.q, [s.name, s.id, s.host, s.group ?? "", ...s.apps.flatMap((a) => [a.name, a.id, a.url ?? ""])].join(" "));
   };
   const servers = team.filter((s) => test(s, f));

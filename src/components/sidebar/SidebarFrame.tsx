@@ -11,11 +11,13 @@ interface Props {
   footer: React.ReactNode;
   /** Under the name, above the filter (the team switcher). */
   top?: React.ReactNode;
+  /** Under the filter box (the filter chips). */
+  chips?: React.ReactNode;
   children: React.ReactNode;
 }
 
 /** Resizable sidebar chrome: name and filter box on top, footer at the bottom. */
-export function SidebarFrame({ filter, onFilter, filterRef, footer, top, children }: Props) {
+export function SidebarFrame({ filter, onFilter, filterRef, footer, top, chips, children }: Props) {
   const width = useUi((s) => s.sidebarWidth);
   const setWidth = useUi((s) => s.setSidebarWidth);
   const drag = useRef<{ x: number; w: number } | null>(null);
@@ -71,6 +73,7 @@ export function SidebarFrame({ filter, onFilter, filterRef, footer, top, childre
           <Kbd className="border-control-border">/</Kbd>
         </label>
       </div>
+      {chips}
       {children}
       <div className="flex flex-none flex-col gap-px border-t border-divider p-1.5">{footer}</div>
     </aside>

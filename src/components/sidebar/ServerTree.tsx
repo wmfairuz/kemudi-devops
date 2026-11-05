@@ -20,6 +20,7 @@ import { useSidebar } from "@/stores/sidebar";
 import { useStatus } from "@/stores/status";
 import { useTabs } from "@/stores/tabs";
 import { openServerShell, whereOf } from "@/lib/fleet";
+import { facetsOn, NO_FACETS, useFacetTest } from "@/lib/serverFacets";
 
 interface Props {
   servers: Server[];
@@ -54,7 +55,8 @@ let justDropped = false;
  *  list, or onto another server). A plain click still opens it. */
 function startDrag(e: React.PointerEvent, server: Server, app?: App) {
   const kind = app ? "app" : "server";
-  if (e.button !== 0 || useSidebar.getState().filter.trim()) return;
+  const sb = useSidebar.getState();
+  if (e.button !== 0 || sb.filter.trim() || facetsOn(sb.facets)) return;
   const start = { x: e.clientX, y: e.clientY };
   let dragging = false;
   const move = (ev: PointerEvent) => {
@@ -192,8 +194,12 @@ function DragGhost() {
 }
 
 /** Servers → apps → actions (design frame 1a sidebar). */
-export function ServerTree({ servers, stale }: Props) {
+export function ServerTree({ servers: team, stale }: Props) {
   const filter = useSidebar((s) => s.filter.trim().toLowerCase());
+  const facets = useSidebar((s) => s.facets);
+  const test = useFacetTest();
+  const narrowed = facetsOn(facets);
+  const servers = narrowed ? team.filter((s) => test(s, facets)) : team;
   const appCount = servers.reduce((n, s) => n + s.apps.length, 0);
   // Collapse all while any server with apps is open, else expand all.
   const expanded = useSidebar((s) => s.expanded);
@@ -228,8 +234,13 @@ export function ServerTree({ servers, stale }: Props) {
       <div className="flex items-center gap-2 px-3.5 pt-3 pb-2 text-[11px] font-medium text-subtle-foreground">
         <span>Servers</span>
         <span className="font-mono text-[10.5px] text-faint-foreground">
-          {servers.length} · {appCount} app{appCount === 1 ? "" : "s"}
+          {narrowed ? `${servers.length} of ${team.length}` : servers.length} · {appCount} app{appCount === 1 ? "" : "s"}
         </span>
+        {narrowed && (
+          <button className="-my-1 cursor-pointer rounded-full px-1.5 py-0.5 text-[11px] text-primary hover:bg-primary/10" onClick={() => useSidebar.getState().setFacets(NO_FACETS)}>
+            Clear
+          </button>
+        )}
         <span className="flex-1" />
         {stale && <StaleBadge />}
         {withApps.length > 0 && (
@@ -246,7 +257,7 @@ export function ServerTree({ servers, stale }: Props) {
       </div>
       <div role="tree" className={cn("min-h-0 flex-1 overflow-y-auto pb-2", stale && "opacity-72")}>
         {sections.map((sec) => {
-          const closed = sec.group !== null && !!closedGroups[sec.group] && !filter;
+          const closed = sec.group !== null && !!closedGroups[sec.group] && !filter && !narrowed;
           return (
             <div key={sec.group ?? ""}>
               {sec.group !== null && <GroupHeader name={sec.group} count={sec.rows.length} closed={closed} ids={sec.rows.map((r) => r.server.id)} />}
@@ -265,7 +276,17 @@ export function ServerTree({ servers, stale }: Props) {
         })}
         <DragGhost />
         {filter && visible.length === 0 && (
-          <div className="px-3 py-4 text-[12px] text-subtle-foreground">No servers or apps match “{filter}”.</div>
+          <div className="px-3 py-4 text-[12px] text-subtle-foreground">
+            No {narrowed ? "servers shown or their apps" : "servers or apps"} match “{filter}”.
+          </div>
+        )}
+        {narrowed && !filter && servers.length === 0 && (
+          <div className="px-3.5 py-4 text-[12px] text-subtle-foreground">
+            No servers match these filters.{" "}
+            <button className="cursor-pointer text-primary hover:underline" onClick={() => useSidebar.getState().setFacets(NO_FACETS)}>
+              Clear them
+            </button>
+          </div>
         )}
       </div>
     </>

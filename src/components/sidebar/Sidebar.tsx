@@ -8,6 +8,7 @@ import { ConfigBanner, ConfigWarnings } from "./ConfigBanner";
 import { FooterRow, SidebarFrame } from "./SidebarFrame";
 import { SidebarEmpty } from "./SidebarEmpty";
 import { ServerTree } from "./ServerTree";
+import { SidebarFilters } from "./SidebarFilters";
 import { TeamSwitcher } from "./TeamSwitcher";
 
 interface Props {
@@ -29,6 +30,7 @@ export function Sidebar({ onHistory, filterRef }: Props) {
       onFilter={setFilter}
       filterRef={filterRef ?? local}
       top={<TeamSwitcher />}
+      chips={<SidebarFilters servers={servers} />}
       footer={
         <>
           <FooterRow onClick={onHistory}>
