@@ -60,7 +60,7 @@ export function ServerTabView({ tab, visible }: { tab: Tab; visible: boolean }) 
 
   return (
     <div className="absolute inset-0 flex flex-col">
-      <div className="light-ui flex h-12 flex-none items-center gap-0.5 overflow-x-auto border-b border-divider bg-background px-3 text-foreground">
+      <div className="light-ui flex h-11 flex-none items-center gap-0.5 overflow-x-auto border-b border-divider bg-background px-3 text-foreground">
         {SERVER_SECTIONS.filter((x) => !server.asg || (x.id !== "health" && x.id !== "tune" && x.id !== "security")).map((x) => (
           <button
             key={x.id}

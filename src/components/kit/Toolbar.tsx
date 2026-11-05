@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 type Size = "md" | "sm";
 
 /** One button in a toolbar capsule: round with just an icon, or a pill
- *  with an icon and a label. `sm` fits a 48px section bar. */
+ *  with an icon and a label. `sm` fits a 44px section bar. */
 export function Tool({
   title,
   onClick,
