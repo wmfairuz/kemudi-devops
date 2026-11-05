@@ -1,11 +1,9 @@
-import { ArrowDown, ArrowUp, Bookmark, ChevronLeft, ChevronRight, Copy, CornerDownLeft, Eye, History, KeyRound, Lock, Pencil, Play, Plus, RotateCw, SquareCode, Table2, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Bookmark, Download, ListFilter, ChevronLeft, ChevronRight, Copy, CornerDownLeft, Eye, History, KeyRound, Lock, Pencil, Play, Plus, RotateCw, SquareCode, Table2, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { Btn } from "@/components/kit/Btn";
 import { CodeEditor } from "@/components/kit/CodeEditor";
-import { EnvTag } from "@/components/kit/EnvTag";
-import { Hint } from "@/components/kit/Kbd";
-import { Modal, ModalFooter, ModalHeader } from "@/components/kit/Modal";
+import { bytes, ChangeConfirm, ExportDialog, InsertRowDialog, lit } from "./DbDialogs";
+import { sqlCompletions } from "./sqlComplete";
 import { wordsMatch } from "@/components/kit/Filters";
 import { Spinner } from "@/components/kit/Spinner";
 import { Group, Tool } from "@/components/kit/Toolbar";
@@ -17,13 +15,18 @@ import {
   dbQuerySave,
   dbQuerySavedEdit,
   dbTables,
+  dbDeleteRow,
+  dbInsertRow,
+  dbSchema,
   dbUpdate,
+  dbWrite,
   errorMessage,
   type DbFilter,
   type DbOp,
   type DbQueries,
   type DbRequest,
   type DbResult,
+  type DbSchema,
   type DbTables,
   type DbUpdate,
   type Env,
@@ -57,11 +60,6 @@ function compact(n: number | null): string {
   return `${(n / 1e6).toFixed(n < 1e7 ? 1 : 0)}M`;
 }
 
-function bytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1048576) return `${Math.round(n / 1024)} KB`;
-  return `${(n / 1048576).toFixed(1)} MB`;
-}
 
 /** The statement the cursor is in (`;` outside quotes and comments ends
  *  one), or the selection when there is one. */
@@ -131,9 +129,11 @@ export function DatabaseView({ tab, visible }: { tab: Tab; visible: boolean }) {
   const shown = (tables?.tables ?? []).filter((t) => wordsMatch(find, t.name));
   const info = tables?.tables.find((t) => t.name === table) ?? null;
   const [toQuery, setToQuery] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   return (
     <div className="light-ui absolute inset-0 flex bg-background text-foreground">
+      {exporting && tables && <ExportDialog serverId={serverId} appId={appId} tables={tables} onClose={() => setExporting(false)} />}
       <aside className="flex w-[250px] flex-none flex-col border-r border-divider bg-sidebar">
         <div className="flex h-11 flex-none items-center gap-2 border-b border-divider pr-1.5 pl-3">
           <span className="flex min-w-0 flex-1 flex-col leading-tight">
@@ -142,6 +142,9 @@ export function DatabaseView({ tab, visible }: { tab: Tab; visible: boolean }) {
               {tables ? `${tables.driver} ${tables.version.split("-")[0]} · ${tables.tables.length} tables` : tablesBusy ? "connecting…" : ""}
             </span>
           </span>
+          <Tool size="sm" title="Export as SQL (a dump: structure, data or both)" onClick={() => setExporting(true)} disabled={!tables}>
+            <Download className="size-[14px]" strokeWidth={1.7} />
+          </Tool>
           <Tool size="sm" title="Read the table list again" onClick={() => void loadTables()} disabled={tablesBusy}>
             <RotateCw className={cn("size-[14px]", tablesBusy && "animate-spin")} strokeWidth={1.7} />
           </Tool>
@@ -214,7 +217,7 @@ export function DatabaseView({ tab, visible }: { tab: Tab; visible: boolean }) {
           )}
         </div>
         <div className="absolute inset-0" hidden={mode !== "query"}>
-          <Query serverId={serverId} appId={appId} insert={toQuery} onInserted={() => setToQuery(null)} />
+          <Query serverId={serverId} appId={appId} visible={visible && mode === "query"} insert={toQuery} onInserted={() => setToQuery(null)} />
         </div>
       </div>
     </div>
@@ -250,60 +253,7 @@ function EditHint() {
 
 /** The UPDATE as shown before it runs (and as History records it). */
 function updateSql(u: DbUpdate): string {
-  const lit = (v: string | null) => (v === null ? "NULL" : `'${(v.length > 200 ? `${v.slice(0, 200)}…` : v).replace(/'/g, "''")}'`);
   return `UPDATE ${u.table} SET ${u.column} = ${lit(u.value)} WHERE ${u.key.map((k) => `${k.column} = ${lit(k.value)}`).join(" AND ")}`;
-}
-
-/** Confirm a cell change: the UPDATE, and on production the server's
- *  name typed. */
-function EditConfirm({ sql, env, word, busy, error, onCancel, onOk }: { sql: string; env: Env; word: string; busy: boolean; error: string | null; onCancel: () => void; onOk: () => void }) {
-  const prod = env === "prod";
-  const [text, setText] = useState("");
-  const ok = !busy && (!prod || text === word);
-  return (
-    <Modal open onOpenChange={(o) => !o && !busy && onCancel()} title="Change this cell?" width={560}>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (ok) onOk();
-        }}
-      >
-        <ModalHeader>
-          <span className="flex items-center gap-2 text-[15px] font-semibold">
-            Change this cell? <EnvTag env={env} />
-          </span>
-        </ModalHeader>
-        <div className="flex flex-col gap-3 px-5 pb-4 text-[12.5px] leading-[18px] text-muted-foreground">
-          <pre className="max-h-[40vh] overflow-auto rounded-lg bg-muted px-3 py-2 font-mono text-[12px] break-words whitespace-pre-wrap text-foreground">{sql}</pre>
-          <span>Only this row changes, and only if the cell still holds what was read; otherwise nothing changes. Recorded in History.</span>
-          {prod && (
-            <label className="flex flex-col gap-1.5">
-              <span className="rounded-lg bg-env-prod/8 px-3 py-2 text-env-prod-fg">
-                This is production. Type <span className="font-mono font-semibold">{word}</span> to change it.
-              </span>
-              <input
-                autoFocus
-                value={text}
-                spellCheck={false}
-                onChange={(e) => setText(e.target.value)}
-                className="h-8 rounded-md border border-control-border bg-background px-2 font-mono text-[12.5px] outline-none focus:border-primary/60"
-              />
-            </label>
-          )}
-          {error && <div className="rounded-lg bg-env-prod/8 px-3 py-2 break-words text-env-prod-fg">{error}</div>}
-        </div>
-        <ModalFooter>
-          <span className="flex-1" />
-          <Btn variant="outline" className="pr-2.5" onClick={onCancel} disabled={busy}>
-            Cancel <Hint>esc</Hint>
-          </Btn>
-          <Btn type="submit" variant={prod ? "danger" : "primary"} disabled={!ok} autoFocus={!prod}>
-            {busy ? "Changing…" : "Change"}
-          </Btn>
-        </ModalFooter>
-      </form>
-    </Modal>
-  );
 }
 
 function Pager({ offset, count, more, onPage, busy }: { offset: number; count: number; more: boolean; onPage: (o: number) => void; busy: boolean }) {
@@ -379,6 +329,9 @@ function Browse({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const columns = result?.columns.map((c) => c.name) ?? [];
+  const [adding, setAdding] = useState(false);
+  const server = findServer(serverId);
+  const env: Env = server?.apps.find((a) => a.id === appId)?.env ?? server?.env ?? "dev";
   const apply = () => go({ filters: filters.filter((f) => f.column && (NO_VALUE.includes(f.op) || f.value !== "")) });
   const addFilter = (f?: DbFilter) => setFilters((fs) => [...fs, f ?? { column: columns[0] ?? "", op: "eq", value: "" }]);
 
@@ -397,8 +350,13 @@ function Browse({
         {result && (result.columns.some((c) => c.key) ? <EditHint /> : <ReadOnly why="no primary key" />)}
         <Group size="sm">
           <Tool size="sm" label="Filter" title="Add a filter (column, condition, value)" onClick={() => addFilter()} disabled={!result}>
-            <Plus className="size-[14px]" strokeWidth={1.8} />
+            <ListFilter className="size-[14px]" strokeWidth={1.8} />
           </Tool>
+          {!view && (
+            <Tool size="sm" label="Row" title="Add a row (you see the INSERT first)" onClick={() => setAdding(true)} disabled={!result || result.columns.length === 0}>
+              <Plus className="size-[14px]" strokeWidth={1.8} />
+            </Tool>
+          )}
           <Tool size="sm" title="Read this page again" onClick={() => go({ offset })} disabled={busy}>
             <RotateCw className="size-[14px]" strokeWidth={1.7} />
           </Tool>
@@ -478,7 +436,23 @@ function Browse({
           go({ filters: next });
         }}
         onQuery={onQuery}
+        onChanged={() => go({ offset })}
       />
+      {adding && result && (
+        <InsertRowDialog
+          table={table}
+          columns={result.columns}
+          env={env}
+          word={serverId}
+          onCancel={() => setAdding(false)}
+          onSubmit={async (values) => {
+            const r = await dbInsertRow(serverId, appId, table, values);
+            setAdding(false);
+            useToasts.getState().push(`Added a row to ${table} (${r.ms} ms)`, "info");
+            go({ offset });
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -487,7 +461,16 @@ const DRAFT = (s: string, a: string) => `kemudi.dbQuery.${s}/${a}`;
 
 const PANEL = "kemudi.dbPanel";
 
-function Query({ serverId, appId, insert, onInserted }: { serverId: string; appId: string; insert: string | null; onInserted: () => void }) {
+const READS = ["select", "with", "show", "describe", "desc", "explain", "table", "values"];
+const WRITES = ["insert", "update", "delete", "replace"];
+
+/** The first word of a statement, after comments and brackets. */
+export function firstWord(sql: string): string {
+  const head = sql.replace(/^(\s+|--[^\n]*(\n|$)|#[^\n]*(\n|$)|\/\*[\s\S]*?\*\/|\()+/, "");
+  return (head.match(/^[A-Za-z]+/)?.[0] ?? "").toLowerCase();
+}
+
+function Query({ serverId, appId, visible, insert, onInserted }: { serverId: string; appId: string; visible: boolean; insert: string | null; onInserted: () => void }) {
   const [text, setText] = useState(() => {
     try {
       return localStorage.getItem(DRAFT(serverId, appId)) ?? "";
@@ -518,6 +501,48 @@ function Query({ serverId, appId, insert, onInserted }: { serverId: string; appI
     }
   };
   const reload = () => dbQueries(serverId, appId).then(setQs, () => {});
+  // Table and column names for completing, once Query is first shown.
+  const [schema, setSchema] = useState<DbSchema | null>(null);
+  const askedSchema = useRef(false);
+  useEffect(() => {
+    if (visible && !askedSchema.current) {
+      askedSchema.current = true;
+      dbSchema(serverId, appId).then(setSchema, () => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+  const complete = useMemo(() => sqlCompletions(schema, (doc, pos) => statementAt(doc, pos, pos)), [schema]);
+  // INSERT / UPDATE / DELETE: tried and undone first (how many rows), then
+  // confirmed, then run for real.
+  const [write, setWrite] = useState<{ sql: string; affected: number; busy: boolean; error: string | null } | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [changed, setChanged] = useState<{ sql: string; affected: number; ms: number } | { sql: string; error: string } | null>(null);
+  const server = findServer(serverId);
+  const env: Env = server?.apps.find((a) => a.id === appId)?.env ?? server?.env ?? "dev";
+  const tryWrite = async (sql: string) => {
+    setChanged(null);
+    setChecking(true);
+    try {
+      const r = await dbWrite(serverId, appId, sql, true);
+      setWrite({ sql, affected: r.affected, busy: false, error: null });
+    } catch (e) {
+      setChanged({ sql, error: errorMessage(e) });
+    } finally {
+      setChecking(false);
+    }
+  };
+  const doWrite = async () => {
+    if (!write) return;
+    setWrite({ ...write, busy: true, error: null });
+    try {
+      const r = await dbWrite(serverId, appId, write.sql, false, write.affected);
+      setWrite(null);
+      setChanged({ sql: write.sql, affected: r.affected, ms: r.ms });
+    } catch (e) {
+      setWrite({ ...write, busy: false, error: errorMessage(e) });
+    }
+    void reload();
+  };
   useEffect(() => {
     void reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -533,6 +558,16 @@ function Query({ serverId, appId, insert, onInserted }: { serverId: string; appI
   };
   const run = (sql: string, o = 0) => {
     if (!sql.trim()) return;
+    const w = firstWord(sql);
+    if (WRITES.includes(w)) {
+      void tryWrite(sql);
+      return;
+    }
+    if (!READS.includes(w)) {
+      setChanged({ sql, error: `Kemudi runs reads (SELECT, WITH, SHOW, DESCRIBE, EXPLAIN) and changes to rows (INSERT, UPDATE, DELETE); not ${w ? w.toUpperCase() : "this"}. No ALTER, DROP, TRUNCATE or CREATE.` });
+      return;
+    }
+    setChanged(null);
     setRan(sql);
     setOffset(o);
     void ask({ mode: "sql", sql, offset: o, limit: PAGE }).then(() => {
@@ -579,6 +614,7 @@ function Query({ serverId, appId, insert, onInserted }: { serverId: string; appI
             className="h-full"
             onRun={(p) => run(statementAt(p.doc, p.from, p.to))}
             onCursor={(from, to) => (cursor.current = { from, to })}
+            complete={complete}
           />
         </div>
         <div className="flex h-11 flex-none items-center gap-2 border-b border-divider px-3">
@@ -596,9 +632,14 @@ function Query({ serverId, appId, insert, onInserted }: { serverId: string; appI
             </Tool>
           </Group>
           <span className="min-w-0 truncate text-[11.5px] text-subtle-foreground">⌘↵ runs the statement the cursor is in, or the selection</span>
-          {busy && <Spinner />}
+          {(busy || checking) && <Spinner />}
           <span className="flex-1" />
-          <ReadOnly />
+          <span
+            title="Reads run in a read-only transaction. INSERT, UPDATE and DELETE are tried first and undone (to count the rows they change), shown to you, and only then run for real, kept only if they change as many rows again. No ALTER, DROP, TRUNCATE or CREATE."
+            className="flex h-6 flex-none items-center gap-1 rounded-full bg-muted px-2 text-[11px] whitespace-nowrap text-subtle-foreground"
+          >
+            <Lock className="size-3" strokeWidth={2} /> Changes ask first
+          </span>
           {result && !error && <Pager offset={offset} count={result.rows.length} more={result.more} busy={busy} onPage={(o) => run(ran, o)} />}
           <Group size="sm">
             <Tool size="sm" title="History: the queries you ran here" active={panel === "history"} onClick={() => setPanel(panel === "history" ? "" : "history")}>
@@ -609,8 +650,42 @@ function Query({ serverId, appId, insert, onInserted }: { serverId: string; appI
             </Tool>
           </Group>
         </div>
-        <Results serverId={serverId} appId={appId} result={result} req={req} error={error} offset={offset} />
+        {changed ? (
+          <div className="min-h-0 flex-1 overflow-auto p-3">
+            {"error" in changed ? (
+              <div className="rounded-lg border border-env-prod/30 bg-env-prod/[0.06] p-3 font-mono text-[12px] break-words whitespace-pre-wrap text-env-prod-fg">{changed.error}</div>
+            ) : (
+              <div className="rounded-lg border border-emerald-600/25 bg-emerald-500/[0.07] p-3 text-[12.5px]">
+                <div className="font-medium text-emerald-800">
+                  Changed {changed.affected.toLocaleString()} row{changed.affected === 1 ? "" : "s"} · {changed.ms} ms · recorded in History
+                </div>
+                <pre className="mt-1.5 font-mono text-[12px] break-words whitespace-pre-wrap text-muted-foreground">{changed.sql}</pre>
+              </div>
+            )}
+          </div>
+        ) : (
+          <Results serverId={serverId} appId={appId} result={result} req={req} error={error} offset={offset} />
+        )}
       </div>
+      {write && (
+        <ChangeConfirm
+          title={write.affected === 0 ? "This changes no rows" : `Change ${write.affected.toLocaleString()} row${write.affected === 1 ? "" : "s"}?`}
+          sql={write.sql}
+          warn={/^\s*(update|delete)\b/i.test(write.sql.replace(/^(\s+|--[^\n]*\n|\/\*[\s\S]*?\*\/)+/, "")) && !/\bwhere\b/i.test(write.sql) ? "No WHERE: this changes every row of the table." : null}
+          notes={
+            write.affected === 0
+              ? "Kemudi ran it and undid it: it matched no rows, so there's nothing to change."
+              : `Kemudi ran it and undid it: it changes ${write.affected.toLocaleString()} row${write.affected === 1 ? "" : "s"}. It runs again for real, in one transaction, and is kept only if it changes ${write.affected === 1 ? "that one row" : "as many rows"} again. Recorded in History.`
+          }
+          okLabel={`Change ${write.affected.toLocaleString()} row${write.affected === 1 ? "" : "s"}`}
+          env={env}
+          word={serverId}
+          busy={write.busy}
+          error={write.error}
+          onCancel={() => setWrite(null)}
+          onOk={write.affected === 0 ? undefined : () => void doWrite()}
+        />
+      )}
       {panel && (
         <QueriesPanel
           kind={panel}
@@ -760,9 +835,12 @@ function Results({
   onSort,
   onFilter,
   onQuery,
+  onChanged,
 }: {
   serverId: string;
   appId: string;
+  /** A row was added or deleted: read the page again. */
+  onChanged?: () => void;
   /** Browsing this table: cells can be changed (when it has a primary key). */
   table?: string;
   result: DbResult | null;
@@ -782,6 +860,7 @@ function Results({
   const [confirm, setConfirm] = useState<DbUpdate | null>(null);
   const [saving, setSaving] = useState(false);
   const [editErr, setEditErr] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<{ table: string; key: { column: string; value: string | null }[] } | null>(null);
   useEffect(() => {
     setSel(null);
     setWhole({});
@@ -846,6 +925,25 @@ function Results({
       old: value,
       value: now,
     });
+  };
+  const askDelete = () => {
+    if (!sel || !table || !result) return;
+    setEditErr(null);
+    setDeleting({ table, key: pk.map((p) => ({ column: p.name, value: cellAt(sel.r, p.i) })) });
+  };
+  const doDelete = async () => {
+    if (!deleting) return;
+    setSaving(true);
+    try {
+      const res = await dbDeleteRow(serverId, appId, deleting.table, deleting.key);
+      setDeleting(null);
+      useToasts.getState().push(`Deleted a row from ${deleting.table} (${res.ms} ms)`, "info");
+      onChanged?.();
+    } catch (e) {
+      setEditErr(errorMessage(e));
+    } finally {
+      setSaving(false);
+    }
   };
   const doSave = async () => {
     if (!confirm || !sel) return;
@@ -1001,6 +1099,16 @@ function Results({
                 <Pencil className="size-3" /> Edit
               </button>
             )}
+            {table && !draft && pk.length > 0 && (
+              <button
+                onClick={askDelete}
+                disabled={pk.some((p) => cellAt(sel.r, p.i) === null || cut.has(`${sel.r}:${p.i}`) || bin.has(`${sel.r}:${p.i}`))}
+                title="Delete this row (you see the DELETE first)"
+                className="flex h-6 cursor-pointer items-center gap-1 rounded-full px-2 text-[11.5px] text-env-prod-fg hover:bg-env-prod/10 disabled:cursor-default disabled:opacity-40"
+              >
+                <Trash2 className="size-3" /> Delete row
+              </button>
+            )}
             {onFilter && !draft && (
               <button
                 onClick={() => onFilter(value === null ? { column: col.name, op: "null", value: "" } : { column: col.name, op: "eq", value: value })}
@@ -1071,14 +1179,30 @@ function Results({
         </div>
       )}
       {confirm && (
-        <EditConfirm
+        <ChangeConfirm
+          title="Change this cell?"
           sql={updateSql(confirm)}
+          notes="Only this row changes, and only if the cell still holds what was read; otherwise nothing changes. Recorded in History."
           env={env}
           word={serverId}
           busy={saving}
           error={editErr}
           onCancel={() => setConfirm(null)}
           onOk={() => void doSave()}
+        />
+      )}
+      {deleting && (
+        <ChangeConfirm
+          title="Delete this row?"
+          sql={`DELETE FROM ${deleting.table} WHERE ${deleting.key.map((k) => `${k.column} = ${lit(k.value)}`).join(" AND ")}`}
+          notes="Only this one row goes (named by its primary key), in its own transaction. Recorded in History."
+          okLabel="Delete row"
+          env={env}
+          word={serverId}
+          busy={saving}
+          error={editErr}
+          onCancel={() => setDeleting(null)}
+          onOk={() => void doDelete()}
         />
       )}
 

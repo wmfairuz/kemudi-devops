@@ -26,12 +26,18 @@ error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);
 ini_set('display_errors', 'stderr');
 set_time_limit(25);
 $J = (defined('JSON_INVALID_UTF8_SUBSTITUTE') ? JSON_INVALID_UTF8_SUBSTITUTE : 0) | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;
-function kerr($m) { echo "\n@@err " . str_replace(array("\r", "\n"), ' ', $m) . "\n"; exit(0); }
+// A dump's stdout is the file: its errors go to stderr.
+function kerr($m) {
+    $l = "\n@@err " . str_replace(array("\r", "\n"), ' ', $m) . "\n";
+    if (!empty($GLOBALS['toErr'])) fwrite(STDERR, $l); else echo $l;
+    exit(0);
+}
 $req = json_decode(base64_decode(isset($argv[1]) ? $argv[1] : ''), true);
 if (!is_array($req)) kerr("Kemudi's request didn't arrive whole");
 $mode = isset($req['mode']) ? $req['mode'] : '';
-// Only `update` writes (one cell of one row); everything else reads.
-$writing = $mode === 'update';
+$toErr = $mode === 'dump';
+// These change data (each in its own transaction); everything else reads.
+$writing = in_array($mode, array('update', 'write', 'insert_row', 'delete_row'), true);
 $base = getcwd();
 if (!is_readable($base . '/vendor/autoload.php')) kerr("can't read vendor/autoload.php (composer install not run, or not readable as " . get_current_user() . ")");
 try {
@@ -70,8 +76,35 @@ if ($my && defined('PDO::MYSQL_ATTR_MULTI_STATEMENTS')) {
     $o = isset($c['options']) && is_array($c['options']) ? $c['options'] : array();
     $o[PDO::MYSQL_ATTR_MULTI_STATEMENTS] = false;
     // rowCount() = rows matched (an update to the same value counts).
-    if ($writing) $o[PDO::MYSQL_ATTR_FOUND_ROWS] = true;
+    if ($mode === 'update') $o[PDO::MYSQL_ATTR_FOUND_ROWS] = true;
     $c['options'] = $o;
+}
+if ($mode === 'dump' && $pg) {
+    // pg_dump knows Postgres best; one snapshot is how it always works.
+    set_time_limit(0);
+    exec('command -v pg_dump', $o, $rc);
+    if ($rc !== 0) kerr("pg_dump isn't installed on this server (apt install postgresql-client)");
+    $tables = isset($req['tables']) && is_array($req['tables']) ? $req['tables'] : array();
+    $host = isset($c['host']) ? (is_array($c['host']) ? reset($c['host']) : $c['host']) : '';
+    $args = array('pg_dump', '--no-owner', '--no-privileges', '--encoding=UTF8');
+    if (empty($req['data'])) $args[] = '--schema-only';
+    if (!empty($req['drop'])) { $args[] = '--clean'; $args[] = '--if-exists'; }
+    if ($host !== '') { $args[] = '-h'; $args[] = (string) $host; }
+    if (!empty($c['port'])) { $args[] = '-p'; $args[] = (string) $c['port']; }
+    if (!empty($c['username'])) { $args[] = '-U'; $args[] = (string) $c['username']; }
+    foreach ($tables as $t) { $args[] = '-t'; $args[] = (string) $t; }
+    $args[] = (string) $c['database'];
+    $env = array('PGPASSWORD' => isset($c['password']) ? (string) $c['password'] : '', 'PATH' => getenv('PATH'));
+    if (!empty($c['sslmode'])) $env['PGSSLMODE'] = (string) $c['sslmode'];
+    fwrite(STDERR, "@@table 1 1 pg_dump\n");
+    $p = proc_open(implode(' ', array_map('escapeshellarg', $args)), array(1 => STDOUT, 2 => array('pipe', 'w')), $pipes, null, $env);
+    if (!is_resource($p)) kerr("pg_dump didn't start");
+    $err = stream_get_contents($pipes[2]);
+    fclose($pipes[2]);
+    $rc = proc_close($p);
+    if ($rc !== 0) kerr('pg_dump: ' . trim($err));
+    fwrite(STDERR, "\n@@done\n");
+    exit(0);
 }
 try {
     $conn = (new Illuminate\Database\Connectors\ConnectionFactory($app))->make($c, $name);
@@ -80,18 +113,39 @@ try {
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $pdo->setAttribute(PDO::ATTR_ORACLE_NULLS, PDO::NULL_NATURAL);
 $quiet = function ($sql) use ($pdo) { try { $pdo->exec($sql); } catch (Throwable $e) {} };
-if ($writing) {
+if ($mode === 'dump') {
+    // One consistent snapshot for the whole dump (InnoDB: nothing locked).
+    set_time_limit(0);
+    try {
+        if ($my) {
+            $quiet('SET SESSION max_execution_time = 0');
+            $quiet('SET SESSION max_statement_time = 0');
+            $quiet('SET SESSION net_write_timeout = 3600');
+            $quiet("SET SESSION time_zone = '+00:00'");
+            $pdo->exec('SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+            $pdo->exec('START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY');
+            $pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, false);
+            // Values exactly as the server writes them (no float rounding).
+            $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, true);
+            $pdo->setAttribute(PDO::ATTR_STRINGIFY_FETCHES, true);
+        } else {
+            $pdo->exec('PRAGMA query_only = ON');
+            $pdo->exec('BEGIN');
+        }
+    } catch (Throwable $e) { kerr("the database wouldn't start a read-only snapshot: " . $e->getMessage()); }
+} elseif ($writing) {
+    $secs = $mode === 'write' ? 30 : 10;
     try {
         if ($my) {
             $quiet('SET SESSION innodb_lock_wait_timeout = 5');
-            $quiet('SET SESSION max_statement_time = 10');
-            $pdo->exec('START TRANSACTION');
+            $quiet("SET SESSION max_statement_time = $secs");
+            $pdo->beginTransaction();
         } elseif ($pg) {
-            $pdo->exec('BEGIN');
-            $pdo->exec("SET LOCAL statement_timeout = '10s'");
+            $pdo->beginTransaction();
+            $pdo->exec("SET LOCAL statement_timeout = '{$secs}s'");
             $pdo->exec("SET LOCAL lock_timeout = '5s'");
         } else {
-            $pdo->exec('BEGIN');
+            $pdo->beginTransaction();
         }
     } catch (Throwable $e) { kerr("couldn't start a transaction: " . $e->getMessage()); }
 } else try {
@@ -123,13 +177,24 @@ $all = function ($sql, $args = array()) use ($pdo) {
 $columnsOf = function ($table) use ($all, $qi, $my, $pg) {
     try {
         if ($my) {
-            return $all("SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_KEY = 'PRI' FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION", array($table));
+            $cols = array();
+            foreach ($all("SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_KEY = 'PRI', IS_NULLABLE = 'YES', COLUMN_DEFAULT, EXTRA FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION", array($table)) as $r) {
+                $cols[] = array($r[0], $r[1], (bool) $r[2], (bool) $r[3], $r[4], stripos((string) $r[5], 'auto_increment') !== false || stripos((string) $r[5], 'generated') !== false);
+            }
+            return $cols;
         }
         if ($pg) {
-            return $all("SELECT a.attname, format_type(a.atttypid, a.atttypmod), COALESCE(a.attnum = ANY(i.indkey), false) FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace LEFT JOIN pg_index i ON i.indrelid = c.oid AND i.indisprimary WHERE n.nspname = current_schema() AND c.relname = ? AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum", array($table));
+            $cols = array();
+            foreach ($all("SELECT a.attname, format_type(a.atttypid, a.atttypmod), COALESCE(a.attnum = ANY(i.indkey), false), NOT a.attnotnull, pg_get_expr(d.adbin, d.adrelid), a.attidentity::text FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace LEFT JOIN pg_index i ON i.indrelid = c.oid AND i.indisprimary LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum WHERE n.nspname = current_schema() AND c.relname = ? AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum", array($table)) as $r) {
+                $cols[] = array($r[0], $r[1], (bool) $r[2], (bool) $r[3], $r[4], ($r[5] !== null && $r[5] !== '') || strpos((string) $r[4], 'nextval(') === 0);
+            }
+            return $cols;
         }
         $cols = array();
-        foreach ($all('PRAGMA table_info(' . $qi($table) . ')') as $r) $cols[] = array($r[1], $r[2], (int) $r[5] > 0);
+        $pks = 0;
+        $rows = $all('PRAGMA table_info(' . $qi($table) . ')');
+        foreach ($rows as $r) if ((int) $r[5] > 0) $pks++;
+        foreach ($rows as $r) $cols[] = array($r[1], $r[2], (int) $r[5] > 0, !(int) $r[3], $r[4], (int) $r[5] > 0 && $pks === 1 && strtoupper((string) $r[2]) === 'INTEGER');
         return $cols;
     } catch (Throwable $e) { kerr("couldn't read the columns of $table: " . $e->getMessage()); }
 };
@@ -154,6 +219,262 @@ if ($mode === 'tables') {
     }
     $out['version'] = (string) $pdo->getAttribute(PDO::ATTR_SERVER_VERSION);
     echo "\n@@json " . json_encode($out, $J) . "\n";
+    exit(0);
+}
+
+$ok = function () use (&$out, $J) { echo "\n@@json " . json_encode($out, $J) . "\n"; exit(0); };
+$rollback = function () use ($pdo) { try { if ($pdo->inTransaction()) $pdo->rollBack(); } catch (Throwable $e) {} };
+// A table's columns and its primary key, or why not.
+$tableOf = function ($table) use ($columnsOf) {
+    $cols = $columnsOf($table);
+    if (!$cols) kerr("there's no table `$table` any more");
+    $names = array();
+    $pk = array();
+    foreach ($cols as $r) { $names[(string) $r[0]] = $r; if ($r[2]) $pk[] = (string) $r[0]; }
+    return array($names, $pk);
+};
+// WHERE for a row named by its whole primary key.
+$keyed = function ($pk, $key, $table) use ($qi) {
+    if (!$pk) kerr("$table has no primary key, so a row can't be picked out safely: nothing changed");
+    $given = array();
+    foreach ((is_array($key) ? $key : array()) as $k) $given[(string) $k['column']] = $k['value'];
+    $a = $pk; $b = array_keys($given); sort($a); sort($b);
+    if ($a !== $b) kerr("the row has to be named by its whole primary key (" . implode(', ', $pk) . "): nothing changed");
+    $where = array();
+    $args = array();
+    foreach ($pk as $k) {
+        if ($given[$k] === null) kerr("the row's key `$k` is NULL: nothing changed");
+        $where[] = $qi($k) . ' = ?';
+        $args[] = (string) $given[$k];
+    }
+    return array(implode(' AND ', $where), $args);
+};
+
+if ($mode === 'schema') {
+    try {
+        if ($my) {
+            $rows = $all("SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() ORDER BY TABLE_NAME, ORDINAL_POSITION");
+        } elseif ($pg) {
+            $rows = $all("SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = current_schema() ORDER BY table_name, ordinal_position");
+        } else {
+            $rows = array();
+            foreach ($all("SELECT name FROM sqlite_master WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' ORDER BY name") as $t) {
+                foreach ($all('PRAGMA table_info(' . $qi($t[0]) . ')') as $r) $rows[] = array($t[0], $r[1]);
+            }
+        }
+    } catch (Throwable $e) { kerr("couldn't read the columns: " . $e->getMessage()); }
+    $by = array();
+    foreach ($rows as $r) $by[(string) $r[0]][] = (string) $r[1];
+    $out['tables'] = array();
+    foreach ($by as $t => $cs) $out['tables'][] = array('name' => $t, 'columns' => $cs);
+    $ok();
+}
+
+if ($mode === 'write') {
+    // Your own INSERT / UPDATE / DELETE: `dry` runs it and undoes it (how
+    // many rows), then for real only if it changes that many again.
+    $sql = rtrim(trim(isset($req['sql']) ? (string) $req['sql'] : ''), "; \t\r\n");
+    $head = preg_replace('~^(\s+|--[^\n]*(\n|$)|#[^\n]*(\n|$)|/\*.*?\*/|\()+~s', '', $sql);
+    $word = strtolower(preg_match('~^[A-Za-z]+~', $head, $m) ? $m[0] : '');
+    if (!in_array($word, array('insert', 'update', 'delete', 'replace'), true)) {
+        kerr('Kemudi changes data with INSERT, UPDATE or DELETE only (this starts with ' . ($word === '' ? 'something else' : strtoupper($word)) . '): no ALTER, DROP, TRUNCATE or CREATE');
+    }
+    if ($my) {
+        try {
+            $nt = $all("SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' AND ENGINE IS NOT NULL AND ENGINE <> 'InnoDB'");
+        } catch (Throwable $e) { $nt = array(); }
+        foreach ($nt as $t) {
+            if (preg_match('~(^|[^A-Za-z0-9_$])' . preg_quote((string) $t[0], '~') . '([^A-Za-z0-9_$]|$)~i', $sql)) {
+                kerr("$t[0] is a $t[1] table: a change to it can't be undone, so Kemudi won't try or run it here");
+            }
+        }
+    }
+    $dry = !empty($req['dry']);
+    $t0 = microtime(true);
+    try {
+        $st = $pdo->prepare($sql);
+        $st->execute();
+        $n = $st->rowCount();
+        $st->closeCursor();
+        if ($dry) {
+            $pdo->rollBack();
+        } else {
+            $want = isset($req['expect']) ? (int) $req['expect'] : -1;
+            if ($n !== $want) { $pdo->rollBack(); kerr("it now changes $n rows, not the $want you confirmed: nothing changed (try again)"); }
+            $pdo->commit();
+        }
+    } catch (Throwable $e) { $rollback(); kerr($e->getMessage()); }
+    $out['affected'] = $n;
+    $out['ms'] = (int) round((microtime(true) - $t0) * 1000);
+    $ok();
+}
+
+if ($mode === 'insert_row') {
+    $table = isset($req['table']) ? (string) $req['table'] : '';
+    list($names) = $tableOf($table);
+    $cols = array(); $vals = array(); $args = array();
+    foreach ((isset($req['values']) && is_array($req['values']) ? $req['values'] : array()) as $v) {
+        $col = (string) $v['column'];
+        if (!isset($names[$col])) kerr("no column `$col` in $table");
+        $kind = isset($v['kind']) ? $v['kind'] : 'value';
+        if ($kind === 'default') continue;
+        $cols[] = $qi($col);
+        if ($kind === 'null') $vals[] = 'NULL';
+        elseif ($kind === 'now') $vals[] = 'CURRENT_TIMESTAMP';
+        else { $vals[] = '?'; $args[] = (string) $v['value']; }
+    }
+    $sql = $cols ? 'INSERT INTO ' . $qi($table) . ' (' . implode(', ', $cols) . ') VALUES (' . implode(', ', $vals) . ')' : ($my ? 'INSERT INTO ' . $qi($table) . ' () VALUES ()' : 'INSERT INTO ' . $qi($table) . ' DEFAULT VALUES');
+    $t0 = microtime(true);
+    try {
+        $st = $pdo->prepare($sql);
+        $st->execute($args);
+        if ($st->rowCount() !== 1) { $pdo->rollBack(); kerr('it would add ' . $st->rowCount() . ' rows, so nothing changed'); }
+        $pdo->commit();
+    } catch (Throwable $e) { $rollback(); kerr($e->getMessage()); }
+    $out['affected'] = 1;
+    $out['ms'] = (int) round((microtime(true) - $t0) * 1000);
+    $ok();
+}
+
+if ($mode === 'delete_row') {
+    $table = isset($req['table']) ? (string) $req['table'] : '';
+    list($names, $pk) = $tableOf($table);
+    list($where, $args) = $keyed($pk, isset($req['key']) ? $req['key'] : array(), $table);
+    $t0 = microtime(true);
+    try {
+        $st = $pdo->prepare('DELETE FROM ' . $qi($table) . ' WHERE ' . $where);
+        $st->execute($args);
+        $n = $st->rowCount();
+        if ($n !== 1) { $pdo->rollBack(); kerr($n === 0 ? "nothing changed: the row isn't there any more" : "it would delete $n rows, so nothing changed"); }
+        $pdo->commit();
+    } catch (Throwable $e) { $rollback(); kerr($e->getMessage()); }
+    $out['affected'] = 1;
+    $out['ms'] = (int) round((microtime(true) - $t0) * 1000);
+    $ok();
+}
+
+if ($mode === 'dump') {
+    // MySQL / MariaDB and SQLite (Postgres went to pg_dump above): the file
+    // on stdout, progress and the outcome on stderr.
+    $want = isset($req['tables']) && is_array($req['tables']) ? array_flip(array_map('strval', $req['tables'])) : null;
+    $data = !empty($req['data']);
+    $drop = !empty($req['drop']);
+    $buf = '';
+    $w = function ($s) use (&$buf) { $buf .= $s; if (strlen($buf) > 262144) { fwrite(STDOUT, $buf); $buf = ''; } };
+    $say = function ($s) { fwrite(STDERR, $s . "\n"); };
+    try {
+        if ($my) {
+            $list = $all("SELECT TABLE_NAME, TABLE_TYPE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() ORDER BY TABLE_NAME");
+        } else {
+            $list = $all("SELECT name, type FROM sqlite_master WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' ORDER BY name");
+        }
+    } catch (Throwable $e) { kerr("couldn't list the tables: " . $e->getMessage()); }
+    $tables = array(); $views = array();
+    foreach ($list as $r) {
+        if ($want !== null && !isset($want[(string) $r[0]])) continue;
+        if (stripos((string) $r[1], 'view') !== false) $views[] = (string) $r[0]; else $tables[] = (string) $r[0];
+    }
+    $total = count($tables) + count($views);
+    $db = isset($c['database']) ? basename((string) $c['database']) : '';
+    $w("-- Kemudi Devops SQL dump\n-- Database: $db (" . $driver . ' ' . $pdo->getAttribute(PDO::ATTR_SERVER_VERSION) . ")\n-- Taken: " . gmdate('Y-m-d H:i:s') . " UTC, in one consistent snapshot\n-- " . ($data ? 'Structure and data' : 'Structure only') . "; triggers, routines and events aren't included.\n\n");
+    if ($my) {
+        $w("/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;\n/*!40101 SET NAMES utf8mb4 */;\n/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;\n/*!40103 SET TIME_ZONE='+00:00' */;\n/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;\n/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;\n/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;\n\n");
+    } else {
+        $w("PRAGMA foreign_keys=OFF;\nBEGIN TRANSACTION;\n\n");
+    }
+    $i = 0;
+    $rowsAll = 0;
+    foreach ($tables as $t) {
+        $i++;
+        $say("@@table $i $total $t");
+        $w("--\n-- Table " . $qi($t) . "\n--\n\n");
+        if ($drop) $w('DROP TABLE IF EXISTS ' . $qi($t) . ";\n");
+        try {
+            if ($my) {
+                $cr = $all('SHOW CREATE TABLE ' . $qi($t));
+                $w($cr[0][1] . ";\n\n");
+                $cs = $all("SELECT COLUMN_NAME, DATA_TYPE, EXTRA FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION", array($t));
+            } else {
+                $cr = $all("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", array($t));
+                $w($cr[0][0] . ";\n\n");
+                $cs = array();
+                foreach ($all('PRAGMA table_info(' . $qi($t) . ')') as $r) $cs[] = array($r[1], strtolower((string) $r[2]), '');
+            }
+        } catch (Throwable $e) { kerr("couldn't read $t: " . $e->getMessage()); }
+        if (!$data) continue;
+        $names = array(); $kinds = array();
+        foreach ($cs as $r) {
+            if (stripos((string) $r[2], 'generated') !== false) continue; // computed: not inserted
+            $names[] = $qi((string) $r[0]);
+            $dt = strtolower((string) $r[1]);
+            $kinds[] = preg_match('~^(tinyint|smallint|mediumint|int|integer|bigint|decimal|numeric|float|double|real)~', $dt) ? 'n'
+                : (preg_match('~(blob|binary|bit|geometry|point|linestring|polygon|geometrycollection)~', $dt) ? 'b' : 's');
+        }
+        if (!$names) continue;
+        $head = 'INSERT INTO ' . $qi($t) . ' (' . implode(', ', $names) . ') VALUES ';
+        try {
+            $st = $pdo->prepare('SELECT ' . implode(', ', $names) . ' FROM ' . $qi($t));
+            $st->execute();
+            $stmt = '';
+            $n = 0;
+            while (($r = $st->fetch(PDO::FETCH_NUM)) !== false) {
+                $vs = array();
+                foreach ($r as $k => $v) {
+                    if (is_resource($v)) $v = stream_get_contents($v);
+                    if ($v === null) $vs[] = 'NULL';
+                    elseif ($kinds[$k] === 'n' && $v !== '' && is_numeric($v)) $vs[] = (string) $v;
+                    elseif ($kinds[$k] === 'b' || (!$my && (strpos($v, "\0") !== false || !preg_match('//u', $v)))) $vs[] = $v === '' ? "''" : ($my ? '0x' . bin2hex($v) : "X'" . bin2hex($v) . "'");
+                    else $vs[] = $pdo->quote((string) $v);
+                }
+                $tuple = '(' . implode(',', $vs) . ')';
+                if ($stmt !== '' && strlen($stmt) + strlen($tuple) > 1000000) { $w($stmt . ";\n"); $stmt = ''; }
+                $stmt .= ($stmt === '' ? $head : ',') . $tuple;
+                $n++;
+                if ($n % 5000 === 0) $say("@@rows $n");
+            }
+            $st->closeCursor();
+            if ($stmt !== '') $w($stmt . ";\n");
+            $rowsAll += $n;
+            $w("\n");
+        } catch (Throwable $e) { kerr("couldn't read the rows of $t: " . $e->getMessage()); }
+    }
+    // Views after the tables, each after the views it uses.
+    $defs = array();
+    foreach ($views as $v) {
+        try {
+            if ($my) {
+                $cr = $all('SHOW CREATE VIEW ' . $qi($v));
+                $defs[$v] = preg_replace('~ DEFINER=`[^`]*`@`[^`]*`~', '', (string) $cr[0][1]);
+            } else {
+                $cr = $all("SELECT sql FROM sqlite_master WHERE type = 'view' AND name = ?", array($v));
+                $defs[$v] = (string) $cr[0][0];
+            }
+        } catch (Throwable $e) { kerr("couldn't read the view $v: " . $e->getMessage()); }
+    }
+    $done = array();
+    $order = array();
+    $visit = function ($v, $depth) use (&$visit, &$done, &$order, $defs) {
+        if (isset($done[$v]) || $depth > 50) return;
+        $done[$v] = true;
+        foreach ($defs as $o => $d) if ($o !== $v && preg_match('~[`" .]' . preg_quote($o, '~') . '[`" ]~', $defs[$v])) $visit($o, $depth + 1);
+        $order[] = $v;
+    };
+    foreach (array_keys($defs) as $v) $visit($v, 0);
+    foreach ($order as $v) {
+        $i++;
+        $say("@@table $i $total $v");
+        $w("--\n-- View " . $qi($v) . "\n--\n\n");
+        if ($drop) $w('DROP VIEW IF EXISTS ' . $qi($v) . ";\n");
+        $w($defs[$v] . ";\n\n");
+    }
+    if ($my) {
+        $w("/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;\n/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;\n/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;\n/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;\n/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;\n");
+    } else {
+        $w("COMMIT;\nPRAGMA foreign_keys=ON;\n");
+    }
+    $w("\n-- Dump completed " . gmdate('Y-m-d H:i:s') . " UTC\n");
+    fwrite(STDOUT, $buf);
+    $say("@@done $total $rowsAll");
     exit(0);
 }
 
@@ -226,7 +547,7 @@ if ($mode === 'browse') {
     $names = array();
     $pk = array();
     foreach ($cols as $r) {
-        $columns[] = array('name' => (string) $r[0], 'type' => (string) $r[1], 'key' => (bool) $r[2]);
+        $columns[] = array('name' => (string) $r[0], 'type' => (string) $r[1], 'key' => (bool) $r[2], 'nullable' => (bool) $r[3], 'default' => $r[4] === null ? null : (string) $r[4], 'auto' => (bool) $r[5]);
         $names[(string) $r[0]] = true;
         if ($r[2]) $pk[] = (string) $r[0];
     }
@@ -415,6 +736,11 @@ pub struct DbColumn {
     pub r#type: String,
     /// Part of the primary key (browse only).
     pub key: bool,
+    /// Browse only: can be NULL, its default, filled by the database
+    /// (auto-increment, identity, generated).
+    pub nullable: bool,
+    pub default: Option<String>,
+    pub auto: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -591,6 +917,385 @@ pub async fn db_update(state: State<'_, AppState>, server_id: String, app_id: St
         let _ = log.finish(id, Some(if res.is_ok() { 0 } else { 1 }));
     }
     res
+}
+
+// ------------------------------------------------------------ writing SQL, rows
+
+/// What a change did.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct DbChanged {
+    /// Rows it changed (a dry run: would change; it was undone).
+    pub affected: u64,
+    pub ms: u64,
+}
+
+fn changed(out: &str) -> AppResult<DbChanged> {
+    serde_json::from_str(answer(out)?).map_err(|e| AppError::Invalid(format!("the answer didn't read: {e}")))
+}
+
+/// Start a History row for a change to an app's database.
+fn audit(state: &AppState, server_id: &str, app_id: &str, label: &str, sql: &str) -> Option<(std::sync::Arc<crate::audit::AuditLog>, i64)> {
+    let server = crate::remote_files::lookup(state, server_id).ok()?;
+    let env = server.app(app_id).map_or(server.env, |a| a.env);
+    let log = state.audit.as_ref().ok()?;
+    log.start(&crate::audit::NewRun {
+        server_id,
+        app_id: Some(app_id),
+        action_id: "db-edit",
+        label,
+        env: env.as_str(),
+        kind: "edit",
+        command: sql,
+        edited: false,
+    })
+    .ok()
+    .map(|id| (log.clone(), id))
+}
+
+fn audit_end<T>(run: Option<(std::sync::Arc<crate::audit::AuditLog>, i64)>, res: &AppResult<T>) {
+    if let Some((log, id)) = run {
+        let _ = log.finish(id, Some(if res.is_ok() { 0 } else { 1 }));
+    }
+}
+
+/// Your own INSERT / UPDATE / DELETE. `dry`: run it and undo it, to say how
+/// many rows it changes. Else run it for real, kept only if it changes
+/// `expect` rows again (recorded in History and the query history).
+#[tauri::command]
+pub async fn db_write(state: State<'_, AppState>, server_id: String, app_id: String, sql: String, dry: bool, expect: Option<u64>) -> AppResult<DbChanged> {
+    if sql.trim().is_empty() || sql.len() > 60_000 || sql.contains('\0') || (!dry && expect.is_none()) {
+        return Err(AppError::Invalid("that change isn't one Kemudi sends".into()));
+    }
+    let run = if dry { None } else { audit(&state, &server_id, &app_id, "Change data (SQL)", sql.trim()) };
+    let req = serde_json::json!({ "mode": "write", "sql": sql, "dry": dry, "expect": expect });
+    let res = async { changed(&ask(&state, &server_id, &app_id, req).await?) }.await;
+    audit_end(run, &res);
+    if !dry {
+        let ran = Ran {
+            at: store::now_ms(),
+            sql: sql.trim().to_string(),
+            ms: res.as_ref().ok().map(|r| r.ms),
+            rows: res.as_ref().ok().map(|r| r.affected as u32),
+            more: false,
+            error: res.as_ref().err().map(|e| e.to_string().chars().take(300).collect()),
+        };
+        let _ = store::update(&server_id, &app_id, |q| store::ran(q, ran));
+    }
+    res
+}
+
+/// A value for a new row: typed, NULL, the column's default, or now.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct DbNewValue {
+    pub column: String,
+    /// "value", "null", "default" or "now".
+    pub kind: String,
+    pub value: String,
+}
+
+/// Add one row (recorded in History).
+#[tauri::command]
+pub async fn db_insert_row(state: State<'_, AppState>, server_id: String, app_id: String, table: String, values: Vec<DbNewValue>) -> AppResult<DbChanged> {
+    let bad = |s: &str| s.is_empty() || s.len() > 256 || s.contains('\0');
+    if bad(&table)
+        || values.len() > 500
+        || values.iter().any(|v| bad(&v.column) || !matches!(v.kind.as_str(), "value" | "null" | "default" | "now") || v.value.len() > 60_000 || v.value.contains('\0'))
+    {
+        return Err(AppError::Invalid("that row isn't one Kemudi sends".into()));
+    }
+    let shown = {
+        let set: Vec<&DbNewValue> = values.iter().filter(|v| v.kind != "default").collect();
+        let vals: Vec<String> = set
+            .iter()
+            .map(|v| match v.kind.as_str() {
+                "null" => "NULL".into(),
+                "now" => "CURRENT_TIMESTAMP".into(),
+                _ => lit(Some(&v.value)),
+            })
+            .collect();
+        format!("INSERT INTO {table} ({}) VALUES ({})", set.iter().map(|v| v.column.as_str()).collect::<Vec<_>>().join(", "), vals.join(", "))
+    };
+    let run = audit(&state, &server_id, &app_id, &format!("Add a row to {table}"), &shown);
+    let req = serde_json::json!({ "mode": "insert_row", "table": table, "values": values });
+    let res = async { changed(&ask(&state, &server_id, &app_id, req).await?) }.await;
+    audit_end(run, &res);
+    res
+}
+
+/// Delete one row, named by its whole primary key (recorded in History).
+#[tauri::command]
+pub async fn db_delete_row(state: State<'_, AppState>, server_id: String, app_id: String, table: String, key: Vec<DbKey>) -> AppResult<DbChanged> {
+    let bad = |s: &str| s.is_empty() || s.len() > 256 || s.contains('\0');
+    if bad(&table) || key.is_empty() || key.len() > 8 || key.iter().any(|k| bad(&k.column)) {
+        return Err(AppError::Invalid("that row isn't one Kemudi sends".into()));
+    }
+    let wh: Vec<String> = key.iter().map(|k| format!("{} = {}", k.column, lit(k.value.as_deref()))).collect();
+    let shown = format!("DELETE FROM {table} WHERE {}", wh.join(" AND "));
+    let run = audit(&state, &server_id, &app_id, &format!("Delete a row from {table}"), &shown);
+    let req = serde_json::json!({ "mode": "delete_row", "table": table, "key": key });
+    let res = async { changed(&ask(&state, &server_id, &app_id, req).await?) }.await;
+    audit_end(run, &res);
+    res
+}
+
+/// Every table's columns (for completing names in the editor).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct DbSchema {
+    pub tables: Vec<DbSchemaTable>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct DbSchemaTable {
+    pub name: String,
+    pub columns: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn db_schema(state: State<'_, AppState>, server_id: String, app_id: String) -> AppResult<DbSchema> {
+    let out = ask(&state, &server_id, &app_id, serde_json::json!({ "mode": "schema" })).await?;
+    serde_json::from_str(answer(&out)?).map_err(|e| AppError::Invalid(format!("the answer didn't read: {e}")))
+}
+
+// ------------------------------------------------------------ SQL dump
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct DumpOptions {
+    /// None: every table and view.
+    pub tables: Option<Vec<String>>,
+    /// Rows too (else the structure only).
+    pub data: bool,
+    /// DROP … IF EXISTS before each CREATE.
+    pub drop: bool,
+    /// gzip on the server (smaller to bring over, `.sql.gz`).
+    pub gzip: bool,
+    /// The file's name (no folder).
+    pub file_name: String,
+    /// Where to save it (None: ~/Downloads).
+    pub folder: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DumpProgress {
+    /// Bytes saved so far (compressed, with gzip).
+    pub bytes: u64,
+    /// The table being written, its number and how many there are.
+    pub table: String,
+    pub index: u32,
+    pub total: u32,
+    /// Rows of that table so far.
+    pub rows: u64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DumpDone {
+    pub path: String,
+    pub bytes: u64,
+    pub tables: u32,
+    pub rows: u64,
+}
+
+fn cancels() -> &'static std::sync::Mutex<std::collections::HashMap<String, tokio::sync::oneshot::Sender<()>>> {
+    static C: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, tokio::sync::oneshot::Sender<()>>>> = std::sync::OnceLock::new();
+    C.get_or_init(Default::default)
+}
+
+/// The dump on stdout (gzipped there when asked), everything else on stderr.
+fn dump_script(path: &str, php: &str, req: &serde_json::Value, password: Option<&str>, gzip: bool) -> String {
+    let b64 = base64::engine::general_purpose::STANDARD.encode(req.to_string());
+    format!(
+        r#"{{
+{pre}
+}} 1>&2
+$RU "$PHP" -- {b64} <<'KEMUDI_PHP'{pipe}
+{code}KEMUDI_PHP
+"#,
+        pre = crate::queues::prelude(path, php, password),
+        pipe = if gzip { " | gzip -c" } else { "" },
+        code = PHP,
+    )
+}
+
+/// What the dump said on stderr: progress, the end, or what went wrong.
+#[derive(Debug, Default)]
+struct DumpLog {
+    done: Option<(u32, u64)>,
+    error: Option<String>,
+    other: Vec<String>,
+}
+
+fn dump_line(l: &str, p: &mut DumpProgress, log: &mut DumpLog) {
+    let l = l.trim();
+    if let Some(rest) = l.strip_prefix("@@table ") {
+        let mut it = rest.splitn(3, ' ');
+        p.index = it.next().and_then(|x| x.parse().ok()).unwrap_or(p.index);
+        p.total = it.next().and_then(|x| x.parse().ok()).unwrap_or(p.total);
+        p.table = it.next().unwrap_or("").to_string();
+        p.rows = 0;
+    } else if let Some(n) = l.strip_prefix("@@rows ") {
+        p.rows = n.trim().parse().unwrap_or(p.rows);
+    } else if let Some(rest) = l.strip_prefix("@@done") {
+        let mut it = rest.split_whitespace();
+        let t = it.next().and_then(|x| x.parse().ok()).unwrap_or(p.total);
+        let r = it.next().and_then(|x| x.parse().ok()).unwrap_or(0);
+        log.done = Some((t, r));
+    } else if let Some(e) = l.strip_prefix("@@err ") {
+        log.error = Some(e.to_string());
+    } else if !l.is_empty() && !l.starts_with("@@") && log.other.len() < 20 {
+        log.other.push(l.to_string());
+    }
+}
+
+/// Export an app's database as an SQL file on this Mac, in one consistent
+/// snapshot (MySQL / MariaDB / SQLite by Kemudi, Postgres by pg_dump on the
+/// server). Streams straight into the file: nothing is left on the server.
+#[tauri::command]
+pub async fn db_dump(
+    state: State<'_, AppState>,
+    server_id: String,
+    app_id: String,
+    id: String,
+    opts: DumpOptions,
+    on_progress: tauri::ipc::Channel<DumpProgress>,
+) -> AppResult<DumpDone> {
+    use std::io::Write;
+    use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
+
+    let name = opts.file_name.trim().to_string();
+    if name.is_empty() || name.len() > 200 || name.contains(['/', '\\', '\0']) || name.starts_with('.') {
+        return Err(AppError::Invalid("that file name won't do".into()));
+    }
+    if opts.tables.as_ref().is_some_and(|t| t.is_empty() || t.len() > 5000 || t.iter().any(|x| x.is_empty() || x.len() > 256 || x.contains('\0'))) {
+        return Err(AppError::Invalid("pick at least one table".into()));
+    }
+    let dir = match opts.folder.as_deref().filter(|f| !f.trim().is_empty()) {
+        Some(f) => std::path::PathBuf::from(f),
+        None => crate::files::default_downloads()?,
+    };
+    if !dir.is_dir() {
+        return Err(AppError::Invalid(format!("{} isn't a folder", dir.display())));
+    }
+    let (server, path, php) = crate::queues::app_of(&state, &server_id, &app_id)?;
+    if server.asg.is_some() {
+        return Err(AppError::Invalid("exporting needs ssh: AWS Session Manager servers can't stream a file yet".into()));
+    }
+    crate::ssh::validate_host(&server.host)?;
+    let password = crate::remote_files::saved_sudo(&server_id).await;
+    let req = serde_json::json!({ "mode": "dump", "tables": opts.tables, "data": opts.data, "drop": opts.drop });
+    let script = dump_script(&path, &php, &req, password.as_deref(), opts.gzip);
+
+    let env = state.env_ready().await;
+    let hc = crate::ssh::host_config(&server.host, env);
+    let mut cmd = tokio::process::Command::new("ssh");
+    cmd.args(["-o", "BatchMode=yes", "-o", "RemoteCommand=none", "-o", "RequestTTY=no"])
+        .args(&hc.connect_opts)
+        .args([&server.host, "sh -s"])
+        .env_clear()
+        .envs(&env.vars)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    let mut child = cmd.spawn()?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(script.as_bytes()).await?;
+    }
+    let dest = crate::files::free_name(&dir, &name);
+    let file = std::fs::File::create(&dest).map_err(|e| AppError::Invalid(format!("can't write {}: {e}", dest.display())))?;
+    let mut file = std::io::BufWriter::with_capacity(1 << 20, file);
+    let (tx, mut stop) = tokio::sync::oneshot::channel();
+    cancels().lock().unwrap_or_else(|e| e.into_inner()).insert(id.clone(), tx);
+
+    let shared = std::sync::Arc::new(std::sync::Mutex::new((DumpProgress::default(), DumpLog::default())));
+    let err_task = child.stderr.take().map(|e| {
+        let shared = shared.clone();
+        tokio::spawn(async move {
+            let mut lines = tokio::io::BufReader::new(e).lines();
+            while let Ok(Some(l)) = lines.next_line().await {
+                let mut g = shared.lock().unwrap_or_else(|e| e.into_inner());
+                let (p, log) = &mut *g;
+                dump_line(&l, p, log);
+            }
+        })
+    });
+    let mut out = child.stdout.take().ok_or_else(|| AppError::Invalid("ssh gave no output".into()))?;
+    let mut buf = vec![0u8; 1 << 16];
+    let mut bytes = 0u64;
+    let mut last = std::time::Instant::now();
+    let copied: AppResult<bool> = async {
+        loop {
+            tokio::select! {
+                _ = &mut stop => return Ok(false),
+                n = out.read(&mut buf) => {
+                    let n = n?;
+                    if n == 0 { return Ok(true); }
+                    file.write_all(&buf[..n]).map_err(|e| AppError::Invalid(format!("can't write {}: {e}", dest.display())))?;
+                    bytes += n as u64;
+                    if last.elapsed() >= std::time::Duration::from_millis(250) {
+                        last = std::time::Instant::now();
+                        let mut p = shared.lock().unwrap_or_else(|e| e.into_inner()).0.clone();
+                        p.bytes = bytes;
+                        let _ = on_progress.send(p);
+                    }
+                }
+            }
+        }
+    }
+    .await;
+    cancels().lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
+    let finished = match copied {
+        Ok(true) => {
+            let _ = child.wait().await;
+            if let Some(t) = err_task {
+                let _ = t.await;
+            }
+            true
+        }
+        _ => {
+            let _ = child.kill().await;
+            false
+        }
+    };
+    let flushed = file.flush();
+    drop(file);
+    let g = shared.lock().unwrap_or_else(|e| e.into_inner());
+    let log = &g.1;
+    let fail = |why: String| {
+        let _ = std::fs::remove_file(&dest);
+        Err(AppError::Invalid(why))
+    };
+    if let Err(e) = copied {
+        return fail(e.to_string());
+    }
+    if !finished {
+        return fail("stopped: the partial file was removed".into());
+    }
+    if let Err(e) = flushed {
+        return fail(format!("can't write {}: {e}", dest.display()));
+    }
+    match (log.done, &log.error) {
+        (Some((tables, rows)), None) => Ok(DumpDone { path: dest.display().to_string(), bytes, tables, rows }),
+        (_, Some(e)) => fail(e.clone()),
+        (None, None) => fail(if log.other.is_empty() {
+            "the export stopped before it finished".into()
+        } else {
+            crate::ssh_hosts::explain(&log.other.join("\n"))
+        }),
+    }
+}
+
+/// Stop an export (its partial file is removed).
+#[tauri::command]
+pub fn db_dump_cancel(id: String) {
+    if let Some(tx) = cancels().lock().unwrap_or_else(|e| e.into_inner()).remove(&id) {
+        let _ = tx.send(());
+    }
 }
 
 // ------------------------------------------------------------ history and saved queries
@@ -799,6 +1504,28 @@ mod tests {
         store::ran(&mut q, r("select 2"));
         store::ran(&mut q, r(" select 1 "));
         assert_eq!(q.history.iter().map(|h| h.sql.trim()).collect::<Vec<_>>(), ["select 2", "select 1"]);
+    }
+
+    #[test]
+    fn reads_dump_progress() {
+        let mut p = DumpProgress::default();
+        let mut log = DumpLog::default();
+        for l in ["@@table 3 86 orders", "@@rows 5000", "PHP Warning: x", "@@done 86 120000"] {
+            dump_line(l, &mut p, &mut log);
+        }
+        assert_eq!((p.index, p.total, p.table.as_str(), p.rows), (3, 86, "orders", 5000));
+        assert_eq!(log.done, Some((86, 120000)));
+        assert_eq!(log.other, vec!["PHP Warning: x"]);
+        let mut log = DumpLog::default();
+        dump_line("@@err pg_dump isn't installed", &mut p, &mut log);
+        assert!(log.error.is_some() && log.done.is_none());
+    }
+
+    #[test]
+    fn dump_keeps_stdout_for_the_file() {
+        let s = dump_script("/srv/app", "php", &serde_json::json!({"mode": "dump"}), None, true);
+        assert!(s.starts_with("{\n") && s.contains("} 1>&2\n"));
+        assert!(s.contains("<<'KEMUDI_PHP' | gzip -c\n"));
     }
 
     #[test]

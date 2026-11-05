@@ -1,3 +1,4 @@
+import { autocompletion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from "@codemirror/language";
 import { nginx } from "@codemirror/legacy-modes/mode/nginx";
@@ -58,6 +59,13 @@ const theme = EditorView.theme({
   ".cm-changeGutter": { width: "3px", paddingLeft: "0" },
   ".cm-changedLineGutter": { background: "var(--term-green)" },
   ".cm-deletedLineGutter": { background: "var(--term-red)" },
+  // Completions (SQL): a light popover like the app's menus.
+  ".cm-tooltip": { border: "1px solid var(--divider)", backgroundColor: "var(--popover)", borderRadius: "8px", boxShadow: "0 8px 24px rgb(0 0 0 / 0.12)", overflow: "hidden" },
+  ".cm-tooltip-autocomplete > ul": { fontFamily: "var(--font-mono)", fontSize: "12px", maxHeight: "16em" },
+  ".cm-tooltip-autocomplete > ul > li": { padding: "2px 10px 2px 6px !important", lineHeight: "18px" },
+  ".cm-tooltip-autocomplete > ul > li[aria-selected]": { backgroundColor: "var(--primary)", color: "var(--primary-foreground)" },
+  ".cm-completionDetail": { marginLeft: "8px", fontStyle: "normal", opacity: "0.6" },
+  ".cm-completionIcon": { width: "1.1em", opacity: "0.55" },
   ".cm-collapsedLines": { color: "var(--subtle-foreground)", background: "var(--hover)", fontSize: "11.5px" },
 });
 
@@ -96,6 +104,7 @@ export function CodeEditor({
   autoFocus,
   onRun,
   onCursor,
+  complete,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -104,13 +113,16 @@ export function CodeEditor({
   onRun?: (pick: RunPick) => void;
   /** The selection moved (or the cursor). */
   onCursor?: (from: number, to: number) => void;
+  /** Completions while typing (e.g. table and column names). */
+  complete?: (ctx: CompletionContext) => CompletionResult | null;
   className?: string;
   autoFocus?: boolean;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
-  const latest = useRef({ onChange, onSave, onRun, onCursor });
-  latest.current = { onChange, onSave, onRun, onCursor };
+  const latest = useRef({ onChange, onSave, onRun, onCursor, complete });
+  latest.current = { onChange, onSave, onRun, onCursor, complete };
+  const completes = !!complete;
 
   useEffect(() => {
     if (!host.current) return;
@@ -131,6 +143,7 @@ export function CodeEditor({
         extensions: [
           ...base(lang),
           history(),
+          completes ? autocompletion({ override: [(ctx) => latest.current.complete?.(ctx) ?? null], icons: true }) : [],
           keymap.of([{ key: "Mod-s", run: save }, { key: "Mod-Enter", run }, indentWithTab, ...defaultKeymap, ...historyKeymap]),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) latest.current.onChange(u.state.doc.toString());
@@ -147,7 +160,7 @@ export function CodeEditor({
     };
     // The editor owns the text while mounted; outside changes come in below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lang]);
+  }, [lang, completes]);
 
   // Text changed from outside (the table view): replace the document.
   useEffect(() => {

@@ -647,9 +647,20 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   see the exact UPDATE first, and production asks you to type the server's
   name. Only in a table with a primary key; the change lands only if exactly
   that one row still holds what was read (else nothing changes: read the
-  page again), in its own transaction. Recorded in History.
+  page again), in its own transaction. Recorded in History. **+ Row** adds
+  a row (a value, NULL, its default or Now for each column; the INSERT is
+  shown first) and a picked cell's **Delete row** deletes that one row (by
+  its primary key); each in its own transaction, kept only if exactly one row
+  changed, production asks for the server's name, recorded in History.
   **Query**: an SQL editor (kept per app); ⌘↵ or Run runs the statement the
-  cursor is in, or the selection, a page at a time. **History** (every query
+  cursor is in, or the selection, a page at a time; table and column names
+  complete as you type (after `alias.` too). **INSERT, UPDATE and DELETE**
+  are tried first and undone, to count the rows they change; you see that
+  count (and a warning when an UPDATE / DELETE has no WHERE), production asks
+  for the server's name, and then it runs for real in one transaction, kept
+  only if it changes as many rows again. Recorded in History. No ALTER, DROP,
+  TRUNCATE or CREATE; MyISAM tables are refused (a change to them can't be
+  undone). **History** (every query
   you ran here, with rows / time or the error; click to run again) and
   **Saved** queries (*Save…* names the statement at the cursor; rename,
   delete) are on the right, kept per app in `db-queries.json` in the data
@@ -664,6 +675,18 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   itself refuses writes; only SELECT, WITH, SHOW, DESCRIBE and EXPLAIN are
   sent, one statement at a time, no locking reads, each stopped after 10 s.
   Rows are kept only while the tab is open.
+  **Export** (⤓ above the tables): an SQL dump saved straight to this Mac
+  (Downloads, or a folder you pick; nothing is left on the server), of every
+  table or the ones you tick (with their sizes), structure and data or
+  structure only, DROP … IF EXISTS or not, gzip (on the server, so less to
+  bring over) or not. Always one consistent snapshot: a single read-only
+  transaction, so every table is as it was at the same moment and InnoDB
+  tables aren't locked (MyISAM ones aren't covered). MySQL / MariaDB and
+  SQLite are dumped by Kemudi (CREATE statements as the server gives them,
+  batched INSERTs, binary as hex, times in UTC, views after the tables they
+  use, DEFINER left out; no triggers, routines or events); Postgres by
+  pg_dump on the server. Progress (table, rows, size) and Stop (the partial
+  file is removed). Needs ssh (not AWS Session Manager servers).
 - **Health** (a server tab ▸ *Health*, or right-click a server): read-only
   checks. **SSL**: every name in the nginx/Apache vhosts (not `_`, regex or
   wildcard names), checked against the certificate actually served (from

@@ -176,7 +176,7 @@ async fn scp(state: &AppState, host: &str, args: &[String]) -> AppResult<()> {
 }
 
 /// `~/Downloads/<name>`, or `name (2).ext` … if that's taken.
-fn free_name(dir: &Path, name: &str) -> PathBuf {
+pub(crate) fn free_name(dir: &Path, name: &str) -> PathBuf {
     let first = dir.join(name);
     if !first.exists() {
         return first;
@@ -1179,7 +1179,7 @@ pub async fn files_find(
     parse_find(&out, contents)
 }
 
-fn default_downloads() -> AppResult<PathBuf> {
+pub(crate) fn default_downloads() -> AppResult<PathBuf> {
     dirs::download_dir()
         .or_else(|| dirs::home_dir().map(|h| h.join("Downloads")))
         .ok_or_else(|| AppError::Invalid("no Downloads folder".into()))

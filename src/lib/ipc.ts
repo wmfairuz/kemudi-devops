@@ -1904,6 +1904,10 @@ export interface DbColumn {
   name: string;
   type: string;
   key: boolean;
+  /** Browse only: can be NULL, its default, filled by the database. */
+  nullable: boolean;
+  default: string | null;
+  auto: boolean;
 }
 export interface DbResult {
   driver: string;
@@ -1960,3 +1964,55 @@ export const dbQuerySave = (serverId: string, appId: string, name: string, sql: 
 export const dbQuerySavedEdit = (serverId: string, appId: string, id: string, name: string | null): Promise<DbQueries> =>
   invoke("db_query_saved_edit", { serverId, appId, id, name });
 export const dbHistoryClear = (serverId: string, appId: string): Promise<DbQueries> => invoke("db_history_clear", { serverId, appId });
+
+/** What a change did: rows changed (a dry run: would change; undone). */
+export interface DbChanged {
+  affected: number;
+  ms: number;
+}
+/** Your own INSERT / UPDATE / DELETE: `dry` runs and undoes it (how many
+ *  rows); else for real, kept only if it changes `expect` rows again. */
+export const dbWrite = (serverId: string, appId: string, sql: string, dry: boolean, expect: number | null = null): Promise<DbChanged> =>
+  invoke("db_write", { serverId, appId, sql, dry, expect });
+export interface DbNewValue {
+  column: string;
+  kind: "value" | "null" | "default" | "now";
+  value: string;
+}
+export const dbInsertRow = (serverId: string, appId: string, table: string, values: DbNewValue[]): Promise<DbChanged> =>
+  invoke("db_insert_row", { serverId, appId, table, values });
+export const dbDeleteRow = (serverId: string, appId: string, table: string, key: { column: string; value: string | null }[]): Promise<DbChanged> =>
+  invoke("db_delete_row", { serverId, appId, table, key });
+export interface DbSchema {
+  tables: { name: string; columns: string[] }[];
+}
+export const dbSchema = (serverId: string, appId: string): Promise<DbSchema> => invoke("db_schema", { serverId, appId });
+export interface DumpOptions {
+  /** null: every table and view. */
+  tables: string[] | null;
+  data: boolean;
+  drop: boolean;
+  gzip: boolean;
+  fileName: string;
+  /** null: ~/Downloads. */
+  folder: string | null;
+}
+export interface DumpProgress {
+  bytes: number;
+  table: string;
+  index: number;
+  total: number;
+  rows: number;
+}
+export interface DumpDone {
+  path: string;
+  bytes: number;
+  tables: number;
+  rows: number;
+}
+export function dbDump(serverId: string, appId: string, id: string, opts: DumpOptions, onProgress: (p: DumpProgress) => void): Promise<DumpDone> {
+  const ch = new Channel<DumpProgress>();
+  ch.onmessage = onProgress;
+  return invoke("db_dump", { serverId, appId, id, opts, onProgress: ch });
+}
+export const dbDumpCancel = (id: string): Promise<void> => invoke("db_dump_cancel", { id });
