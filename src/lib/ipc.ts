@@ -887,8 +887,8 @@ export interface AuditQuery {
   offset?: number;
 }
 
-/** When each app on a server last had a History row (app id → ms). */
-export const auditAppActivity = (serverId: string): Promise<Record<string, number>> => invoke("audit_app_activity", { serverId });
+/** When each app last had a History row (server id → app id → ms). */
+export const auditAppActivity = (): Promise<Record<string, Record<string, number>>> => invoke("audit_app_activity");
 export const auditList = (query: AuditQuery): Promise<{ runs: AuditRun[]; total: number }> =>
   invoke("audit_list", { query });
 

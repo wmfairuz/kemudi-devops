@@ -165,13 +165,13 @@ impl AuditLog {
             .optional()
     }
 
-    /// Each app's latest History row on a server (app id → started_at ms).
-    pub fn last_by_app(&self, server_id: &str) -> rusqlite::Result<Vec<(String, i64)>> {
+    /// Each app's latest History row: (server id, app id, started_at ms).
+    pub fn last_by_app(&self) -> rusqlite::Result<Vec<(String, String, i64)>> {
         let conn = self.conn();
         let mut st = conn.prepare(
-            "SELECT app_id, MAX(started_at) FROM runs WHERE server_id = ?1 AND app_id IS NOT NULL GROUP BY app_id",
+            "SELECT server_id, app_id, MAX(started_at) FROM runs WHERE app_id IS NOT NULL GROUP BY server_id, app_id",
         )?;
-        let rows = st.query_map([server_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?;
+        let rows = st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?)))?;
         rows.collect()
     }
 
@@ -281,10 +281,11 @@ mod tests {
         log.start(&NewRun { app_id: Some("shop"), ..run("stg", "pull", "staging", "git pull") }).expect("b");
         log.start(&NewRun { app_id: None, ..run("stg", "df", "staging", "df -h") }).expect("c");
         log.start(&run("other", "pull", "staging", "git pull")).expect("d");
-        let mut got = log.last_by_app("stg").expect("q");
+        let mut got = log.last_by_app().expect("q");
         got.sort();
-        assert_eq!(got.iter().map(|(a, _)| a.as_str()).collect::<Vec<_>>(), ["akaun", "shop"]);
-        assert!(got.iter().all(|(_, t)| *t > 0));
+        let keys: Vec<_> = got.iter().map(|(s, a, _)| format!("{s}/{a}")).collect();
+        assert_eq!(keys, ["other/akaun", "stg/akaun", "stg/shop"]);
+        assert!(got.iter().all(|(_, _, t)| *t > 0));
     }
 
     #[test]

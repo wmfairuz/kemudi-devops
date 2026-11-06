@@ -1,7 +1,8 @@
-// When each app last saw activity, for the Apps view's order (most recent
-// first): its latest History row (actions, saves, database changes, fills),
+// When each app last saw activity, for the order of apps in a server's
+// Apps view and in the sidebar (most recent first): its latest History row (actions, saves, database changes, fills),
 // when its tab was last opened here, and the newest of its deploy and
 // config files on the server (from the background checks).
+import { useEffect } from "react";
 import { create } from "zustand";
 
 import { auditAppActivity } from "@/lib/ipc";
@@ -37,13 +38,24 @@ export function markOpened(serverId: string, appId: string) {
   }
 }
 
-export async function loadHistoryActivity(serverId: string) {
+export async function loadHistoryActivity() {
   try {
-    const got = await auditAppActivity(serverId);
-    useAppActivity.setState((s) => ({ history: { ...s.history, [serverId]: got } }));
+    useAppActivity.setState({ history: await auditAppActivity() });
   } catch {
     // No History: order by the rest.
   }
+}
+
+/** Keep History's times fresh while `on` (a view that sorts by them is
+ *  shown): now, every 30 s, and whenever an app tab is opened. */
+export function useHistoryActivity(on = true) {
+  const opened = useAppActivity((s) => s.opened);
+  useEffect(() => {
+    if (!on) return;
+    void loadHistoryActivity();
+    const t = window.setInterval(() => void loadHistoryActivity(), 30_000);
+    return () => window.clearInterval(t);
+  }, [on, opened]);
 }
 
 export type Activity = { at: number; what: string } | null;
@@ -58,6 +70,15 @@ export function latest(serverId: string, appId: string, changedS: number | null 
   let best: Activity = null;
   for (const [at, what] of all) if (at && (!best || at > best.at)) best = { at, what };
   return best;
+}
+
+/** Apps, most recent activity first; ones with none keep their order, after.
+ *  `changedS`: an app's newest deploy/config file time on the server. */
+export function byRecent<A extends { id: string }>(serverId: string, apps: A[], changedS: (id: string) => number | null | undefined, s: ActivityState): A[] {
+  return apps
+    .map((a, i) => [a, latest(serverId, a.id, changedS(a.id), s)?.at ?? 0, i] as const)
+    .sort((x, y) => y[1] - x[1] || x[2] - y[2])
+    .map(([a]) => a);
 }
 
 // Dev only: a hot-swapped store would be a second, empty copy; reload instead.

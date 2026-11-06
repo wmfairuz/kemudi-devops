@@ -1,5 +1,5 @@
 import { ChevronRight, ChevronsDownUp, ChevronsUpDown, Folder, FolderOpen, Plus, SquareTerminal } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { create } from "zustand";
 
 import { EnvTag, StaleBadge, VpnBadge } from "@/components/kit/EnvTag";
@@ -21,6 +21,8 @@ import { useStatus } from "@/stores/status";
 import { useTabs } from "@/stores/tabs";
 import { openServerShell, whereOf } from "@/lib/fleet";
 import { facetsOn, NO_FACETS, useFacetTest } from "@/lib/serverFacets";
+import { byRecent, useAppActivity, useHistoryActivity } from "@/stores/appActivity";
+import { useWatch } from "@/stores/watch";
 
 interface Props {
   servers: Server[];
@@ -51,8 +53,9 @@ const useDrag = create<{ drag: Drag | null }>(() => ({ drag: null }));
 /** Set right after a drop, so the row's click that follows is ignored. */
 let justDropped = false;
 
-/** Press on an app row and move: drag it (to another place in its server's
- *  list, or onto another server). A plain click still opens it. */
+/** Press on an app row and move: drag it onto another server (a server's
+ *  apps are in order of activity, so there's no place within its own list).
+ *  A plain click still opens it. */
 function startDrag(e: React.PointerEvent, server: Server, app?: App) {
   const kind = app ? "app" : "server";
   const sb = useSidebar.getState();
@@ -153,11 +156,9 @@ async function drop(from: string, appId: string, to: string, before: string | nu
   const dst = findServer(to);
   const app = src?.apps.find((a) => a.id === appId);
   if (!src || !dst || !app) return;
-  if (from === to) {
-    const ids = src.apps.map((a) => a.id);
-    const next = ids[ids.indexOf(appId) + 1] ?? null;
-    if (before === appId || before === next) return; // where it already is
-  } else if (
+  // Its own server: apps there are in order of activity, nothing to move.
+  if (from === to) return;
+  if (
     !(await askConfirm(
       `Move ${app.name} to ${dst.name}?`,
       `Only Kemudi's record moves (with its own actions and settings): nothing on ${src.name} or ${dst.name} changes. Its path, vhost and Supervisor files stay as they are, so check they match ${dst.name}.`,
@@ -206,14 +207,28 @@ export function ServerTree({ servers: team, stale }: Props) {
   const withApps = servers.filter((s) => s.apps.length > 0).map((s) => s.id);
   const anyOpen = withApps.some((id) => expanded[id]);
 
+  // Each server's apps: the most recent activity first (as in its Apps
+  // view). Held still while the pointer is over the sidebar, so a row you
+  // just clicked doesn't jump away under it.
+  useHistoryActivity();
+  const liveActivity = useAppActivity();
+  const liveWatch = useWatch((s) => s.snapshot?.servers);
+  const [held, setHeld] = useState<{ activity: typeof liveActivity; watch: typeof liveWatch } | null>(null);
+  const activity = held?.activity ?? liveActivity;
+  const watched = held?.watch ?? liveWatch;
+  const recent = useCallback(
+    (s: Server, apps: App[]) => byRecent(s.id, apps, (id) => watched?.[s.id]?.updates?.value.apps.find((x) => x.id === id)?.changed, activity),
+    [activity, watched],
+  );
+
   const visible = useMemo(() => {
-    if (!filter) return servers.map((s) => ({ server: s, apps: s.apps, forced: false }));
+    if (!filter) return servers.map((s) => ({ server: s, apps: recent(s, s.apps), forced: false }));
     return servers.flatMap((s) => {
       const serverHit = matches(s.id, filter) || matches(s.name, filter) || matches(s.env, filter);
-      const apps = serverHit ? s.apps : s.apps.filter((a) => matches(a.id, filter) || matches(a.name, filter));
+      const apps = recent(s, serverHit ? s.apps : s.apps.filter((a) => matches(a.id, filter) || matches(a.name, filter)));
       return serverHit || apps.length ? [{ server: s, apps, forced: apps.length > 0 && !serverHit }] : [];
     });
-  }, [servers, filter]);
+  }, [servers, filter, recent]);
 
   // Ungrouped servers first, then each group (in the order they first appear).
   const sections = useMemo(() => {
@@ -255,7 +270,12 @@ export function ServerTree({ servers: team, stale }: Props) {
         )}
         <AddServerButton />
       </div>
-      <div role="tree" className={cn("min-h-0 flex-1 overflow-y-auto pb-2", stale && "opacity-72")}>
+      <div
+        role="tree"
+        className={cn("min-h-0 flex-1 overflow-y-auto pb-2", stale && "opacity-72")}
+        onPointerEnter={() => setHeld({ activity: useAppActivity.getState(), watch: useWatch.getState().snapshot?.servers })}
+        onPointerLeave={() => setHeld(null)}
+      >
         {sections.map((sec) => {
           const closed = sec.group !== null && !!closedGroups[sec.group] && !filter && !narrowed;
           return (
@@ -371,7 +391,8 @@ function ServerGroup({ server, apps, forceOpen, next }: { server: Server; apps: 
   const reach = useStatus((s) => s.byServer[server.id]);
   const status = reach?.state ?? "unknown";
   const down = status === "down";
-  const dropHere = useDrag((s) => (s.drag?.kind === "app" && s.drag.over?.serverId === server.id ? s.drag.over.before : undefined));
+  // Only another server's app lands here (its own are in order of activity).
+  const dropHere = useDrag((s) => (s.drag?.kind === "app" && s.drag.serverId !== server.id && s.drag.over?.serverId === server.id ? s.drag.over.before : undefined));
   const dragging = useDrag((s) => s.drag?.kind === "app");
   // Dragging a server: a line above this group (before it) or below the last one.
   const serverLine = useDrag((s) => {

@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use tauri::State;
 
 use super::{Page, Query};
@@ -14,19 +16,21 @@ pub async fn audit_list(state: State<'_, AppState>, query: Query) -> AppResult<P
         .map_err(|e| AppError::Config(format!("audit log: {e}")))
 }
 
-/// When each app on a server last had a History row (app id → ms).
+/// When each app last had a History row (server id → app id → ms).
 #[tauri::command]
 pub async fn audit_app_activity(
     state: State<'_, AppState>,
-    server_id: String,
-) -> AppResult<std::collections::BTreeMap<String, i64>> {
+) -> AppResult<BTreeMap<String, BTreeMap<String, i64>>> {
     let log = state
         .audit
         .as_ref()
         .map_err(|e| AppError::Config(format!("audit log unavailable: {e}")))?;
-    Ok(log
-        .last_by_app(&server_id)
+    let mut out: BTreeMap<String, BTreeMap<String, i64>> = BTreeMap::new();
+    for (server, app, at) in log
+        .last_by_app()
         .map_err(|e| AppError::Config(format!("audit log: {e}")))?
-        .into_iter()
-        .collect())
+    {
+        out.entry(server).or_default().insert(app, at);
+    }
+    Ok(out)
 }

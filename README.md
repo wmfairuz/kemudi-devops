@@ -497,10 +497,13 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
 - **Reorder servers**: drag a server by its row in the sidebar and drop it
   on another server (upper half: before it; lower half: after it). Its apps
   and settings go with it; comments above it in the config stay put.
-- **Reorder and move apps**: drag an app in the sidebar. Drop it on another
-  app (upper half: before it; lower half: after it) to change the order, or
-  on another server (its row or its apps) to move it there, after a
-  confirmation. Only Kemudi's record moves, as written (comments, its own
+- **App order**: a server's apps, in the sidebar and in its Apps section,
+  are the most recently active first (its latest History row, its tab
+  opened here, or a deploy / .env / composer change on the server); the
+  sidebar holds its order while the pointer is over it, so a row you click
+  doesn't jump away. Ones with no activity keep their order, after.
+- **Move apps**: drag an app in the sidebar onto another server (its row or
+  its apps) to move it there, after a confirmation. Only Kemudi's record moves, as written (comments, its own
   actions and settings); nothing on either server changes. If the other
   server already has an app with that id, it becomes `<id>-2`. Dragging is
   off while the sidebar filter or its chips are in use.

@@ -24,7 +24,7 @@ import { openServer, type ServerSection } from "@/stores/tabs";
 import { loadShots, shotKey, takeShot, useShots } from "@/stores/shots";
 import { toastError } from "@/stores/toasts";
 import { agoS, useWatch } from "@/stores/watch";
-import { latest, loadHistoryActivity, useAppActivity } from "@/stores/appActivity";
+import { byRecent, latest, useAppActivity, useHistoryActivity } from "@/stores/appActivity";
 import { ServerLogins } from "./ServerLogins";
 
 /** Re-render every half minute, so "4 min ago" moves on. */
@@ -390,18 +390,15 @@ export function ServerApps({ server }: { server: Server }) {
   // Most recent activity first (History, opened here, deploys on the
   // server); ones with none keep their order, after.
   const activity = useAppActivity();
-  useEffect(() => {
-    void loadHistoryActivity(server.id);
-    const t = window.setInterval(() => void loadHistoryActivity(server.id), 30_000);
-    return () => window.clearInterval(t);
-  }, [server.id, activity.opened]);
-  const last = (a: App) => latest(server.id, a.id, up?.value.apps.find((x) => x.id === a.id)?.changed, activity);
-  const order = new Map(server.apps.map((a, i) => [a.id, i]));
-  const shown = server.apps
-    .filter((a) => matches(a, facts(a), f))
-    .map((a) => [a, last(a)?.at ?? 0] as const)
-    .sort((x, y) => y[1] - x[1] || (order.get(x[0].id) ?? 0) - (order.get(y[0].id) ?? 0))
-    .map(([a]) => a);
+  useHistoryActivity();
+  const changed = (id: string) => up?.value.apps.find((x) => x.id === id)?.changed;
+  const last = (a: App) => latest(server.id, a.id, changed(a.id), activity);
+  const shown = byRecent(
+    server.id,
+    server.apps.filter((a) => matches(a, facts(a), f)),
+    changed,
+    activity,
+  );
   const recent = (a: App) => {
     const l = last(a);
     return l ? (
