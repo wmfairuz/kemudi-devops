@@ -2,6 +2,7 @@
 // TerminalSession (xterm + PTY). Panes live in groups; the tab strip shows
 // one tab per group, laid out as a split tree (lib/layout). `activeId` is
 // the focused pane of the group in front.
+import { markOpened } from "@/stores/appActivity";
 import { create } from "zustand";
 
 import type { ConfigLayout, PtyEvent } from "@/lib/ipc";
@@ -967,6 +968,7 @@ function appOptions(server: ServerRef, app: AppRef, section: AppSection): OpenOp
 
 /** The app's one tab, on `section`; opened like this it's a tab to keep. */
 export function openApp(server: ServerRef, app: AppRef, section: AppSection = "overview"): string {
+  markOpened(server.id, app.id);
   const { tabs, activate, update } = useTabs.getState();
   const same = tabs.find((t) => t.kind === "app" && t.serverId === server.id && t.appId === app.id);
   if (same) {
@@ -979,6 +981,7 @@ export function openApp(server: ServerRef, app: AppRef, section: AppSection = "o
 
 /** A plain click on an app in the sidebar: its tab, else a preview tab. */
 export function previewApp(server: ServerRef, app: AppRef): string {
+  markOpened(server.id, app.id);
   const s = useTabs.getState();
   const same = s.tabs.find((t) => t.kind === "app" && t.serverId === server.id && t.appId === app.id);
   if (same) {

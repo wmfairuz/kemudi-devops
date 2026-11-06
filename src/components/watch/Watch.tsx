@@ -24,6 +24,7 @@ import { openServer, type ServerSection } from "@/stores/tabs";
 import { loadShots, shotKey, takeShot, useShots } from "@/stores/shots";
 import { toastError } from "@/stores/toasts";
 import { agoS, useWatch } from "@/stores/watch";
+import { latest, loadHistoryActivity, useAppActivity } from "@/stores/appActivity";
 import { ServerLogins } from "./ServerLogins";
 
 /** Re-render every half minute, so "4 min ago" moves on. */
@@ -386,16 +387,39 @@ export function ServerApps({ server }: { server: Server }) {
   const setF = (g: AppFilter) => useAppsFilter.setState({ [server.id]: g });
   const dash = useDash((s) => s.servers[server.id]?.data);
   const facts = (a: App) => appFacts(up?.value.apps.find((x) => x.id === a.id), dash?.apps.find((x) => x.appId === a.id));
-  const shown = server.apps.filter((a) => matches(a, facts(a), f));
+  // Most recent activity first (History, opened here, deploys on the
+  // server); ones with none keep their order, after.
+  const activity = useAppActivity();
+  useEffect(() => {
+    void loadHistoryActivity(server.id);
+    const t = window.setInterval(() => void loadHistoryActivity(server.id), 30_000);
+    return () => window.clearInterval(t);
+  }, [server.id, activity.opened]);
+  const last = (a: App) => latest(server.id, a.id, up?.value.apps.find((x) => x.id === a.id)?.changed, activity);
+  const order = new Map(server.apps.map((a, i) => [a.id, i]));
+  const shown = server.apps
+    .filter((a) => matches(a, facts(a), f))
+    .map((a) => [a, last(a)?.at ?? 0] as const)
+    .sort((x, y) => y[1] - x[1] || (order.get(x[0].id) ?? 0) - (order.get(y[0].id) ?? 0))
+    .map(([a]) => a);
+  const recent = (a: App) => {
+    const l = last(a);
+    return l ? (
+      <span className="text-subtle-foreground" title={`Last activity: ${l.what}, ${new Date(l.at).toLocaleString()}`}>
+        active {agoS(l.at / 1000, now)}
+      </span>
+    ) : null;
+  };
   const status = (a: App) => {
     const st = up?.value.apps.find((x) => x.id === a.id);
-    if (!st) return <Dim>–</Dim>;
+    if (!st) return <>{recent(a) ?? <Dim>–</Dim>}</>;
     if (st.missing) return <span className="text-env-prod-fg">folder missing</span>;
     return (
       <>
         {st.downSince && <span className="text-[#8a5a12]">maintenance since {agoS(st.downSince, now)}</span>}
         {st.appDebug && <span className={a.env === "prod" || st.appEnv === "production" ? "text-env-prod-fg" : "text-subtle-foreground"}>APP_DEBUG on</span>}
         <Dim>{st.appEnv ?? "no .env"}</Dim>
+        {recent(a)}
       </>
     );
   };

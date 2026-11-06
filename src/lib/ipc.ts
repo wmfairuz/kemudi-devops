@@ -887,6 +887,8 @@ export interface AuditQuery {
   offset?: number;
 }
 
+/** When each app on a server last had a History row (app id → ms). */
+export const auditAppActivity = (serverId: string): Promise<Record<string, number>> => invoke("audit_app_activity", { serverId });
 export const auditList = (query: AuditQuery): Promise<{ runs: AuditRun[]; total: number }> =>
   invoke("audit_list", { query });
 
@@ -1786,7 +1788,9 @@ export interface WatchUpdates {
   security: number | null;
   rebootRequired: boolean;
   rebootSince: number | null;
-  apps: { id: string; missing: boolean; appEnv: string | null; appDebug: boolean | null; downSince: number | null }[];
+  /** `changed`: the newest of its deploy and config files (git pull, the
+   *  `current` link, .env, composer, config cache), unix seconds. */
+  apps: { id: string; missing: boolean; appEnv: string | null; appDebug: boolean | null; downSince: number | null; changed: number | null }[];
 }
 
 export interface WatchCerts {

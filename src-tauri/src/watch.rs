@@ -282,6 +282,9 @@ pub struct AppWatch {
     pub app_debug: Option<bool>,
     /// In maintenance mode since (storage/framework/down).
     pub down_since: Option<i64>,
+    /// The newest of its deploy and config files (git pull, the `current`
+    /// link, .env, composer.lock, vendor, config cache): unix seconds.
+    pub changed: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -917,6 +920,10 @@ echo @@updates; if [ -x /usr/lib/update-notifier/apt-check ]; then /usr/lib/upda
 echo @@reboot; [ -f /var/run/reboot-required ] && stat -c %Y /var/run/reboot-required
 "#;
 
+/// The files whose newest time is when an app last changed: a git pull or
+/// checkout, a Deployer release (the `current` link), .env, composer.
+const CHANGED_FILES: &str = r#""$D/.git/logs/HEAD" "$D/.git/FETCH_HEAD" "$P/.git/logs/HEAD" "$P/current" "$D/.env" "$D/composer.lock" "$D/vendor/composer/installed.json" "$D/bootstrap/cache/config.php""#;
+
 /// Each app's APP_ENV / APP_DEBUG and maintenance file (in its folder or
 /// its `current/`).
 fn apps_script(server: &Server) -> String {
@@ -931,12 +938,16 @@ if [ -d "$P" ] || {{ [ -n "$SU" ] && $SU test -d "$P"; }}; then
   [ -n "$t" ] && echo "down $t"
   e=$(grep -E '^(APP_ENV|APP_DEBUG)=' "$D/.env" 2>/dev/null || {{ [ -n "$SU" ] && $SU grep -E '^(APP_ENV|APP_DEBUG)=' "$D/.env" 2>/dev/null; }})
   printf '%s\n' "$e" | sed -n 's/^/env /p'
+  c=$(stat -c %Y {files} 2>/dev/null | sort -n | tail -1)
+  [ -z "$c" ] && [ -n "$SU" ] && c=$($SU stat -c %Y {files} 2>/dev/null | sort -n | tail -1)
+  [ -n "$c" ] && echo "changed $c"
 else
   echo missing
 fi
 "#,
             id = a.id,
             p = shell_quote(&a.path),
+            files = CHANGED_FILES,
         ));
     }
     s
@@ -1047,6 +1058,8 @@ fn parse_updates(sec: &BTreeMap<&str, Vec<&str>>) -> Result<Updates, String> {
             a.missing = true;
         } else if let Some(t) = l.strip_prefix("down ") {
             a.down_since = t.trim().parse().ok();
+        } else if let Some(t) = l.strip_prefix("changed ") {
+            a.changed = t.trim().parse().ok();
         } else if let Some(v) = l.strip_prefix("env APP_ENV=") {
             a.app_env = Some(v.trim().trim_matches(['"', '\'']).to_string());
         } else if let Some(v) = l.strip_prefix("env APP_DEBUG=") {
@@ -1388,7 +1401,7 @@ servers:
 
     #[test]
     fn parses_the_script_output() {
-        let out = "@@now\n@@df\nFilesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 100000 94000 6000 94% /\n@@inodes\n12% /\n95% /data\n@@load\n3.10 4.50 2.00 1/200 99\n@@nproc\n2\n@@meminfo\nMemTotal: 2000000 kB\nMemAvailable: 100000 kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\n@@failed\nphp8.3-fpm.service\n@@os\nUbuntu 24.04 LTS\n1234.5\n@@updates\n12;3\n@@reboot\n1700000000\n@@apps\n@app shop\ndown 1700000100\nenv APP_ENV=production\nenv APP_DEBUG=true\n";
+        let out = "@@now\n@@df\nFilesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sda1 100000 94000 6000 94% /\n@@inodes\n12% /\n95% /data\n@@load\n3.10 4.50 2.00 1/200 99\n@@nproc\n2\n@@meminfo\nMemTotal: 2000000 kB\nMemAvailable: 100000 kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\n@@failed\nphp8.3-fpm.service\n@@os\nUbuntu 24.04 LTS\n1234.5\n@@updates\n12;3\n@@reboot\n1700000000\n@@apps\n@app shop\ndown 1700000100\nenv APP_ENV=production\nenv APP_DEBUG=true\nchanged 1700000200\n";
         let sec = sections(out);
         let s = parse_system(&sec).expect("system");
         assert_eq!(s.disks.len(), 1);
@@ -1399,6 +1412,7 @@ servers:
         let u = parse_updates(&sec).expect("updates");
         assert_eq!((u.updates, u.security, u.reboot_required), (Some(12), Some(3), true));
         assert_eq!(u.apps[0].down_since, Some(1_700_000_100));
+        assert_eq!(u.apps[0].changed, Some(1_700_000_200));
         assert_eq!(u.apps[0].app_debug, Some(true));
     }
 

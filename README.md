@@ -199,7 +199,12 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   Live / Maintenance, Auth on / off and Need a look, each with its count,
   clicked again to clear; the title says "12 of 67")
   and what the checks found
-  in each: APP_ENV, APP_DEBUG on, maintenance, folder missing; as
+  in each: APP_ENV, APP_DEBUG on, maintenance, folder missing; the most
+  recently active first ("active 2 h ago"; hover says what): its latest
+  History row (actions, saves, database changes, fills), when its tab was
+  last opened here, or the newest of its deploy and config files on the
+  server (git pull, a Deployer `current` link, .env, composer.lock, vendor,
+  config cache; one `stat` in the background check); as
   **Pictures** of each app's front page, like Herd's (the default; the
   switch next to the title gives a **List**): taken
   by Chrome, Edge, Chromium or Brave running headless on this Mac, in a

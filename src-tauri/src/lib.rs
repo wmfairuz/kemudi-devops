@@ -336,6 +336,7 @@ pub fn run() {
             preflight::commands::status_refresh,
             preflight::commands::vpn_connect,
             audit::commands::audit_list,
+            audit::commands::audit_app_activity,
             session::session_load,
             session::session_save,
         ])
