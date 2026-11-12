@@ -55,7 +55,10 @@ fn alias_name(line: &str) -> Option<&str> {
 }
 
 /// `asroot cmd…`: as root directly, else sudo (which may ask), else `sudo su -c`.
-const ROOT_FN: &str = r#"asroot(){ if [ "$(id -u)" = 0 ]; then "$@"; elif sudo -n true 2>/dev/null || ! sudo -n su -c true 2>/dev/null; then sudo "$@"; else sudo su -c "$*"; fi; }"#;
+/// Run as root: directly, with sudo, or through `sudo su -c` where that's
+/// all sudoers allows without a password (each argument quoted again, so
+/// one with spaces or quotes stays one).
+const ROOT_FN: &str = r#"asroot(){ if [ "$(id -u)" = 0 ]; then "$@"; elif sudo -n true 2>/dev/null || ! sudo -n su -c true 2>/dev/null; then sudo "$@"; else c=; for a in "$@"; do c="$c '$(printf '%s' "$a" | sed "s/'/'\\\\''/g")'"; done; sudo su -c "$c"; fi; }"#;
 
 /// Read-only: each repo's state (and whether GitHub has newer commits),
 /// and whether each line is in root's ~/.bashrc. Nothing is fetched into
@@ -78,7 +81,9 @@ elif [ -e "$d" ]; then echo "state notgit"; else echo "state missing"; fi
     s.push_str("echo @@bashrc\n");
     if !b.bashrc.is_empty() {
         // Root's ~/.bashrc, read once (into the shell, not sent back).
-        s.push_str("if [ -r /root/.bashrc ]; then RC=$(cat /root/.bashrc); rcok=1; elif sudo -n true 2>/dev/null; then RC=$(sudo -n cat /root/.bashrc); rcok=1; else rcok=0; fi\n");
+        // Root as the install gets it: sudo, or `sudo su` where that's all
+        // sudoers allows without a password.
+        s.push_str("if [ -r /root/.bashrc ]; then RC=$(cat /root/.bashrc); rcok=1; elif sudo -n true 2>/dev/null; then RC=$(sudo -n cat /root/.bashrc); rcok=1; elif sudo -n su -c true 2>/dev/null; then RC=$(sudo -n su -c 'cat /root/.bashrc'); rcok=1; else rcok=0; fi\n");
     }
     for (i, l) in b.bashrc.iter().enumerate() {
         let q = shell_quote(l);
@@ -324,6 +329,16 @@ pub async fn baseline_check(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn asroot_through_sudo_su_keeps_each_argument() {
+        // A sudo that only allows `su` without a password (as on servers
+        // whose sudoers says NOPASSWD: /bin/su).
+        let fake = r#"sudo(){ if [ "$1" = -n ]; then shift; [ "$1" = su ] && return 0; return 1; fi; if [ "$1" = su ] && [ "$2" = -c ]; then sh -c "$3"; else return 1; fi; }"#;
+        let script = format!("{fake}\n{ROOT_FN}\nasroot printf '%s|' 'a b' \"it's\" '$HOME' \"alias deploy='/x -d'\"");
+        let out = std::process::Command::new("bash").args(["-c", &script]).output().expect("bash");
+        assert_eq!(String::from_utf8_lossy(&out.stdout), "a b|it's|$HOME|alias deploy='/x -d'|", "{}", String::from_utf8_lossy(&out.stderr));
+    }
     use crate::config::schema::BaselineRepo;
 
     fn baseline() -> Baseline {
