@@ -63,6 +63,13 @@ pub struct Profile {
     pub unattended_upgrades: Option<bool>,
     /// apt packages that must be installed.
     pub packages: Option<Vec<String>>,
+    /// apt packages that are fine either way (e.g. certbot where the client
+    /// gives the certificate): not installed shows as optional, not a
+    /// problem, with Install.
+    pub optional_packages: Option<Vec<String>>,
+    /// A swap file: `true` (2G) or a size (`"4G"`, `"512M"`). Fix makes
+    /// /swapfile, adds it to /etc/fstab and sets vm.swappiness=10.
+    pub swap: Option<Toggle<String>>,
     pub php: Option<PhpSetup>,
     /// Composer in /usr/local/bin.
     pub composer: Option<bool>,

@@ -537,7 +537,8 @@ export interface SetupItem {
   title: string;
   /** What the profile wants. */
   expected: string | null;
-  state: "ok" | "warn" | "bad" | "unknown";
+  /** optional: not there, and that's fine (an optional package). */
+  state: "ok" | "warn" | "bad" | "unknown" | "optional";
   /** What the check found. */
   detail: string;
   /** Kemudi can fix it (as a workflow). */

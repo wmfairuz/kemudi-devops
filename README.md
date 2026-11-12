@@ -908,6 +908,8 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
         updates: true                  # no pending upgrades (Fix: apt upgrade)
         unattended_upgrades: true
         packages: [curl, git, unzip, nginx, supervisor, redis-server, mysql-server]
+        optional_packages: [certbot, python3-certbot-nginx]   # fine either way: ○ optional, with Install
+        swap: 2G                       # or true (2G); Fix: /swapfile, fstab, swappiness 10
         php: { version: "8.4", extensions: [fpm, cli, mbstring, xml, curl, mysql] }   # ppa:ondrej/php; php → 8.4
         composer: true
         mysql_secure: true             # no anonymous users, remote root, test db
@@ -918,7 +920,7 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
         auditd: true
         lynis: true
         ssh: { port: 2222, password_auth: false }   # any_port: true: any port but 22 is fine (2222: where Fix moves it)
-        custom: [{ name: Swap on, check: "swapon --show | grep -q .", fix: "…" }]
+        custom: [{ name: Node 20, check: "node -v | grep -q '^v20'", fix: "…" }]
       - id: legacy
         extends: web                   # what's set here wins; lists replace
         php: { version: "8.1", extensions: [fpm, cli, mbstring] }
@@ -935,7 +937,12 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   ! / ✗ / ? per item with what was found (*password logins on (set in
   /etc/ssh/sshd_config.d/50-cloud-init.conf)*, *port 22 · want 2222*,
   *missing: nginx*, *PHP 8.4.12 · not in apt: grpc*, the last Lynis
-  hardening index). Settings only root can read (`sshd -T`, ufw rules,
+  hardening index). An optional package that isn't installed shows as ○
+  *optional* (not counted as a problem, not ticked; **Install** puts it
+  on). Swap's Fix makes `/swapfile` (only when there's room for it and 1G
+  spare; an old one that isn't on is moved aside, never deleted; a
+  `/swapfile` that's already on is left for you to resize), adds it to
+  `/etc/fstab` (backed up first) and sets `vm.swappiness=10`. Settings only root can read (`sshd -T`, ufw rules,
   fail2ban's jails, MySQL) need root or sudo without a password; otherwise
   they show as ?. "Nginx Full" also counts as allowed when 80/tcp and
   443/tcp are. **Fix** (one item) and **Fix N ticked** build the steps as a

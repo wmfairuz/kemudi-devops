@@ -31,6 +31,8 @@ pub fn merge(child: &Profile, parent: Profile) -> Profile {
         updates: c.updates.or(parent.updates),
         unattended_upgrades: c.unattended_upgrades.or(parent.unattended_upgrades),
         packages: c.packages.or(parent.packages),
+        optional_packages: c.optional_packages.or(parent.optional_packages),
+        swap: c.swap.or(parent.swap),
         php: c.php.or(parent.php),
         composer: c.composer.or(parent.composer),
         mysql_secure: c.mysql_secure.or(parent.mysql_secure),
@@ -89,6 +91,28 @@ fn custom_id(c: &CustomCheck) -> String {
     })
 }
 
+/// A swap size (`2G`, `512M`) in MiB; at least 256M, at most 64G.
+fn swap_mb(size: &str) -> Option<u64> {
+    let s = size.trim();
+    let (n, unit) = s.split_at(s.len().checked_sub(1)?);
+    let n: u64 = n.parse().ok()?;
+    let mb = match unit {
+        "G" | "g" => n.checked_mul(1024)?,
+        "M" | "m" => n,
+        _ => return None,
+    };
+    (256..=64 * 1024).contains(&mb).then_some(mb)
+}
+
+/// The swap a profile wants: (label, MiB).
+fn swap_want(p: &Profile) -> Option<(String, u64)> {
+    match p.swap.as_ref()? {
+        Toggle::Flag(false) => None,
+        Toggle::Flag(true) => Some(("2G".into(), 2048)),
+        Toggle::Set(size) => swap_mb(size).map(|mb| (size.trim().to_uppercase(), mb)),
+    }
+}
+
 /// What's wrong with a (merged) profile (empty: fine).
 pub fn problems(p: &Profile) -> Vec<String> {
     let mut out = Vec::new();
@@ -97,9 +121,14 @@ pub fn problems(p: &Profile) -> Vec<String> {
             out.push(format!("timezone {tz:?} isn't a zone name (e.g. Asia/Kuala_Lumpur)"));
         }
     }
-    for pkg in p.packages.iter().flatten() {
+    for pkg in p.packages.iter().flatten().chain(p.optional_packages.iter().flatten()) {
         if !word_ok(pkg, ".+-") || pkg.chars().any(|c| c.is_ascii_uppercase()) {
             out.push(format!("package {pkg:?} isn't an apt package name"));
+        }
+    }
+    if let Some(Toggle::Set(size)) = &p.swap {
+        if swap_mb(size).is_none() {
+            out.push(format!("swap {size:?}: a size like \"2G\" or \"512M\" (or true for 2G)"));
         }
     }
     if let Some(php) = &p.php {
@@ -317,6 +346,56 @@ if [ -z "$m" ]; then say packages ok "all $c installed"; else say packages bad "
             ),
             Some(format!("apt-get update\napt-get install -y {list}")),
             30,
+        );
+    }
+    if let Some(pkgs) = p.optional_packages.as_ref().filter(|p| !p.is_empty()) {
+        let list = pkgs.join(" ");
+        add(
+            "optional-packages",
+            "Packages",
+            "Optional packages",
+            Some(format!("{list} (optional)")),
+            fill(
+                r#"m=; c=0; for p in __P__; do c=$((c+1)); inst "$p" || m="$m $p"; done
+if [ -z "$m" ]; then say optional-packages ok "all $c installed"; else say optional-packages optional "not installed:$m (optional)"; fi"#,
+                &[("P", &list)],
+            ),
+            Some(format!("apt-get update\napt-get install -y {list}")),
+            31,
+        );
+    }
+    if let Some((label, mb)) = swap_want(p) {
+        add(
+            "swap",
+            "System",
+            "Swap",
+            Some(format!("{label} or more")),
+            fill(
+                r#"t=$(awk '/^SwapTotal:/{print $2}' /proc/meminfo 2>/dev/null); t=${t:-0}
+h=$(awk -v k="$t" 'BEGIN{ if (k >= 1048576) printf "%.1fG", k/1048576; else printf "%dM", k/1024 }')
+if [ "$t" -eq 0 ]; then say swap bad "no swap"
+elif [ "$t" -ge __MIN__ ]; then say swap ok "$h ($(swapon --show=NAME --noheadings 2>/dev/null | tr '\n' ' ' | sed 's/ $//'))"
+else say swap warn "$h (want __LABEL__)"; fi"#,
+                &[("MIN", &(mb * 1024 * 9 / 10).to_string()), ("LABEL", &label)],
+            ),
+            Some(fill(
+                r#"if swapon --show=NAME --noheadings | grep -qx /swapfile; then echo "/swapfile is already on: make it bigger by hand (swapoff, fallocate, mkswap, swapon) when the server is quiet"; exit 1; fi
+free_mb=$(df -Pm / | awk 'NR==2{print $4}')
+if [ "$free_mb" -lt $((__MB__ + 1024)) ]; then echo "Only ${free_mb}M free on /: not enough for a __LABEL__ swap file and 1G spare"; exit 1; fi
+if [ -e /swapfile ]; then t=$(date +%Y%m%d-%H%M%S); echo "An old /swapfile (not on): moved to /swapfile.kemudi-old-$t"; mv /swapfile "/swapfile.kemudi-old-$t"; fi
+fallocate -l __MB__M /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=__MB__ status=progress
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+if ! grep -qE '^/swapfile[[:space:]]' /etc/fstab; then cp -p /etc/fstab "/etc/fstab.kemudi-backup-$(date +%Y%m%d-%H%M%S)"; echo '/swapfile none swap sw 0 0' >> /etc/fstab; fi
+mkdir -p /etc/sysctl.d
+printf 'vm.swappiness=10\n' > /etc/sysctl.d/99-kemudi-swap.conf
+sysctl -p /etc/sysctl.d/99-kemudi-swap.conf
+swapon --show
+free -h"#,
+                &[("MB", &mb.to_string()), ("LABEL", &label)],
+            )),
+            25,
         );
     }
     if let Some(php) = &p.php {
@@ -706,7 +785,8 @@ pub struct ItemStatus {
     pub section: String,
     pub title: String,
     pub expected: Option<String>,
-    /// ok, warn, bad, unknown.
+    /// ok, warn, bad, unknown; optional: not there, and that's fine
+    /// (counts as neither ok nor a problem).
     pub state: String,
     pub detail: String,
     /// Kemudi can fix it (as a workflow).
@@ -779,7 +859,7 @@ pub fn parse(p: &Profile, ctx: &Ctx, out: &str) -> Result<SetupStatus, String> {
             } else {
                 found.remove(&it.id).unwrap_or_else(|| ("unknown".into(), "no answer".into()))
             };
-            let fixable = matches!(state.as_str(), "bad" | "warn") && (it.fix.is_some() || it.id.starts_with("ssh-"));
+            let fixable = matches!(state.as_str(), "bad" | "warn" | "optional") && (it.fix.is_some() || it.id.starts_with("ssh-"));
             ItemStatus { id: it.id, section: it.section.into(), title: it.title, expected: it.expected, state, detail, fixable }
         })
         .collect();
@@ -1200,6 +1280,31 @@ pub async fn server_set_setup(
 mod tests {
     use super::*;
 
+    #[test]
+    fn optional_packages_and_swap() {
+        let p: Profile = serde_norway::from_str("id: web\noptional_packages: [certbot]\nswap: 4G\n").unwrap();
+        assert!(problems(&p).is_empty(), "{:?}", problems(&p));
+        assert_eq!(swap_want(&p), Some(("4G".into(), 4096)));
+        let ctx = Ctx { baseline: None, port_now: 22 };
+        let script = check_script(&p, &ctx);
+        assert!(script.contains("say optional-packages optional"));
+        assert!(script.contains("-ge 3774873"), "90% of 4G in kB");
+        let out = "@@root yes\n@@i optional-packages optional not installed: certbot (optional)\n@@i swap bad no swap\n@@done\n";
+        let st = parse(&p, &ctx, out).unwrap();
+        let get = |id: &str| st.items.iter().find(|i| i.id == id).unwrap().clone();
+        assert_eq!((get("optional-packages").state.as_str(), get("optional-packages").fixable), ("optional", true));
+        assert_eq!((get("swap").state.as_str(), get("swap").fixable), ("bad", true));
+        let fix = items(&p, &ctx).into_iter().find(|i| i.id == "swap").unwrap().fix.unwrap();
+        assert!(fix.contains("fallocate -l 4096M /swapfile") && fix.contains("fstab.kemudi-backup") && !fix.contains("rm "));
+
+        let on: Profile = serde_norway::from_str("id: x\nswap: true\n").unwrap();
+        assert_eq!(swap_want(&on), Some(("2G".into(), 2048)));
+        for bad in ["2T", "100M", "G", "lots"] {
+            let p = Profile { swap: Some(Toggle::Set(bad.into())), ..Default::default() };
+            assert!(!problems(&p).is_empty(), "{bad}");
+        }
+    }
+
     fn profile() -> Profile {
         let yaml = r#"
 id: web
@@ -1378,6 +1483,19 @@ custom: [{ name: Swap on, check: "swapon --show | grep -q .", fix: "fallocate -l
 
     /// `KEMUDI_CHECK_CONFIG=<servers.yaml> cargo test setup::tests::config_file
     /// -- --ignored --nocapture`: does that file load, and its profiles.
+    #[test]
+    #[ignore]
+    /// Writes the check script and the swap fix for `optional_packages:
+    /// [certbot]`, `swap: 2G` to $KEMUDI_SETUP_OUT (to try in a container).
+    fn write_scripts() {
+        let dir = std::env::var("KEMUDI_SETUP_OUT").expect("KEMUDI_SETUP_OUT");
+        let p: Profile = serde_norway::from_str("id: t\npackages: [curl]\noptional_packages: [certbot]\nswap: 2G\n").unwrap();
+        let ctx = Ctx { baseline: None, port_now: 22 };
+        std::fs::write(format!("{dir}/check.sh"), check_script(&p, &ctx)).unwrap();
+        let fix = items(&p, &ctx).into_iter().find(|i| i.id == "swap").unwrap().fix.unwrap();
+        std::fs::write(format!("{dir}/swapfix.sh"), format!("{FIX_PRE}{fix}\n")).unwrap();
+    }
+
     #[test]
     #[ignore]
     fn config_file() {

@@ -30,6 +30,10 @@ const STARTER = `setup:
       updates: true
       unattended_upgrades: true
       packages: [software-properties-common, language-pack-en-base, net-tools, sysstat, ncdu, curl, git, unzip, nginx, mysql-client, mysql-server, supervisor, redis-server]
+      # Fine either way (shown as optional, with Install): e.g. certbot where
+      # the client gives the certificate.
+      optional_packages: [certbot, python3-certbot-nginx]
+      swap: 2G
       php: { version: "8.4", extensions: [fpm, cli, common, bcmath, opcache, mysql, mbstring, soap, zip, gd, intl, xml, curl, imagick, redis, ldap] }
       composer: true
       mysql_secure: true
@@ -50,6 +54,8 @@ const KEYS: [string, string][] = [
   ["timezone", "Asia/Kuala_Lumpur"],
   ["ntp / updates / unattended_upgrades", "true"],
   ["packages", "[nginx, git, …]"],
+  ["optional_packages", "[certbot, …] (fine either way; Install offered)"],
+  ["swap", 'true (2G), or "4G"'],
   ["php", '{ version: "8.4", extensions: [fpm, …], ppa, default }'],
   ["composer / mysql_secure", "true"],
   ["ssh", "{ port: 2222, any_port: true (any but 22), password_auth: false }"],
@@ -132,8 +138,9 @@ const TONE: Record<SetupItem["state"], string> = {
   warn: "text-[#8a5a12]",
   bad: "text-env-prod-fg",
   unknown: "text-subtle-foreground",
+  optional: "text-subtle-foreground",
 };
-const MARK: Record<SetupItem["state"], string> = { ok: "✓", warn: "!", bad: "✗", unknown: "?" };
+const MARK: Record<SetupItem["state"], string> = { ok: "✓", warn: "!", bad: "✗", unknown: "?", optional: "○" };
 
 function counts(st: SetupStatus) {
   const n = (k: SetupItem["state"]) => st.items.filter((i) => i.state === k).length;
@@ -287,7 +294,7 @@ function SectionCard({ name, items, picked, toggle, onFix, canFix }: { name: str
             </div>
             {it.fixable && canFix && (
               <Btn size="sm" variant="ghost" onClick={() => onFix(it.id)}>
-                Fix
+                {it.state === "optional" ? "Install" : "Fix"}
               </Btn>
             )}
           </div>
