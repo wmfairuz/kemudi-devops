@@ -316,7 +316,9 @@ function Results({ server, r, picked, toggle, canFix }: { server: Server; r: Res
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-subtle-foreground">
         {st.os && <span>{st.os}</span>}
         <span>profile {st.profile}</span>
-        <span>Kemudi connects on port {st.portNow}</span>
+        <span title={st.forwarded ? "A tunnel or port forward sits between Kemudi and sshd, so Setup won't move sshd's port" : undefined}>
+          {st.forwarded ? `SSH on port ${st.portNow}, reached through port ${st.forwarded} (tunnel)` : `Kemudi connects on port ${st.portNow}`}
+        </span>
         {!st.root && <span className="text-[#8a5a12]">Some checks need root: sign in as root, or let sudo work without a password, to see them (they show as ?).</span>}
       </div>
       {hasSsh && canFix && (

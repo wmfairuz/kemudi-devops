@@ -285,8 +285,13 @@ restart_ssh(){
 
 pub struct Ctx<'a> {
     pub baseline: Option<&'a Baseline>,
-    /// The port Kemudi connects on now (from `ssh -G`).
+    /// The port sshd is on now, as the server sees Kemudi's connection
+    /// (else the one Kemudi dials).
     pub port_now: u16,
+    /// The port Kemudi dials, when it isn't sshd's: a tunnel or a forward
+    /// in between (e.g. ProxyJump to localhost:30035 → the server's 22).
+    /// sshd's port can't be moved from here then.
+    pub forwarded: Option<u16>,
 }
 
 fn items(p: &Profile, ctx: &Ctx) -> Vec<Item> {
@@ -813,8 +818,10 @@ pub struct SetupStatus {
     pub items: Vec<ItemStatus>,
     /// The helpers part, in detail (as the Health tab shows it).
     pub helpers: Option<BaselineStatus>,
-    /// The port Kemudi connects on (from `ssh -G`).
+    /// The port sshd is on (as the server sees Kemudi's connection).
     pub port_now: u16,
+    /// The port Kemudi dials when that's a tunnel or forward to sshd.
+    pub forwarded: Option<u16>,
 }
 
 pub fn check_script(p: &Profile, ctx: &Ctx) -> String {
@@ -868,11 +875,17 @@ pub fn parse(p: &Profile, ctx: &Ctx, out: &str) -> Result<SetupStatus, String> {
             } else {
                 found.remove(&it.id).unwrap_or_else(|| ("unknown".into(), "no answer".into()))
             };
-            let fixable = matches!(state.as_str(), "bad" | "warn" | "optional") && (it.fix.is_some() || it.id.starts_with("ssh-"));
+            let mut fixable = matches!(state.as_str(), "bad" | "warn" | "optional") && (it.fix.is_some() || it.id.starts_with("ssh-"));
+            let mut detail = detail;
+            // Behind a tunnel or forward, moving sshd would cut it.
+            if let (Some(via), "ssh-port", true) = (ctx.forwarded, it.id.as_str(), state != "ok") {
+                fixable = false;
+                detail = format!("{detail} · reached through port {via} (a tunnel or forward to {}): move it where the forward points, not here", ctx.port_now);
+            }
             ItemStatus { id: it.id, section: it.section.into(), title: it.title, expected: it.expected, state, detail, fixable }
         })
         .collect();
-    Ok(SetupStatus { profile: p.id.clone(), os, root, items, helpers, port_now: ctx.port_now })
+    Ok(SetupStatus { profile: p.id.clone(), os, root, items, helpers, port_now: ctx.port_now, forwarded: ctx.forwarded })
 }
 
 fn helpers_summary(h: &BaselineStatus) -> (String, String) {
@@ -992,6 +1005,12 @@ pub fn plan(server: &Server, p: &Profile, ctx: &Ctx, ids: &[String]) -> Result<W
     let host = server.host.as_str();
     let now = ctx.port_now;
     let want_port = chosen.iter().any(|i| i.id == "ssh-port");
+    if let (true, Some(via)) = (want_port, ctx.forwarded) {
+        return Err(format!(
+            "{} is reached through port {via}, a tunnel or forward to sshd's {now}: moving sshd would cut it. Change the port where the forward points instead",
+            server.name
+        ));
+    }
     let want_keys = chosen.iter().any(|i| i.id == "ssh-passwords");
     let target = ssh_port(p, now);
     let moving = want_port && target != now;
@@ -1149,6 +1168,30 @@ fn port_of(host: &str, env: &crate::env::LoginEnv) -> u16 {
         .unwrap_or(22)
 }
 
+/// The server's side of Kemudi's connection: `$SSH_CONNECTION` ends with
+/// the port sshd took it on.
+const PORT_PROBE: &str = "echo \"@@sshport ${SSH_CONNECTION##* }\"";
+
+fn probed_port(out: &str) -> Option<u16> {
+    out.lines().find_map(|l| l.strip_prefix("@@sshport ").and_then(|p| p.trim().parse().ok())).filter(|p| *p > 0)
+}
+
+/// sshd's port (as the server sees it) and, when Kemudi dials another one
+/// (a tunnel or forward in between), that one. Unknown (no SSH_CONNECTION,
+/// e.g. through `sudo -i`): the port Kemudi dials, as before.
+async fn ports(state: &AppState, server: &Server, instance: Option<&str>, env: &crate::env::LoginEnv) -> (u16, Option<u16>) {
+    if server.asg.is_some() {
+        return (22, None);
+    }
+    let dialled = port_of(&server.host, env);
+    let seen = crate::monitor::run_on(state, &server.id, instance, PORT_PROBE, 20).await.ok().and_then(|o| probed_port(&o));
+    match seen {
+        Some(p) if p != dialled => (p, Some(dialled)),
+        Some(p) => (p, None),
+        None => (dialled, None),
+    }
+}
+
 fn loaded(state: &AppState) -> AppResult<Config> {
     state.config.config().ok_or_else(|| AppError::Config("Kemudi's server list isn't loaded".into()))
 }
@@ -1177,8 +1220,8 @@ pub(crate) async fn check(state: &AppState, server_id: &str, instance: Option<&s
     let config = loaded(state)?;
     let (server, profile) = profile_of(&config, server_id)?;
     let env = state.env_ready().await;
-    let port_now = if server.asg.is_some() { 22 } else { port_of(&server.host, env) };
-    let ctx = Ctx { baseline: config.baseline.as_ref(), port_now };
+    let (port_now, forwarded) = ports(state, server, instance, env).await;
+    let ctx = Ctx { baseline: config.baseline.as_ref(), port_now, forwarded };
     let out = crate::monitor::run_on(state, server_id, instance, &check_script(profile, &ctx), 90).await?;
     parse(profile, &ctx, &out).map_err(AppError::Invalid)
 }
@@ -1190,7 +1233,8 @@ pub async fn setup_plan(state: State<'_, AppState>, server_id: String, items: Ve
     let config = loaded(&state)?;
     let (server, profile) = profile_of(&config, &server_id)?;
     let env = state.env_ready().await;
-    let ctx = Ctx { baseline: config.baseline.as_ref(), port_now: port_of(&server.host, env) };
+    let (port_now, forwarded) = ports(&state, server, None, env).await;
+    let ctx = Ctx { baseline: config.baseline.as_ref(), port_now, forwarded };
     plan(server, profile, &ctx, &items).map_err(AppError::Invalid)
 }
 
@@ -1290,10 +1334,27 @@ mod tests {
     use super::*;
 
     #[test]
+    fn behind_a_tunnel_sshd_stays_put() {
+        assert_eq!(probed_port("noise\n@@sshport 22\n"), Some(22));
+        assert_eq!(probed_port("@@sshport \n"), None);
+        let p: Profile = serde_norway::from_str("id: x\nssh: { port: 2222, any_port: true }\nfirewall: { allow: [\"Nginx Full\"] }\n").unwrap();
+        let ctx = Ctx { baseline: None, port_now: 22, forwarded: Some(30035) };
+        let fw = items(&p, &ctx).into_iter().find(|i| i.id == "firewall").unwrap();
+        let fix = fw.fix.unwrap();
+        assert!(fix.contains("ufw allow 22/tcp") && !fix.contains("30035"), "the firewall keeps sshd's own port open");
+        let st = parse(&p, &ctx, "@@root yes\n@@i ssh-port bad port 22\n@@done\n").unwrap();
+        let port = st.items.iter().find(|i| i.id == "ssh-port").unwrap();
+        assert!(!port.fixable && port.detail.contains("through port 30035"));
+        let config = crate::config::validate::parse("servers:\n  - { id: t, host: t.example.com, env: staging }\n").config.expect("config");
+        let server = config.server("t").expect("server").clone();
+        assert!(plan(&server, &p, &ctx, &["ssh-port".to_string()]).unwrap_err().contains("tunnel or forward"));
+    }
+
+    #[test]
     fn opcache_is_built_in_from_85() {
         assert!(opcache_built_in("8.5") && opcache_built_in("9.0") && !opcache_built_in("8.4"));
         let p: Profile = serde_norway::from_str("id: x\nphp: { version: \"8.5\", extensions: [fpm, opcache, intl] }\n").unwrap();
-        let ctx = Ctx { baseline: None, port_now: 22 };
+        let ctx = Ctx { baseline: None, port_now: 22, forwarded: None };
         let php = items(&p, &ctx).into_iter().find(|i| i.id == "php").unwrap();
         assert!(!php.check.contains("opcache") && !php.fix.unwrap().contains("php8.5-opcache"));
         let p84: Profile = serde_norway::from_str("id: x\nphp: { version: \"8.4\", extensions: [opcache] }\n").unwrap();
@@ -1305,7 +1366,7 @@ mod tests {
         let p: Profile = serde_norway::from_str("id: web\noptional_packages: [certbot]\nswap: 4G\n").unwrap();
         assert!(problems(&p).is_empty(), "{:?}", problems(&p));
         assert_eq!(swap_want(&p), Some(("4G".into(), 4096)));
-        let ctx = Ctx { baseline: None, port_now: 22 };
+        let ctx = Ctx { baseline: None, port_now: 22, forwarded: None };
         let script = check_script(&p, &ctx);
         assert!(script.contains("say optional-packages optional"));
         assert!(script.contains("-ge 3774873"), "90% of 4G in kB");
@@ -1349,7 +1410,7 @@ custom: [{ name: Swap on, check: "swapon --show | grep -q .", fix: "fallocate -l
     }
 
     fn ctx() -> Ctx<'static> {
-        Ctx { baseline: None, port_now: 22 }
+        Ctx { baseline: None, port_now: 22, forwarded: None }
     }
 
     #[test]
@@ -1375,7 +1436,7 @@ custom: [{ name: Swap on, check: "swapon --show | grep -q .", fix: "fallocate -l
         assert_eq!(ssh_port(&p, 2022), 2022);
         // Still on 22: Fix moves it to `port`.
         assert_eq!(ssh_port(&p, 22), 2222);
-        let ctx = Ctx { baseline: None, port_now: 2022 };
+        let ctx = Ctx { baseline: None, port_now: 2022, forwarded: None };
         let it = items(&p, &ctx).into_iter().find(|i| i.id == "ssh-port").expect("ssh-port item");
         assert_eq!(it.expected.as_deref(), Some("not 22 (2022)"));
         if let Some(s) = p.ssh.as_mut() {
@@ -1510,7 +1571,7 @@ custom: [{ name: Swap on, check: "swapon --show | grep -q .", fix: "fallocate -l
     fn write_scripts() {
         let dir = std::env::var("KEMUDI_SETUP_OUT").expect("KEMUDI_SETUP_OUT");
         let p: Profile = serde_norway::from_str("id: t\npackages: [curl]\noptional_packages: [certbot]\nswap: 2G\n").unwrap();
-        let ctx = Ctx { baseline: None, port_now: 22 };
+        let ctx = Ctx { baseline: None, port_now: 22, forwarded: None };
         std::fs::write(format!("{dir}/check.sh"), check_script(&p, &ctx)).unwrap();
         let fix = items(&p, &ctx).into_iter().find(|i| i.id == "swap").unwrap().fix.unwrap();
         std::fs::write(format!("{dir}/swapfix.sh"), format!("{FIX_PRE}{fix}\n")).unwrap();
@@ -1527,7 +1588,7 @@ custom: [{ name: Swap on, check: "swapon --show | grep -q .", fix: "fallocate -l
         let dir = std::env::var("KEMUDI_SETUP_OUT").expect("KEMUDI_SETUP_OUT");
         let c = crate::config::validate::parse(&std::fs::read_to_string(path).expect("read")).config.expect("config");
         let p = c.profile_for(&server).expect("a profile");
-        let ctx = Ctx { baseline: c.baseline.as_ref(), port_now: 22 };
+        let ctx = Ctx { baseline: c.baseline.as_ref(), port_now: 22, forwarded: None };
         std::fs::write(format!("{dir}/{server}-check.sh"), check_script(p, &ctx)).unwrap();
         // And the fixes named in $KEMUDI_SETUP_FIX (ids, comma-separated),
         // in plan order, as one script.

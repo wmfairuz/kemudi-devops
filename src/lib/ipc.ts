@@ -553,7 +553,10 @@ export interface SetupStatus {
   items: SetupItem[];
   helpers: BaselineStatus | null;
   /** The SSH port Kemudi connects on now. */
+  /** sshd's port (as the server sees Kemudi's connection). */
   portNow: number;
+  /** The port Kemudi dials when it's a tunnel or forward to sshd. */
+  forwarded: number | null;
 }
 
 /** Check a server against its profile (read-only). */

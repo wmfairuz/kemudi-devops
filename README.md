@@ -964,7 +964,12 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   pick the port up); a login on the new port; a pause for you to set
   `Port` in `~/.ssh/config` (Kemudi doesn't edit it), checked; only then
   the old port closed and passwords off; and last, checks that a key still
-  gets in and a password doesn't. *Run a Lynis audit* runs `lynis audit
+  gets in and a password doesn't. Setup reads sshd's port from the server itself (the
+  port the server sees Kemudi's connection arrive on); when Kemudi dials
+  another one (a tunnel or forward, e.g. ProxyJump to `localhost:30035` →
+  the server's 22) the page says so, the firewall keeps sshd's own port
+  open, and the SSH port isn't moved (that's changed where the forward
+  points). *Run a Lynis audit* runs `lynis audit
   system --quick` in a terminal. Auto Scaling groups are checked only (set
   up their image instead). Passwords and app databases/certificates aren't
   part of it.
