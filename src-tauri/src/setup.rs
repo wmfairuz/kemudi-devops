@@ -113,6 +113,13 @@ fn swap_want(p: &Profile) -> Option<(String, u64)> {
     }
 }
 
+/// PHP 8.5 and later have OPcache built in (no package for it).
+fn opcache_built_in(version: &str) -> bool {
+    let mut it = version.split('.').map(|n| n.parse::<u32>().unwrap_or(0));
+    let (major, minor) = (it.next().unwrap_or(0), it.next().unwrap_or(0));
+    (major, minor) >= (8, 5)
+}
+
 /// What's wrong with a (merged) profile (empty: fine).
 pub fn problems(p: &Profile) -> Vec<String> {
     let mut out = Vec::new();
@@ -400,7 +407,9 @@ free -h"#,
     }
     if let Some(php) = &p.php {
         let v = php.version.0.clone();
-        let exts = php.extensions.join(" ");
+        // OPcache is part of PHP itself from 8.5 (no php8.5-opcache).
+        let wanted: Vec<&String> = php.extensions.iter().filter(|e| !(e.as_str() == "opcache" && opcache_built_in(&v))).collect();
+        let exts = wanted.iter().map(|e| e.as_str()).collect::<Vec<_>>().join(" ");
         let fpm = php.extensions.iter().any(|e| e == "fpm");
         add(
             "php",
@@ -425,7 +434,7 @@ __FPMUP__[ -z "$miss" ] || { echo "Not available from apt:$miss"; exit 1; }
 php__V__ -v"#,
                 &[
                     ("V", &v),
-                    ("PKGS", &php.extensions.iter().map(|e| format!("php{v}-{e}")).collect::<Vec<_>>().join(" ")),
+                    ("PKGS", &wanted.iter().map(|e| format!("php{v}-{e}")).collect::<Vec<_>>().join(" ")),
                     (
                         "PPA",
                         if php.ppa != Some(false) {
@@ -1281,6 +1290,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn opcache_is_built_in_from_85() {
+        assert!(opcache_built_in("8.5") && opcache_built_in("9.0") && !opcache_built_in("8.4"));
+        let p: Profile = serde_norway::from_str("id: x\nphp: { version: \"8.5\", extensions: [fpm, opcache, intl] }\n").unwrap();
+        let ctx = Ctx { baseline: None, port_now: 22 };
+        let php = items(&p, &ctx).into_iter().find(|i| i.id == "php").unwrap();
+        assert!(!php.check.contains("opcache") && !php.fix.unwrap().contains("php8.5-opcache"));
+        let p84: Profile = serde_norway::from_str("id: x\nphp: { version: \"8.4\", extensions: [opcache] }\n").unwrap();
+        assert!(items(&p84, &ctx).into_iter().find(|i| i.id == "php").unwrap().fix.unwrap().contains("php8.4-opcache"));
+    }
+
+    #[test]
     fn optional_packages_and_swap() {
         let p: Profile = serde_norway::from_str("id: web\noptional_packages: [certbot]\nswap: 4G\n").unwrap();
         assert!(problems(&p).is_empty(), "{:?}", problems(&p));
@@ -1494,6 +1514,34 @@ custom: [{ name: Swap on, check: "swapon --show | grep -q .", fix: "fallocate -l
         std::fs::write(format!("{dir}/check.sh"), check_script(&p, &ctx)).unwrap();
         let fix = items(&p, &ctx).into_iter().find(|i| i.id == "swap").unwrap().fix.unwrap();
         std::fs::write(format!("{dir}/swapfix.sh"), format!("{FIX_PRE}{fix}\n")).unwrap();
+    }
+
+    #[test]
+    #[ignore]
+    /// Writes the check script Kemudi would run for server
+    /// $KEMUDI_SETUP_SERVER (its profile in $KEMUDI_CHECK_CONFIG, sshd on
+    /// port 22) to $KEMUDI_SETUP_OUT/<server>-check.sh, to run by hand.
+    fn write_server_check() {
+        let path = std::env::var("KEMUDI_CHECK_CONFIG").expect("KEMUDI_CHECK_CONFIG");
+        let server = std::env::var("KEMUDI_SETUP_SERVER").expect("KEMUDI_SETUP_SERVER");
+        let dir = std::env::var("KEMUDI_SETUP_OUT").expect("KEMUDI_SETUP_OUT");
+        let c = crate::config::validate::parse(&std::fs::read_to_string(path).expect("read")).config.expect("config");
+        let p = c.profile_for(&server).expect("a profile");
+        let ctx = Ctx { baseline: c.baseline.as_ref(), port_now: 22 };
+        std::fs::write(format!("{dir}/{server}-check.sh"), check_script(p, &ctx)).unwrap();
+        // And the fixes named in $KEMUDI_SETUP_FIX (ids, comma-separated),
+        // in plan order, as one script.
+        if let Ok(ids) = std::env::var("KEMUDI_SETUP_FIX") {
+            let want: Vec<&str> = ids.split(',').collect();
+            let mut its: Vec<Item> = items(p, &ctx).into_iter().filter(|i| want.contains(&i.id.as_str())).collect();
+            its.sort_by_key(|i| i.order);
+            let mut out = String::from(FIX_PRE);
+            for i in its {
+                out.push_str(&format!("echo '@@step {}'\n{}\n", i.id, i.fix.unwrap_or_default()));
+            }
+            out.push_str("echo '@@fix done'\n");
+            std::fs::write(format!("{dir}/{server}-fix.sh"), out).unwrap();
+        }
     }
 
     #[test]

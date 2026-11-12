@@ -926,6 +926,10 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
         php: { version: "8.1", extensions: [fpm, cli, mbstring] }
   ```
 
+  From PHP 8.5 OPcache is part of PHP itself (there's no `php8.5-opcache`),
+  so `opcache` in a profile's extensions counts as there and isn't
+  installed.
+
   The tab lists the team in front's servers, one line each (profile,
   ✓ / ✗ / ! counts); clicking one opens its own **Setup** tab (also: the
   server's right-click menu or Details ▸ Setup), a full page with each
