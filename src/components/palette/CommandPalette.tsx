@@ -30,7 +30,7 @@ import { useSidebar } from "@/stores/sidebar";
 import { insertSnippet, useSnippets } from "@/stores/snippets";
 import { snippetVisible, useTeam, useTeamServers } from "@/stores/team";
 import { useStatus } from "@/stores/status";
-import { openLocalShell, openServer, openSsh, toggleBroadcast, useTabs, type Tab } from "@/stores/tabs";
+import { openApp, openLocalShell, openServer, openSsh, toggleBroadcast, useTabs, type Tab } from "@/stores/tabs";
 import { toastError } from "@/stores/toasts";
 import { openServerShell, whereOf } from "@/lib/fleet";
 import { useFleetUi } from "@/stores/fleetUi";
@@ -373,6 +373,7 @@ export function CommandPalette() {
         break;
       case "app":
         close();
+        openApp(item.server, item.app);
         useSidebar.getState().reveal(item.server.id, item.app.id);
         break;
       case "server":
