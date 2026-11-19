@@ -62,8 +62,19 @@ function useSwitches(server: Server, app: App) {
   const entry = useDash((s) => s.servers[server.id]);
   const busy = useDash((s) => dashBusy(s, server.id, app.id));
   const s = entry?.data?.apps.find((a) => a.appId === app.id) ?? null;
+  // Read before this app was added (to servers.yaml): read again, once.
+  const missing = !!entry?.data && !s && !entry.loading;
+  useEffect(() => {
+    const key = `${server.id}/${app.id}`;
+    if (missing && !rereadFor.has(key)) {
+      rereadFor.add(key);
+      void loadDash(server.id);
+    }
+  }, [missing, server.id, app.id]);
   return { entry, busy, s, data: entry?.data ?? null };
 }
+/** Apps a read was redone for because the last one didn't have them. */
+const rereadFor = new Set<string>();
 
 const authOnOf = (s: AppSwitches) => s.auth.state === "on" || s.auth.state === "partial";
 /** The basic auth switch can't be used: why (null: it can). */
