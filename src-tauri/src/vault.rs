@@ -430,6 +430,18 @@ fn pbpaste() -> Option<String> {
 #[tauri::command]
 pub async fn vault_copy(id: String) -> AppResult<u64> {
     let (_, password) = blocking(move || password_of(&id)).await?;
+    copy_for_a_while(password)
+}
+
+/// A password that isn't saved (yet), e.g. one just generated: copied, and
+/// cleared like a saved one.
+#[tauri::command]
+pub async fn copy_secret(text: String) -> AppResult<u64> {
+    copy_for_a_while(text)
+}
+
+/// Copy, then clear the clipboard after CLIPBOARD_SECONDS if it still holds it.
+fn copy_for_a_while(password: String) -> AppResult<u64> {
     pbcopy(&password).map_err(AppError::Invalid)?;
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_secs(CLIPBOARD_SECONDS));

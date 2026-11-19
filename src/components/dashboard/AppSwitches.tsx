@@ -1,8 +1,9 @@
-import { Copy, Eye, EyeOff, KeyRound, RotateCw, Wand2 } from "lucide-react";
+import { Copy, KeyRound, RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Btn } from "@/components/kit/Btn";
 import { Hint } from "@/components/kit/Kbd";
+import { PasswordField } from "@/components/kit/PasswordField";
 import { Modal, ModalFooter, ModalHeader } from "@/components/kit/Modal";
 import { Field, TextInput } from "@/components/manage/fields";
 import { Spinner } from "@/components/kit/Spinner";
@@ -13,13 +14,6 @@ import { authOn, bypassUrl, changeLogin, dashBusy, ensureDash, goDown, loadDash,
 import { useToasts } from "@/stores/toasts";
 import { useUi } from "@/stores/ui";
 import { useVault } from "@/stores/vault";
-
-/** A random password from the system's crypto source. */
-function generate(length = 20): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
-  const bytes = crypto.getRandomValues(new Uint32Array(length));
-  return Array.from(bytes, (b) => chars[b % chars.length]).join("");
-}
 
 const OWN_DIR = "/etc/nginx/kemudi-auth/";
 
@@ -491,30 +485,6 @@ function DownDialog({ server, app, onClose, onConfirm }: { server: Server; app: 
   );
 }
 
-function PasswordInput({ id, value, onChange, autoFocus }: { id: string; value: string; onChange: (v: string) => void; autoFocus?: boolean }) {
-  const [show, setShow] = useState(false);
-  return (
-    <div className="flex gap-2">
-      <TextInput id={id} autoFocus={autoFocus} type={show ? "text" : "password"} autoComplete="new-password" value={value} onChange={(e) => onChange(e.target.value)} />
-      <Btn size="sm" variant="ghost" className="h-8" onClick={() => setShow((s) => !s)} aria-label={show ? "Hide" : "Show"}>
-        {show ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-      </Btn>
-      <Btn
-        size="sm"
-        variant="outline"
-        className="h-8"
-        onClick={() => {
-          onChange(generate());
-          setShow(true);
-        }}
-        title="A random 20-character password"
-      >
-        <Wand2 className="size-3.5" /> Generate
-      </Btn>
-    </div>
-  );
-}
-
 const USER_OK = /^[A-Za-z0-9._@-]{1,64}$/;
 
 function AuthDialog({
@@ -643,7 +613,7 @@ function AuthDialog({
             {kind === "own" && (
               <div className="ml-6 flex flex-col gap-2.5">
                 <Field label="Username">{(id) => <TextInput id={id} autoFocus value={username} placeholder="team" onChange={(e) => setUsername(e.target.value)} invalid={username !== "" && !USER_OK.test(username.trim())} />}</Field>
-                <Field label="Password">{(id) => <PasswordInput id={id} value={password} onChange={setPassword} />}</Field>
+                <Field label="Password">{(id) => <PasswordField id={id} value={password} onChange={setPassword} />}</Field>
                 <label className="flex cursor-pointer items-center gap-2 text-[12px]">
                   <input type="checkbox" className="accent-primary" checked={save} onChange={(e) => setSave(e.target.checked)} />
                   Keep it in Passwords (to copy it later; the server only gets a hash)
@@ -719,7 +689,7 @@ function DefaultLoginDialog({ onClose }: { onClose: (saved: boolean) => void }) 
             {(id) => <TextInput id={id} autoFocus value={username ?? current?.username ?? ""} placeholder="team" onChange={(e) => setUsername(e.target.value)} invalid={user !== "" && !USER_OK.test(user)} />}
           </Field>
           <Field label={current ? "New password" : "Password"} hint={current ? "Leave empty to keep the saved one" : undefined}>
-            {(id) => <PasswordInput id={id} value={password} onChange={setPassword} />}
+            {(id) => <PasswordField id={id} value={password} onChange={setPassword} />}
           </Field>
           <button type="submit" hidden />
         </form>

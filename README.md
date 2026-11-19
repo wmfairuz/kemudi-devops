@@ -785,7 +785,11 @@ hot-reloads on save; if a save breaks it, Kemudi keeps the last good config
   offers **Use a key instead**.
 - **Passwords** (Kemudi Devops ▸ **Passwords…** ⇧⌘K, Home ▸ Passwords, ⌘K):
   a list of saved passwords, each with a name, optional username and notes;
-  **Generate** makes a random one, **Copy password** puts it on the
+  **Generate** makes a random one and opens its options under the field
+  (length 8–64, uppercase / lowercase / numbers / symbols, **New**, **Copy**,
+  remembered; look-alikes I O l 0 1 left out, at least one of each kind
+  chosen) with a strength bar; the same field sets a basic auth login.
+  **Copy password** puts a saved one on the
   clipboard (cleared after 45 s if it's still there). Saved passwords are
   never shown again. At any password prompt in any tab (`[sudo] password
   for …:`, `user@host's password:`, `Password:`, a key passphrase…) a yellow chip

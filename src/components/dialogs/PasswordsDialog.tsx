@@ -1,8 +1,9 @@
-import { Copy, Eye, EyeOff, KeyRound, Plus, Trash2, Wand2 } from "lucide-react";
+import { Copy, KeyRound, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Btn } from "@/components/kit/Btn";
 import { Hint } from "@/components/kit/Kbd";
+import { PasswordField } from "@/components/kit/PasswordField";
 import { Modal, ModalFooter, ModalHeader } from "@/components/kit/Modal";
 import { Field, TextInput } from "@/components/manage/fields";
 import type { Server, VaultEntry, VaultKind } from "@/lib/ipc";
@@ -13,13 +14,6 @@ import { useUi } from "@/stores/ui";
 import { copyPassword, KIND_LABEL, kindOf, useVault } from "@/stores/vault";
 
 const NO_SERVERS: Server[] = [];
-
-/** A random password from the system's crypto source. */
-function generate(length = 24): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789-_.!@#%+=";
-  const bytes = crypto.getRandomValues(new Uint32Array(length));
-  return Array.from(bytes, (b) => chars[b % chars.length]).join("");
-}
 
 /** Kemudi Devops ▸ Passwords… (⇧⌘K): saved passwords to fill at any
  *  password prompt. Passwords are never shown again once saved. */
@@ -184,7 +178,6 @@ function EntryForm({
   const [sudoFor, setSudoFor] = useState<string[]>(entry?.sudoFor ?? []);
   const [basicAuth, setBasicAuth] = useState(entry?.basicAuth ?? false);
   const [password, setPassword] = useState("");
-  const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const isNew = entry === null;
   const dirty =
@@ -255,33 +248,7 @@ function EntryForm({
         </Field>
       </div>
       <Field label={isNew ? "Password" : "New password"} hint={isNew ? undefined : "Leave empty to keep the saved one (it's never shown)"}>
-        {(id) => (
-          <div className="flex gap-2">
-            <TextInput
-              id={id}
-              type={show ? "text" : "password"}
-              autoComplete="new-password"
-              value={password}
-              placeholder={isNew ? "" : "•••••••• saved"}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-            <Btn size="sm" variant="ghost" className="h-[30px]" onClick={() => setShow((s) => !s)} aria-label={show ? "Hide" : "Show"}>
-              {show ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-            </Btn>
-            <Btn
-              size="sm"
-              variant="outline"
-              className="h-[30px]"
-              onClick={() => {
-                setPassword(generate());
-                setShow(true);
-              }}
-              title="A random 24-character password"
-            >
-              <Wand2 className="size-3.5" /> Generate
-            </Btn>
-          </div>
-        )}
+        {(id) => <PasswordField id={id} value={password} onChange={setPassword} placeholder={isNew ? "" : "•••••••• saved"} />}
       </Field>
       <Field label="A login on" hint="Listed under Logins on these servers' Overview, and suggested first at password prompts in their tabs">
         {() => <ServerChips servers={servers} on={linked} set={setLinked} />}

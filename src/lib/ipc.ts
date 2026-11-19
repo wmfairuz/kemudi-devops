@@ -1022,6 +1022,8 @@ export const vaultFill = (ptyId: number, id: string, serverId: string | null): P
   invoke("vault_fill", { ptyId, id, serverId });
 /** Copies it to the clipboard (cleared after the returned seconds). */
 export const vaultCopy = (id: string): Promise<number> => invoke("vault_copy", { id });
+/** Copy a password that isn't saved; the clipboard clears like vaultCopy's (seconds). */
+export const copySecret = (text: string): Promise<number> => invoke("copy_secret", { text });
 /** A server's notes, encrypted with the passwords ("" when none). */
 export const vaultServerNotes = (serverId: string): Promise<string> => invoke("vault_server_notes", { serverId });
 export const vaultServerNotesSave = (serverId: string, notes: string): Promise<void> => invoke("vault_server_notes_save", { serverId, notes });
